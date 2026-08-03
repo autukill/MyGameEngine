@@ -1,0 +1,20 @@
+<Project>
+  <!-- 启用中央包管理 (Central Package Management) -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageVersionsDirectory>$(MSBuildThisFileDirectory)</CentralPackageVersionsDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Engine 核心依赖 (Silk.NET — OpenGL/Windowing/Input) -->
+    <PackageVersion Include="Silk.NET.Windowing" Version="2.22.0" />
+    <PackageVersion Include="Silk.NET.OpenGL" Version="2.22.0" />
+    <PackageVersion Include="Silk.NET.Input" Version="2.22.0" />
+
+    <!-- 编辑器 Web 后端 (SignalR) -->
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR" Version="1.2.0" />
+
+    <!-- 编辑器前端 (client-editor) 通过 npm 管理，以下为参考 -->
+    <PackageVersion Include="Microsoft.TypeScript.MSBuild" Version="5.6.0" />
+  </ItemGroup>
+</Project>
