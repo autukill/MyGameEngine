@@ -44,6 +44,7 @@ public sealed class ViewportCompositorPass : RenderPass
         _batch.Begin();
         foreach (var (source, rect, blend) in _sources)
         {
+            _batch.Flush();
             blend.Apply(_gl);
             var (x, y, w, h) = rect.ToPixels(ctx.ScreenWidth, ctx.ScreenHeight);
             _batch.Draw(
@@ -51,8 +52,10 @@ public sealed class ViewportCompositorPass : RenderPass
                 position: new Vector2(x, y),
                 size: new Vector2(w, h),
                 color: Vector4.One,
-                uvBounds: new Vector4(0, 1, 1, 0) // Y 翻转
+                uvBounds: new Vector4(0, 1, 1, 0) // Y flip
             );
+            // Flush AFTER each Draw so the quad uses the correct blend state
+            _batch.Flush();
         }
         _batch.End();
 
