@@ -1,27 +1,30 @@
 namespace GameEngine.Core.Infrastructure.Windowing;
 
+using Silk.NET.Maths;
 using Silk.NET.Windowing;
 using GameEngine.Core.Infrastructure.Graphics;
 
-public class EngineWindow {
+/// <summary>
+/// 引擎主窗口：把 Silk.NET 的 Update/Render 事件拆解为
+/// 类 GameMaker 的生命周期管道：PreStep → Step → PostStep → DrawBegin → Draw → DrawGUI
+/// </summary>
+public class EngineWindow
+{
     private readonly IWindow _nativeWindow;
     public GraphicsDevice Graphics { get; private set; } = null!;
 
-    // 暴露类似 GameMaker 生命周期管道的回调委托
-    public event Action? OnLoad;
-
-    // 完全保留你原版契合 GameMaker 的精妙生命周期委托
     public event Action<double>? OnPreStep;
-    public event Action<double>? OnStep; // 对应 GMS 的 Step Event
+    public event Action<double>? OnStep;
     public event Action<double>? OnPostStep;
 
+    public event Action? OnLoad;
     public event Action? OnDrawBegin;
-    public event Action? OnDraw; // 对应 GMS 的 Draw Event
-    public event Action? OnDrawGUI; // 对应 GMS 的 Draw GUI Event
+    public event Action? OnDraw;
+    public event Action? OnDrawGUI;
 
-    public EngineWindow( EngineWindowOptions options ) {
-        _nativeWindow = Window.Create( options.ToSilkWindowOptions() );
-
+    public EngineWindow(EngineWindowOptions options)
+    {
+        _nativeWindow = Window.Create(options.ToSilkWindowOptions());
         _nativeWindow.Load += HandleLoad;
         _nativeWindow.Update += HandleUpdate;
         _nativeWindow.Render += HandleRender;
@@ -29,43 +32,43 @@ public class EngineWindow {
         _nativeWindow.Closing += HandleClosing;
     }
 
-    public void Run() {
-        _nativeWindow.Run();
-    }
+    public int Width => _nativeWindow.Size.X;
+    public int Height => _nativeWindow.Size.Y;
 
-    private void HandleLoad() {
-        // 1. 初始化 Graphics Device
-        Graphics = new GraphicsDevice( _nativeWindow );
-        Console.WriteLine( $"[Engine EngineWindow] OpenGL Initialized. Version: {Graphics.Gl.GetStringS( Silk.NET.OpenGL.GLEnum.Version )}" );
+    /// <summary>暴露原生 Silk.NET IWindow 给上层做 Input 等扩展</summary>
+    public Silk.NET.Windowing.IWindow NativeWindow => _nativeWindow;
 
-        // 2. 通知外部：GPU 上下文与设备已准备就绪，可以安全初始化 Shader、Scene 和 PhysicsGrid
+    public void Run() => _nativeWindow.Run();
+
+    private void HandleLoad()
+    {
+        Graphics = new GraphicsDevice(_nativeWindow);
+        // 注: Silk.NET 2.22 中 StringName 枚举可见性因平台而异，这里跳过版本字符串输出
         OnLoad?.Invoke();
     }
 
-    private void HandleUpdate( double deltaTime ) {
-        // Step 阶段：只跑游戏逻辑、物理移动、碰撞检测，绝对不包含任何 Render 操作
-        OnPreStep?.Invoke( deltaTime );
-        OnStep?.Invoke( deltaTime );
-        OnPostStep?.Invoke( deltaTime );
+    private void HandleUpdate(double deltaTime)
+    {
+        OnPreStep?.Invoke(deltaTime);
+        OnStep?.Invoke(deltaTime);
+        OnPostStep?.Invoke(deltaTime);
     }
 
-    private void HandleRender( double deltaTime ) {
-        // 1. 重置 Framebuffer (清空 Color 和 Stencil Buffer) -> 保持你的封装，不裸露给外部
+    private void HandleRender(double deltaTime)
+    {
         Graphics.ClearBuffers();
-
-        // 2. 游戏场景世界渲染 (受 Camera & Layer 影响)
         OnDrawBegin?.Invoke();
         OnDraw?.Invoke();
-
-        // 3. UI 界面渲染 (不受 Camera 影响的屏幕坐标系)
         OnDrawGUI?.Invoke();
     }
 
-    private void HandleResize( Silk.NET.Maths.Vector2D<int> size ) {
-        Graphics?.OnResize( size.X, size.Y );
+    private void HandleResize(Vector2D<int> size)
+    {
+        Graphics?.OnResize(size.X, size.Y);
     }
 
-    private void HandleClosing() {
+    private void HandleClosing()
+    {
         Graphics?.Dispose();
     }
 }

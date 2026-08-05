@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -9,9 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Silk.NET.Input" />
+    <!-- 版本由 Directory.Packages.props 统一管理 -->
     <PackageReference Include="Silk.NET.OpenGL" />
     <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Input" />
+    <PackageReference Include="Silk.NET.Maths" />
   </ItemGroup>
 
 </Project>

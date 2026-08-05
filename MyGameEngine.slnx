@@ -1,8 +1,6 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/Engine.Core/Engine.Core.csproj" />
-    <Project Path="src/Engine.Editor.Web/Engine.Editor.Web.csproj" />
-    <Project Path="src/Engine.Features/Engine.Features.csproj" />
-    <Project Path="src/MyGame.Runner/MyGame.Runner.csproj" />
-  </Folder>
+  <Project Path="src/Engine.Core/Engine.Core.csproj" />
+  <Project Path="src/Engine.DddTests/Engine.DddTests.csproj" />
+  <Project Path="src/Engine.Features/Engine.Features.csproj" />
+  <Project Path="src/MyGame.Runner/MyGame.Runner.csproj" />
 </Solution>

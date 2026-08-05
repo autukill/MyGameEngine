@@ -11,24 +11,19 @@ public sealed class GraphicsDevice : IDisposable
 
     public GraphicsDevice(IWindow window)
     {
-        // 绑定 OpenGL 函数指针
         Gl = GL.GetApi(window);
-
         ViewportWidth = window.Size.X;
         ViewportHeight = window.Size.Y;
-
         InitializeDefaultStates();
     }
 
     private void InitializeDefaultStates()
     {
-        // 设置默认清屏颜色 (暗灰色背景)
+        // 默认清屏色（暗灰）
         Gl.ClearColor(0.1f, 0.12f, 0.15f, 1.0f);
-
-        // 设置默认 Stencil Buffer 清空基准值
         Gl.ClearStencil(0);
 
-        // 开启 2D 精灵渲染必须的 Alpha 混合
+        // 默认开启 Alpha 混合
         Gl.Enable(EnableCap.Blend);
         Gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
     }
@@ -40,16 +35,13 @@ public sealed class GraphicsDevice : IDisposable
         Gl.Viewport(0, 0, (uint)width, (uint)height);
     }
 
-    /// <summary>
-    /// 每帧开始前，同时清空 Color Buffer 和 Stencil Buffer
-    /// </summary>
+    /// <summary>每帧开始前，同时清空 Color + Stencil Buffer</summary>
     public void ClearBuffers()
     {
-        Gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit | ClearBufferMask.StencilBufferBit));
+        Gl.Clear((uint)(ClearBufferMask.ColorBufferBit |
+                        ClearBufferMask.DepthBufferBit |
+                        ClearBufferMask.StencilBufferBit));
     }
 
-    public void Dispose()
-    {
-        Gl.Dispose();
-    }
+    public void Dispose() => Gl.Dispose();
 }

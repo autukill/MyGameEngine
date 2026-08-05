@@ -6,15 +6,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Engine 核心依赖 (Silk.NET — OpenGL/Windowing/Input) -->
+    <!-- Engine 核心依赖 (Silk.NET — OpenGL/Windowing/Input/Math) -->
     <PackageVersion Include="Silk.NET.Windowing" Version="2.22.0" />
     <PackageVersion Include="Silk.NET.OpenGL" Version="2.22.0" />
     <PackageVersion Include="Silk.NET.Input" Version="2.22.0" />
+    <PackageVersion Include="Silk.NET.Maths" Version="2.22.0" />
 
-    <!-- 编辑器 Web 后端 (SignalR) -->
+    <!-- 编辑器 Web 后端 (SignalR) — 预留, Phase 2.x 编辑器切片使用 -->
     <PackageVersion Include="Microsoft.AspNetCore.SignalR" Version="1.2.0" />
 
-    <!-- 编辑器前端 (client-editor) 通过 npm 管理，以下为参考 -->
+    <!-- 编辑器前端 (client-editor) 通过 npm 管理, 以下为参考 -->
     <PackageVersion Include="Microsoft.TypeScript.MSBuild" Version="5.6.0" />
   </ItemGroup>
 </Project>
