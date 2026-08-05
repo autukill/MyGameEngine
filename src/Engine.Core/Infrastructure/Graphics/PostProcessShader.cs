@@ -32,6 +32,12 @@ public sealed class PostProcessShader : IShader
         }
         _gl.DeleteShader(vert);
         _gl.DeleteShader(frag);
+
+        // 显式设 uTexture sampler = 0 (Texture Unit 0)
+        // 某些驱动不遵守 GLSL 默认值 0，导致采样空纹理 → 全黑输出
+        Use();
+        int texLoc = _gl.GetUniformLocation(Handle, "uTexture");
+        if (texLoc >= 0) _gl.Uniform1(texLoc, 0);
     }
 
     public void Use() => _gl.UseProgram(Handle);

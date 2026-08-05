@@ -34,6 +34,11 @@ public class SpriteShader : IShader
 
         _gl.DeleteShader(vert);
         _gl.DeleteShader(frag);
+
+        // 显式设 uTexture sampler = 0
+        Use();
+        int texLoc = _gl.GetUniformLocation(Handle, "uTexture");
+        if (texLoc >= 0) _gl.Uniform1(texLoc, 0);
     }
 
     public void Use() => _gl.UseProgram(Handle);
