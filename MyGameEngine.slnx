@@ -1,6 +1,29 @@
 <Solution>
+  <Folder Name="/Engine.Features/" />
+  <Folder Name="/Engine.Features/Camera/">
+    <Project Path="src/Engine.Features/Camera.Tests/Camera.Tests.csproj" />
+    <Project Path="src/Engine.Features/Camera.VisualTests/Camera.VisualTests.csproj" />
+    <Project Path="src/Engine.Features/Camera/Camera.csproj" />
+  </Folder>
+  <Folder Name="/Engine.Features/RenderPipeline/">
+    <Project Path="src/Engine.Features/RenderPipeline.Tests/RenderPipeline.Tests.csproj" />
+    <Project Path="src/Engine.Features/RenderPipeline.VisualTests/RenderPipeline.VisualTests.csproj" />
+    <Project Path="src/Engine.Features/RenderPipeline/RenderPipeline.csproj" />
+  </Folder>
+  <Folder Name="/Engine.Features/SceneSystem/">
+    <Project Path="src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csproj" />
+    <Project Path="src/Engine.Features/SceneSystem.VisualTests/SceneSystem.VisualTests.csproj" />
+    <Project Path="src/Engine.Features/SceneSystem/SceneSystem.csproj" />
+  </Folder>
+  <Folder Name="/Engine.Features/StencilMasking/">
+    <Project Path="src/Engine.Features/StencilMasking.Tests/StencilMasking.Tests.csproj" />
+    <Project Path="src/Engine.Features/StencilMasking.VisualTests/StencilMasking.VisualTests.csproj" />
+    <Project Path="src/Engine.Features/StencilMasking/StencilMasking.csproj" />
+  </Folder>
+  <!-- Engine.Core 共享内核 -->
   <Project Path="src/Engine.Core/Engine.Core.csproj" />
+
+  <!-- 引擎综合测试 & 主程序 -->
   <Project Path="src/Engine.DddTests/Engine.DddTests.csproj" />
-  <Project Path="src/Engine.Features/Engine.Features.csproj" />
   <Project Path="src/MyGame.Runner/MyGame.Runner.csproj" />
 </Solution>

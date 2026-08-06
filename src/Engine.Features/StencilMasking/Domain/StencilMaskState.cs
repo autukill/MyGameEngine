@@ -1,7 +1,5 @@
 namespace GameEngine.Features.StencilMasking.Domain;
 
-using GameEngine.Core.Domain.ValueObjects;
-
 /// <summary>
 /// 遮罩模式定义。
 /// 决定 Stencil Test 使用 EQUAL 还是 NOT_EQUAL，对应"显示遮罩内部/外部"两种语义。
@@ -35,7 +33,8 @@ public readonly record struct StencilMaskState(
 )
 {
     /// <summary>默认配置：ShowInside 模式，参考值 1，全 1 掩码</summary>
-    public static StencilMaskState Default => new();
+    public static StencilMaskState Default => new(
+        StencilRef: 1, MaskBits: 0xFF, Mode: StencilMaskMode.ShowInside);
 
     /// <summary>聚光灯/小地图典型配置</summary>
     public static StencilMaskState Spotlight => new(

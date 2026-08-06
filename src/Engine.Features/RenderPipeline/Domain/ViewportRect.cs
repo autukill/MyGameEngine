@@ -11,6 +11,8 @@ public readonly record struct ViewportRect(float X, float Y, float Width, float 
     public static ViewportRect BottomHalf => new(0f, 0.5f, 1f, 0.5f);
     public static ViewportRect TopRightQuarter => new(0.75f, 0f, 0.25f, 0.25f);
 
+    public static ViewportRect TopLeftQuarter => new(0f, 0f, 0.25f, 0.25f);
+
     public (int x, int y, int w, int h) ToPixels(int screenWidth, int screenHeight)
         => (
             (int)(X * screenWidth),

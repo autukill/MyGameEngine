@@ -5,11 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <RootNamespace>GameEngine.Features</RootNamespace>
+    <RootNamespace>GameEngine.Features.SceneSystem</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\Camera\Camera.csproj" />
+    <ProjectReference Include="..\RenderPipeline\RenderPipeline.csproj" />
   </ItemGroup>
 
 </Project>

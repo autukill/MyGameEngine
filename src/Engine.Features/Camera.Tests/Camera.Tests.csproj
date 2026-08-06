@@ -5,13 +5,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RootNamespace>Engine.DddTests</RootNamespace>
-    <AssemblyName>EngineDddTests</AssemblyName>
+    <RootNamespace>Camera.Tests</RootNamespace>
+    <AssemblyName>CameraTests</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
-    <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" />
+    <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\Camera\Camera.csproj" />
   </ItemGroup>
 
 </Project>

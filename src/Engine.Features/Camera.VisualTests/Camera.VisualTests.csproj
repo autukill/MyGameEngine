@@ -6,12 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <RootNamespace>MyGame.Runner</RootNamespace>
-    <AssemblyName>MyGameRunner</AssemblyName>
+    <RootNamespace>Camera.VisualTests</RootNamespace>
+    <AssemblyName>CameraVisualTests</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 版本由 Directory.Packages.props 统一管理 -->
     <PackageReference Include="Silk.NET.OpenGL" />
     <PackageReference Include="Silk.NET.Windowing" />
     <PackageReference Include="Silk.NET.Input" />
@@ -19,10 +18,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
-    <ProjectReference Include="..\Engine.Features\Camera\Camera.csproj" />
-    <ProjectReference Include="..\Engine.Features\RenderPipeline\RenderPipeline.csproj" />
-    <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" />
+    <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\Camera\Camera.csproj" />
   </ItemGroup>
 
 </Project>

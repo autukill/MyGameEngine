@@ -31,11 +31,24 @@
 ```
 src/
 ├── Engine.Core/           # 引擎核心基础设施（跨切片共享）：Domain / Application / Infrastructure
-├── Engine.Features/       # 引擎功能垂直切片区（按 Feature 分文件夹）
+├── Engine.Features/       # 引擎功能垂直切片区（每个 Feature 是独立 module project + 独立测试目录）
+│   ├── Camera/            Camera.csproj             (无 Silk 依赖，最底层)
+│   ├── Camera.Tests/      Camera.Tests.csproj       (冒烟测试)
+│   ├── Camera.VisualTests/ Camera.VisualTests.csproj (图形看效果 Demo)
+│   ├── RenderPipeline/    RenderPipeline.csproj      (依赖 Camera + Silk.NET.OpenGL)
+│   ├── RenderPipeline.Tests/
+│   ├── RenderPipeline.VisualTests/
+│   ├── SceneSystem/       SceneSystem.csproj        (依赖 Camera + RenderPipeline)
+│   ├── SceneSystem.Tests/
+│   ├── SceneSystem.VisualTests/
+│   ├── StencilMasking/    StencilMasking.csproj     (依赖 Camera + RenderPipeline + Silk.NET.OpenGL)
+│   ├── StencilMasking.Tests/
+│   └── StencilMasking.VisualTests/
 ├── Engine.Editor.Web/     # (可选) ASP.NET Core + Vue 3 编辑器服务
 ├── Engine.DddTests/       # DDD 测试
 └── MyGame.Runner/         # 游戏主程序入口 (Native AOT 发布)
 ```
+关键约定：`Xxx.Tests` 目录下可放多个测试项目（冒烟 + VisualTests）；命名空间固定 `GameEngine.Features.Xxx.*`，拆模块不改变 namespace，只改 csproj 引用。依赖方向单向无循环：Camera（底）← RenderPipeline ← SceneSystem/StencilMasking。
 
 ## 实施路线（Phase 0 -> 1 -> 100）
 - **Phase 0 -> 1（MVE 最小可行引擎）**：Silk.NET 窗口初始化 + 8-bit Stencil Buffer；`SpriteBatch` 零 GC 批处理渲染器；`StencilMasking` 切片；`TextureAtlas` 图集（Shelf Bin Packing）减少纹理切换；GMS 式生命周期主循环 `PreStep -> Step -> PostStep -> DrawBegin -> Draw -> DrawGUI`。
@@ -49,9 +62,10 @@ src/
 
 ## 当前代码进度（2026-08-06）
 - `src/Engine.Core`：Domain（10 个 cs）、Infrastructure（10 个 cs）、Application 已落地。
-- `src/Engine.Features`：Camera、RenderPipeline、SceneSystem、StencilMasking 已落地。
+- `src/Engine.Features`：已拆分为 4 个独立 module project + 8 个测试项目（4 冒烟 + 4 VisualTests），共 12 个 csproj。原单一 `Engine.Features.csproj` 已删除。
 - `src/MyGame.Runner`：Program.cs、OrbitingSprite.cs。
 - `src/Engine.DddTests`：DDD 测试工程。
+- 解决方案 `MyGameEngine.slnx` 共 16 个项目，全部编译通过（0 警告 0 错误）。
 
 ## 开发工作流偏好
 - 偏好使用 DDD 头脑风暴 -> 战略设计 -> 战术设计 -> 垂直切片实施的渐进式流程。
