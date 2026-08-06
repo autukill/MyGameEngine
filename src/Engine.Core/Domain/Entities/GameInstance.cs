@@ -34,6 +34,13 @@ public class GameInstance
     /// <summary>图层深度（决定渲染顺序，对应 GMS depth）</summary>
     public LayerDepth Depth { get; protected set; } = LayerDepth.Instances;
 
+    /// <summary>
+    /// 归属的图层名称（对应 GMS 中间接的 Layer 概念）。
+    /// 默认 null——加入 SceneAggregate 时由聚合根补填为 "Instances"。
+    /// SceneAggregate.DrawActive 按此字段分组渲染。
+    /// </summary>
+    public string? LayerName { get; set; }
+
     /// <summary>是否激活（停用后不参与 Step/Draw）</summary>
     public bool IsActive { get; private set; } = true;
 

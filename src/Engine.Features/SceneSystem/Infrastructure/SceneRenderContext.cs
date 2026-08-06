@@ -6,17 +6,17 @@ using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 
 /// <summary>
-/// 场景渲染上下文（SceneRenderContext）。
+/// [已废弃] 场景渲染上下文。
 ///
-/// 注意：这不是 DDD 聚合根。真正的领域聚合根在
-/// <see cref="GameEngine.Core.Domain.Aggregates.SceneAggregate"/>。
-/// 本类是 VSA 中的"渲染切片"，负责把领域层提供的 GameInstance 集合
-/// 翻译为可被 SpriteBatch 消费的 Layer + RenderCommand 队列。
+/// Phase 1.4 起，Layer/Camera 管理已合并到 SceneAggregate 聚合根中。
+/// SceneRenderPass 直接消费 SceneAggregate（Layer 感知版 DrawActive）。
+/// 本类保留以兼容旧引用，但不再维护。
 ///
-/// 现阶段（Phase 1.3）本类直接管理 Layer 与 Camera，尚未接通领域层的 SceneAggregate。
-/// 在 Phase 1.4 之后，将由一个 SceneRenderSyncSystem 桥接两者：
-///   Domain.SceneAggregate.ActiveInstances  ──>  SceneRenderContext.Layers["Instances"].Submit(...)
+/// 迁移指南：
+///   - 旧: new SceneRenderContext(w, h) -> ctx.AddLayer(...) -> ctx.Render(...)
+///   - 新: new SceneAggregate("scene") -> scene.AddLayer(...) -> SceneRenderPass.Execute()
 /// </summary>
+[Obsolete("SceneRenderContext 已废弃。请使用 SceneAggregate + SceneRenderPass。")]
 public class SceneRenderContext
 {
     public Guid ContextId { get; } = Guid.NewGuid();

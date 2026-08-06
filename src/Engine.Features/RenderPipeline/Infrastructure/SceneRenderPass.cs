@@ -1,19 +1,25 @@
 namespace GameEngine.Features.RenderPipeline.Infrastructure;
 
+using System.Numerics;
 using Silk.NET.OpenGL;
 using GameEngine.Core.Domain.Aggregates;
+using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 
 /// <summary>
-/// 场景渲染 Pass：把 SceneAggregate 中所有活跃 GameInstance 的 OnDraw 提交到 SpriteBatch。
+/// 场景渲染 Pass（Layer 感知版）。
+///
+/// 把 SceneAggregate 中所有活跃 GameInstance 按 Layer 分组提交到 SpriteBatch。
+/// 支持 SceneAggregate.Background 清屏色 + 背景精灵。
 /// 可指定 RenderTarget 与 Camera。
 ///
 /// GMS 对照：相当于 GMS 默认的 Draw 事件调度器——遍历 Room 中所有 Instance 的 Draw 事件。
 /// </summary>
 public sealed class SceneRenderPass : RenderPass
 {
+    private readonly GL _gl;
     private readonly SceneAggregate _scene;
     private readonly Camera2D _camera;
     private readonly RenderTarget2D? _target;
@@ -23,11 +29,13 @@ public sealed class SceneRenderPass : RenderPass
 
     public SceneRenderPass(
         string name,
+        GL gl,
         SceneAggregate scene,
         Camera2D camera,
         RenderTarget2D? target = null)
         : base(name)
     {
+        _gl = gl;
         _scene = scene;
         _camera = camera;
         _target = target;
@@ -35,13 +43,57 @@ public sealed class SceneRenderPass : RenderPass
 
     public override void Execute(in RenderPassContext ctx)
     {
-        // 1. 应用 Camera 矩阵到默认 Shader
+        // 1. 应用 Scene 背景清屏色（覆盖 Pipeline 的默认 clear）
+        var bg = _scene.Background;
+        _gl.ClearColor(bg.ClearColor.X, bg.ClearColor.Y, bg.ClearColor.Z, bg.ClearColor.W);
+        _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
+
+        // 2. 应用 Camera 矩阵
         ctx.DefaultShader.Use();
         ctx.DefaultShader.SetProjection(_camera.GetViewProjectionMatrix());
 
-        // 2. 调用 SceneAggregate.DrawActive，由聚合根遍历实例调用 OnDraw
+        // 3. 如果配置了背景精灵，先绘制（在 "Background" Layer 之前）
+        if (bg.HasSprite)
+        {
+            ctx.Batch.Begin();
+            DrawBackground(ctx, bg);
+            ctx.Batch.End();
+        }
+
+        // 4. 调用 SceneAggregate.DrawActive（Layer 感知版——按层分组遍历实例）
         ctx.Batch.Begin();
         _scene.DrawActive(ctx.Batch);
         ctx.Batch.End();
+    }
+
+    /// <summary>绘制背景精灵（Stretch 或 Tile）。</summary>
+    private void DrawBackground(in RenderPassContext ctx, BackgroundConfig bg)
+    {
+        if (bg.TileMode == BackgroundTileMode.Stretch)
+        {
+            ctx.Batch.Draw(
+                textureHandle: bg.BackgroundSprite.TextureHandle,
+                position: Vector2.Zero,
+                size: new Vector2(_scene.ViewportWidth, _scene.ViewportHeight),
+                color: Vector4.One,
+                uvBounds: bg.BackgroundSprite.UvBounds);
+        }
+        else if (bg.TileMode == BackgroundTileMode.Tile)
+        {
+            float w = bg.BackgroundSprite.Width;
+            float h = bg.BackgroundSprite.Height;
+            for (float y = 0; y < _scene.ViewportHeight; y += h)
+            {
+                for (float x = 0; x < _scene.ViewportWidth; x += w)
+                {
+                    ctx.Batch.Draw(
+                        textureHandle: bg.BackgroundSprite.TextureHandle,
+                        position: new Vector2(x, y),
+                        size: new Vector2(w, h),
+                        color: Vector4.One,
+                        uvBounds: bg.BackgroundSprite.UvBounds);
+                }
+            }
+        }
     }
 }

@@ -34,3 +34,30 @@ public sealed record DestroyInstanceCommand(
     SceneAggregate Scene,
     InstanceId InstanceId
 );
+
+/// <summary>
+/// 在指定场景中添加/更新一个图层。
+/// </summary>
+public sealed record AddLayerCommand(
+    SceneAggregate Scene,
+    string LayerName,
+    int DepthOrder,
+    bool IsVisible = true
+);
+
+/// <summary>
+/// 设置图层的可见性。
+/// </summary>
+public sealed record SetLayerVisibleCommand(
+    SceneAggregate Scene,
+    string LayerName,
+    bool IsVisible
+);
+
+/// <summary>
+/// 设置场景背景配置。
+/// </summary>
+public sealed record SetBackgroundCommand(
+    SceneAggregate Scene,
+    BackgroundConfig Background
+);

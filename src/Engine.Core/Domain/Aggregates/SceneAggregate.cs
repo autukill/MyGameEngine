@@ -8,20 +8,56 @@ using GameEngine.Core.Domain.Entities;
 /// <summary>
 /// 场景聚合根（对应 GMS 的 Room）。
 ///
-/// 职责：
-///   1. 管理本场景内所有 GameInstance 的生命周期（Add / Destroy）
-///   2. 调度 GMS 风格事件：OnCreate / OnStep / OnDestroy
-///   3. 提供绘制入口 DrawActive(batch)：按 Depth 排序调用每个实例的 OnDraw
-///   4. 收集未提交领域事件 UncommittedEvents
+/// 完整职责（Phase 1.4 统一后）：
+///   1. Viewport 尺寸 — 场景的"世界坐标边界"
+///   2. Layer 配置 — 图层名称/深度/可见性（领域元数据，不含渲染）
+///   3. Background 配置 — 清屏色 + 背景精灵 + 平铺模式
+///   4. GameInstance 生命周期 — Create/Step/Destroy（原有能力）
+///   5. Scene 级 Hook — OnStart / OnEnd / OnBeforeStep / OnAfterStep
+///   6. 领域事件收集 — 实例事件 + 场景事件
 ///
-/// 注意：DrawActive 接受 ISpriteBatch 接口（而非 SpriteBatch 实现），
-/// 保持本类虽在 Domain 层但只依赖领域抽象，不直接引用 Silk.NET / OpenGL。
+/// 约束（Scene & Instance 限界上下文）：
+///   - 不直接调 OpenGL / Silk.NET
+///   - 不计算空间碰撞（由 Physics 上下文负责）
+///   - Camera2D 不归属 Scene（由渲染 Pass 持有注入）
+///
+/// 生命周期：
+///   Start() -> [Step loop: OnBeforeStep -> PerformStep -> OnAfterStep] -> End()
 /// </summary>
 public class SceneAggregate
 {
+    // ============ 聚合根标识 ============
+
     public Guid SceneId { get; }
     public string SceneName { get; }
     public InstanceId AggregateId { get; }
+
+    // ============ Viewport ============
+
+    /// <summary>场景视口宽度（世界坐标像素）。默认 1280。</summary>
+    public int ViewportWidth { get; set; } = 1280;
+
+    /// <summary>场景视口高度（世界坐标像素）。默认 720。</summary>
+    public int ViewportHeight { get; set; } = 720;
+
+    // ============ Background ============
+
+    /// <summary>背景配置（清屏色 + 可选精灵 + 平铺模式）。</summary>
+    public BackgroundConfig Background { get; set; } = BackgroundConfig.EngineDefault;
+
+    // ============ Layer 配置（领域层元数据） ============
+
+    /// <summary>图层 GMS 预定义层名</summary>
+    public const string LayerNameBackground = "Background";
+    public const string LayerNameInstances = "Instances";
+    public const string LayerNameUI = "UI";
+
+    private readonly List<SceneLayerConfig> _layers = new();
+
+    /// <summary>获取所有图层配置（按 DepthOrder 降序排列：值大的先渲染，位于底层）。</summary>
+    public IReadOnlyList<SceneLayerConfig> Layers => _layers.AsReadOnly();
+
+    // ============ Instance 存储（原有） ============
 
     private readonly Dictionary<InstanceId, GameInstance> _instances = new();
     private readonly List<IDomainEvent> _uncommittedEvents = new();
@@ -31,6 +67,24 @@ public class SceneAggregate
     public IEnumerable<GameInstance> ActiveInstances => _instances.Values.Where(i => i.IsActive);
     public int InstanceCount => _instances.Count;
 
+    // ============ Scene 级生命周期 Hook（委托） ============
+
+    /// <summary>场景启动时调用（Start() 或首次 PerformStep 时触发）。</summary>
+    public Action? OnStart { get; set; }
+
+    /// <summary>场景结束时调用（End() 触发）。</summary>
+    public Action? OnEnd { get; set; }
+
+    /// <summary>每次 Step 之前调用（deltaTime 参数）。</summary>
+    public Action<double>? OnBeforeStep { get; set; }
+
+    /// <summary>每次 Step 之后调用（deltaTime 参数）。</summary>
+    public Action<double>? OnAfterStep { get; set; }
+
+    private bool _hasStarted = false;
+
+    // ============ 构造函数 ============
+
     public SceneAggregate(string sceneName) : this(Guid.NewGuid(), sceneName) { }
 
     public SceneAggregate(Guid sceneId, string sceneName)
@@ -38,17 +92,80 @@ public class SceneAggregate
         SceneId = sceneId;
         SceneName = sceneName;
         AggregateId = InstanceId.New();
+
+        // 默认创建 GMS 经典的三个图层
+        AddLayer(LayerNameBackground, LayerDepth.Background.Value);
+        AddLayer(LayerNameInstances, LayerDepth.Instances.Value);
+        AddLayer(LayerNameUI, LayerDepth.UI.Value);
     }
 
-    // ============ GMS 风格：实例生命周期 ============
+    // ============ Layer 管理 ============
 
     /// <summary>
-    /// GMS instance_create 等价：把一个已构造的 GameInstance 子类实例加入场景。
-    /// 自动调用 OnCreate()（GMS Create 事件）。
-    /// 用法：scene.Add(new PlayerSprite(pos));
+    /// 添加图层配置。自动按 DepthOrder 降序插入（值大的排在前面）。
+    /// 如果同名 Layer 已存在，更新其 DepthOrder 和可见性。
+    /// </summary>
+    public SceneLayerConfig AddLayer(string name, int depthOrder, bool isVisible = true)
+    {
+        // 移除旧配置（如果存在）
+        _layers.RemoveAll(l => l.Name == name);
+
+        var config = new SceneLayerConfig(name, depthOrder, isVisible);
+
+        // 按 DepthOrder 降序插入（值大的先渲染，在底层）
+        int idx = 0;
+        while (idx < _layers.Count && _layers[idx].DepthOrder > depthOrder)
+            idx++;
+        _layers.Insert(idx, config);
+
+        RaiseEvent(new LayerAddedEvent(SceneId, name, depthOrder));
+        return config;
+    }
+
+    /// <summary>移除图层（仅移除配置，不影响图层内的 Instance）。</summary>
+    public bool RemoveLayer(string name)
+    {
+        return _layers.RemoveAll(l => l.Name == name) > 0;
+    }
+
+    /// <summary>设置图层可见性。</summary>
+    public bool SetLayerVisible(string name, bool visible)
+    {
+        for (int i = 0; i < _layers.Count; i++)
+        {
+            if (_layers[i].Name == name)
+            {
+                _layers[i] = _layers[i] with { IsVisible = visible };
+                RaiseEvent(new LayerVisibilityChangedEvent(SceneId, name, visible));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>根据名称查找图层配置。</summary>
+    public SceneLayerConfig? FindLayerConfig(string name)
+    {
+        for (int i = 0; i < _layers.Count; i++)
+        {
+            if (_layers[i].Name == name)
+                return _layers[i];
+        }
+        return null;
+    }
+
+    // ============ Instance 生命周期（原有，增强 Layer 归属） ============
+
+    /// <summary>
+    /// GMS instance_create 等价：把 GameInstance 子类实例加入场景。
+    /// 自动调用 OnCreate()，并如果 LayerName 为默认值则设为 "Instances"。
     /// </summary>
     public T Add<T>(T instance) where T : GameInstance
     {
+        // 防御式：无 LayerName 的实例分配到 "Instances" 图层
+        if (instance.LayerName == null)
+            instance.LayerName = LayerNameInstances;
+
         _instances[instance.Id] = instance;
         instance.OnCreate();
         RaiseEvent(new InstanceSpawnedEvent(
@@ -58,18 +175,17 @@ public class SceneAggregate
     }
 
     /// <summary>
-    /// 兼容旧版：以基类 GameInstance 创建一个简单实例。
-    /// 推荐用 Add(new YourSubclass(...)) 代替。
+    /// 兼容旧版 Spawn：创建一个简单实例并分配图层。
     /// </summary>
-    public GameInstance Spawn(string objectTypeName, Vector2D position, LayerDepth depth)
+    public GameInstance Spawn(string objectTypeName, Vector2D position, LayerDepth depth,
+        string layerName = LayerNameInstances)
     {
         var instance = new GameInstance(objectTypeName, position, depth);
+        instance.LayerName = layerName;
         return Add(instance);
     }
 
-    /// <summary>
-    /// 销毁实例。触发 OnDestroy() + InstanceDestroyedEvent。
-    /// </summary>
+    /// <summary>销毁实例。触发 OnDestroy() + InstanceDestroyedEvent。</summary>
     public void Destroy(InstanceId id)
     {
         if (!_instances.TryGetValue(id, out var instance)) return;
@@ -78,39 +194,110 @@ public class SceneAggregate
         RaiseEvent(new InstanceDestroyedEvent(id, instance.ObjectTypeName));
     }
 
-    // ============ GMS 风格：每帧调度 ============
+    // ============ Scene 生命周期 ============
 
     /// <summary>
-    /// GMS Step 事件调度：遍历所有活跃实例调用 OnStep。
-    /// 应在每帧 Update 阶段调用一次。
+    /// 场景启动。发出 SceneStartedEvent，调用 OnStart Hook。
+    /// 幂等：多次调用只触发一次。
+    /// </summary>
+    public void Start()
+    {
+        if (_hasStarted) return;
+        _hasStarted = true;
+
+        OnStart?.Invoke();
+        RaiseEvent(new SceneStartedEvent(SceneId, SceneName, InstanceCount));
+    }
+
+    /// <summary>
+    /// 场景结束。发出 SceneEndedEvent，调用 OnEnd Hook，重置非持久实例。
+    /// </summary>
+    public void End()
+    {
+        if (!_hasStarted) return;
+
+        OnEnd?.Invoke();
+        Reset();
+        RaiseEvent(new SceneEndedEvent(SceneId, SceneName));
+        _hasStarted = false;
+    }
+
+    // ============ 每帧调度 ============
+
+    /// <summary>
+    /// GMS Step 事件调度：触发 OnBeforeStep → 遍历实例 OnStep → OnAfterStep。
+    /// 首次调用时自动触发 Start()（懒启动）。
     /// </summary>
     public void PerformStep(double deltaTime)
     {
+        if (!_hasStarted) Start();
+
+        OnBeforeStep?.Invoke(deltaTime);
+
         foreach (var instance in _instances.Values.ToList())
         {
             if (instance.IsActive)
                 instance.OnStep(deltaTime);
         }
+
+        OnAfterStep?.Invoke(deltaTime);
     }
 
     /// <summary>
-    /// GMS Draw 事件调度：按 Depth 排序后遍历活跃实例调用 OnDraw。
-    /// 应在每帧 Render 阶段、SpriteBatch.Begin() 之后调用。
+    /// GMS Draw 事件调度（Layer 感知版）。
+    ///
+    /// 按 Layer 分组绘制：先遍历 Layer 配置（跳过 IsVisible=false），
+    /// 再遍历该 Layer 下所有活跃实例，按 Depth 降序排序后调用 OnDraw。
+    ///
+    /// 渲染约定：
+    ///   - 调用方在调用前须已调用 SpriteBatch.Begin()
+    ///   - 调用方在调用后须调用 SpriteBatch.End()
+    ///   - 各 Layer 间的 GL 状态切换（Blend/Stencil）由 SceneRenderPass 在层间插入
     /// </summary>
     public void DrawActive(ISpriteBatch batch)
     {
-        // 按 Depth 值降序排（GMS: depth 大的先画，在底层）
-        var sorted = _instances.Values
-            .Where(i => i.IsActive)
-            .OrderByDescending(i => i.Depth.Value);
-
-        foreach (var instance in sorted)
+        foreach (var layer in _layers)
         {
-            instance.OnDraw(batch);
+            if (!layer.IsVisible) continue;
+
+            var layerInstances = _instances.Values
+                .Where(i => i.IsActive && i.LayerName == layer.Name);
+
+            // 同 Layer 内按 Depth 降序排序（Depth 值大的先画，在底层）
+            var sorted = layerInstances.OrderByDescending(i => i.Depth.Value);
+
+            foreach (var instance in sorted)
+            {
+                instance.OnDraw(batch);
+            }
         }
     }
 
-    // ============ 查询 ============
+    /// <summary>
+    /// 单 Layer 渲染：只绘制指定图层的活跃实例。
+    /// 用于 StencilMaskPass 等只需重绘特定层的场景。
+    /// </summary>
+    public void DrawActive(ISpriteBatch batch, string layerName)
+    {
+        for (int i = 0; i < _layers.Count; i++)
+        {
+            var layer = _layers[i];
+            if (layer.Name != layerName || !layer.IsVisible) continue;
+
+            var layerInstances = _instances.Values
+                .Where(i => i.IsActive && i.LayerName == layer.Name);
+
+            var sorted = layerInstances.OrderByDescending(i => i.Depth.Value);
+
+            foreach (var instance in sorted)
+            {
+                instance.OnDraw(batch);
+            }
+            return; // 只绘制匹配的第一个 Layer
+        }
+    }
+
+    // ============ 查询（原有） ============
 
     public GameInstance? FindById(InstanceId id) =>
         _instances.TryGetValue(id, out var i) ? i : null;
@@ -118,18 +305,22 @@ public class SceneAggregate
     public IEnumerable<GameInstance> FindByType(string objectTypeName) =>
         _instances.Values.Where(i => i.ObjectTypeName == objectTypeName);
 
-    /// <summary>按运行时类类型查找（GMS: instance_find(obj_player, 0)）</summary>
+    /// <summary>按运行时类型查找（GMS: instance_find）。</summary>
     public IEnumerable<T> FindByType<T>() where T : GameInstance =>
         _instances.Values.OfType<T>();
 
-    // ============ 事件 ============
+    /// <summary>按图层名获取所有活跃实例。</summary>
+    public IEnumerable<GameInstance> GetInstancesInLayer(string layerName) =>
+        _instances.Values.Where(i => i.IsActive && i.LayerName == layerName);
+
+    // ============ 事件（原有） ============
 
     public void RaiseEvent(IDomainEvent domainEvent) =>
         _uncommittedEvents.Add(domainEvent);
 
     public void MarkEventsAsCommitted() => _uncommittedEvents.Clear();
 
-    /// <summary>重置场景：调用 OnDestroy + 移除所有非持久实例</summary>
+    /// <summary>重置场景：调用 OnDestroy + 移除所有非持久实例。</summary>
     public void Reset()
     {
         var nonPersistent = _instances.Values.Where(i => !i.IsPersistent).ToList();

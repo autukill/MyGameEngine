@@ -13,14 +13,16 @@ using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.StencilMasking.Infrastructure;
 
 /// <summary>
-/// Phase 1.3 Demo (GMS-style): Stencil 遮罩 + Bloom 后处理 + 多 Pass 合成。
+/// Phase 1.4 Demo (GMS-style): Scene Layer 感知 + Stencil 遮罩 + Bloom 后处理。
 ///
-/// 所有游戏逻辑封装在 GameInstance 子类（OrbitingSprite / BackgroundSprite）中，
-/// Program.cs 只负责：引擎初始化 + 场景装配 + 每帧调度。
+/// SceneAggregate 现为完整 GMS Room 等价物：
+///   - Viewport 尺寸 + Layer 配置（Background/Instances/UI）
+///   - Background 清屏色（由 SceneRenderPass 消费）
+///   - Scene 级生命周期 Hook（OnBeforeStep / OnAfterStep / OnStart / OnEnd）
 ///
 /// 渲染流程:
-///   Pass 1: SceneRenderPass -> RT_Scene    (所有实例的 OnDraw)
-///   Pass 2: StencilMaskPass  -> RT_Masked (圆圈 Stencil + 重绘 OnDraw)
+///   Pass 1: SceneRenderPass -> RT_Scene    (按 Layer 分组渲染 + Background clear)
+///   Pass 2: StencilMaskPass  -> RT_Masked (圆圈 Stencil + 重绘实例)
 ///   Pass 3: PostProcessPass  -> RT_Bloom  (Bright+Blur)
 ///   Pass 4: ViewportCompositorPass -> 屏幕 (RT_Scene + RT_Bloom 叠加)
 ///
@@ -77,8 +79,19 @@ internal sealed class Program
         _batch = new SpriteBatch(gl);
         _white = new WhiteTexture(gl);
 
-        // 2. 场景（DDD 聚合根，非旧的 SceneRenderContext）
+        // 2. 场景（DDD 聚合根，完整 GMS Room 等价物：Layer/Background/Viewport/Hook）
         _scene = new SceneAggregate(sceneName: "MainScene");
+        _scene.ViewportWidth = vw;
+        _scene.ViewportHeight = vh;
+        _scene.Background = BackgroundConfig.FromColor(
+            new Vector4(0.08f, 0.10f, 0.13f, 1.0f));
+
+        // Scene 级 Hook 示例
+        _scene.OnStart = () => Console.WriteLine($"[Scene] '{_scene.SceneName}' started.");
+        _scene.OnBeforeStep = (dt) =>
+        {
+            // 每帧逻辑前置处理（如：全局计时器、AI 决策前置）
+        };
 
         // 3. 相机（独立于场景，被 Pass 消费）
         _mainCamera = new Camera2D(new Vector2(vw, vh));
@@ -88,8 +101,8 @@ internal sealed class Program
         _rtMasked = new RenderTarget2D(gl, vw, vh, withDepthStencil: true);
         _rtBloom = new RenderTarget2D(gl, vw, vh, withDepthStencil: false);
 
-        // 5. 渲染管道（DAG）
-        _scenePass = new SceneRenderPass("ScenePass", _scene, _mainCamera, _rtScene);
+        // 5. 渲染管道（DAG）—— SceneRenderPass 现需 GL 参数（用于 Background clear）
+        _scenePass = new SceneRenderPass("ScenePass", gl, _scene, _mainCamera, _rtScene);
         _stencilPass = new StencilMaskPass("StencilMaskPass", gl, _scene, _mainCamera,
             _rtMasked, _spriteShader, _white);
         _bloomPass = new PostProcessPass("BloomPass", gl, _bloomShader, _rtMasked, _rtBloom);
@@ -112,6 +125,7 @@ internal sealed class Program
         _bloomShader.SetTextureSize(_rtMasked.Width, _rtMasked.Height);
 
         // 8. 装配场景（GMS 风格：创建实例加入场景）
+        // 注意：背景不再需要 BackgroundSprite 实例，由 scene.Background + SceneRenderPass 处理
         var center = new Vector2D(vw * 0.5f, vh * 0.5f);
         var colors = new[] {
             new Vector4(1.0f, 0.3f, 0.3f, 1.0f),   // Red
@@ -120,13 +134,7 @@ internal sealed class Program
             new Vector4(1.0f, 1.0f, 0.3f, 1.0f),   // Yellow
         };
 
-        // 背景
-        _scene.Add(new BackgroundSprite(
-            _white.Handle,
-            new Vector2(vw, vh),
-            new Vector4(0.08f, 0.10f, 0.13f, 1.0f)));
-
-        // 4 个圆周运动精灵
+        // 4 个圆周运动精灵（自动归属 "Instances" Layer）
         for (int i = 0; i < 4; i++)
         {
             _scene.Add(new OrbitingSprite(
