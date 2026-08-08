@@ -28,7 +28,8 @@ internal static class Program
     private static void Main()
     {
         Console.WriteLine("=== Sprites Visual Test ===");
-        Console.WriteLine("Includes a rotating GameInstance with offset origin (4, 28).");
+        Console.WriteLine("Loads Assets/orbiting-drone-2frame.webp through TextureLibrary.Load(path).");
+        Console.WriteLine("Includes a rotating GameInstance with offset origin (16, 112).");
         Console.WriteLine("双帧动画 / 中心原点 / 旋转 / 非均匀缩放 / 水平翻转");
         Console.WriteLine("白点表示各 Sprite 的世界原点；ESC 退出。");
 
@@ -50,23 +51,26 @@ internal static class Program
         _textures = new TextureLibrary(gl);
         var whiteTexture = _textures.RegisterRgba(
             "visual.white", 1, 1, new byte[] { 255, 255, 255, 255 });
-        var atlasTexture = _textures.RegisterRgba(
-            "visual.atlas", 64, 32, CreateDemoAtlasPixels(), TextureSampler.PixelArt);
+        string atlasPath = Path.Combine(
+            AppContext.BaseDirectory, "Assets", "orbiting-drone-2frame.webp");
+        var atlasTexture = _textures.Load(
+            "visual.webp-atlas", atlasPath, TextureSampler.PixelArt);
+        Console.WriteLine($"Loaded WebP atlas: {atlasPath}");
 
         var sprites = new SpriteLibrary(_textures);
         _markerSprite = sprites.RegisterSingle("visual.marker", whiteTexture, Vector2.Zero);
         var demo = sprites.RegisterGrid(
             "visual.two-frame",
             atlasTexture,
-            frameSize: new Vector2(32, 32),
-            origin: new Vector2(16, 16),
+            frameSize: new Vector2(128, 128),
+            origin: new Vector2(64, 64),
             frameCount: 2,
             framesPerSecond: 4f);
         var offsetOriginDemo = sprites.RegisterGrid(
             "visual.offset-origin",
             atlasTexture,
-            frameSize: new Vector2(32, 32),
-            origin: new Vector2(4, 28),
+            frameSize: new Vector2(128, 128),
+            origin: new Vector2(16, 112),
             frameCount: 2,
             framesPerSecond: 4f);
         _batch.SpriteResolver = sprites;
@@ -74,13 +78,13 @@ internal static class Program
         _scene = new SceneAggregate("SpritesVisual");
         _scene.SetInput(_window.Input);
         _scene.SetSprites(sprites);
-        _scene.Add(new DemoSprite(demo, Origins[0], new Vector2(3), 0f,
+        _scene.Add(new DemoSprite(demo, Origins[0], new Vector2(.75f), 0f,
             rotationSpeed: 0f, color: Vector4.One));
-        _scene.Add(new DemoSprite(demo, Origins[1], new Vector2(3, 1.5f), 0f,
+        _scene.Add(new DemoSprite(demo, Origins[1], new Vector2(.75f, .375f), 0f,
             rotationSpeed: 1f, color: new Vector4(1f, .8f, .8f, 1f)));
-        _scene.Add(new DemoSprite(demo, Origins[2], new Vector2(-3, 3), 0f,
+        _scene.Add(new DemoSprite(demo, Origins[2], new Vector2(-.75f, .75f), 0f,
             rotationSpeed: 0f, color: new Vector4(.8f, 1f, .8f, 1f)));
-        _scene.Add(new DemoSprite(demo, Origins[3], new Vector2(4, 2), MathF.PI / 4,
+        _scene.Add(new DemoSprite(demo, Origins[3], new Vector2(1f, .5f), MathF.PI / 4,
             rotationSpeed: -.5f, color: new Vector4(.8f, .8f, 1f, .65f)));
         _scene.Add(new OffsetOriginSprite(offsetOriginDemo, Origins[4]));
         _scene.Add(new EscapeController(() => _window.NativeWindow.Close()));
@@ -151,7 +155,7 @@ internal static class Program
             Color = new Vector4(1f, .9f, .35f, 1f);
             Transform = Transform with
             {
-                Scale = new Vector2D(3, 3),
+                Scale = new Vector2D(.75f, .75f),
                 Rotation = -MathF.PI / 6
             };
         }
@@ -175,20 +179,4 @@ internal static class Program
         }
     }
 
-    private static byte[] CreateDemoAtlasPixels()
-    {
-        var pixels = new byte[64 * 32 * 4];
-        for (int y = 0; y < 32; y++)
-        for (int x = 0; x < 64; x++)
-        {
-            bool first = x < 32;
-            bool accent = ((x % 32) / 8 + y / 8) % 2 == 0;
-            int p = (y * 64 + x) * 4;
-            pixels[p + 0] = first ? (byte)255 : (byte)(accent ? 40 : 20);
-            pixels[p + 1] = first ? (byte)(accent ? 80 : 30) : (byte)220;
-            pixels[p + 2] = first ? (byte)40 : (byte)255;
-            pixels[p + 3] = 255;
-        }
-        return pixels;
-    }
 }

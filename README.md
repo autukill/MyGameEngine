@@ -84,7 +84,7 @@ dotnet run --project src/Engine.Features/StencilMasking.Tests/StencilMasking.Tes
 dotnet run --project src/Engine.Features/TextureAssets.Tests/TextureAssets.Tests.csproj
 ```
 
-图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 使用内存双帧图集展示动画、中心/非中心原点、旋转、非均匀缩放与翻转；这些项目需要本地图形窗口人工确认。
+图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 会从输出目录真实加载 `Assets/orbiting-drone-2frame.webp`，展示动画、中心/非中心原点、旋转、非均匀缩放与翻转；这些项目需要本地图形窗口人工确认。
 
 ## Sprite 便利 API
 
