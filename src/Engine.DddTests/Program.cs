@@ -18,7 +18,7 @@ using GameEngine.Core.Domain.ValueObjects;
 ///   2. GameInstance 实体的 LayerName 归属 + 状态变更发出领域事件
 ///   3. SceneAggregate 聚合根：Viewport / Layer 配置 / Background / Scene 级 Hook / 领域事件
 ///   4. Command + Handler 模式：AddLayer / SetBackground / Spawn / Destroy
-///   5. StencilMaskPassRequestedEvent：逻辑层声明意图，渲染层捕获执行（解耦验证）
+///   5. RenderEffectRequestedEvent：逻辑层声明意图，渲染层捕获执行（解耦验证）
 /// </summary>
 internal sealed class Program
 {

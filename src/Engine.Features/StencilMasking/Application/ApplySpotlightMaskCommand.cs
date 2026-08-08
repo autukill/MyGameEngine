@@ -6,8 +6,8 @@ using GameEngine.Features.StencilMasking.Domain;
 
 /// <summary>
 /// 在指定场景中对一个实例施加聚光灯遮罩（典型 DDD + VSA 演示命令）。
-/// 被 StencilMaskCommandHandler 捕获后，会构造 StencilMaskPassRequestedEvent
-/// 并通过 GameInstance 的扩展方法 RequestStencilMask 发出。
+/// 被 StencilMaskCommandHandler 捕获后，会构造 StencilMaskEffectDescriptor，
+/// 并通过通用 RenderEffectRequestedEvent 发出。
 /// </summary>
 /// <param name="MaskState">
 ///   ShowInside = 聚光灯/小地图/ScrollView 裁剪框（遮罩内可见）

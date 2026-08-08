@@ -1,36 +1,49 @@
 namespace GameEngine.Features.RenderPipeline.Infrastructure;
 
-using Silk.NET.OpenGL;
 using System.Numerics;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.RenderPipeline.Domain;
 
-/// <summary>
-/// 多 Camera Viewport 合成 Pass：把多个 RenderTarget 按 ViewportRect 绘制到屏幕。
-/// 用于分屏 / 小地图 / 反射镜。
-/// </summary>
+/// <summary>将多个 RenderTarget 按 Viewport 与混合状态合成到屏幕。</summary>
 public sealed class ViewportCompositorPass : RenderPass
 {
-    private readonly GL _gl;
+    private readonly Silk.NET.OpenGL.GL _gl;
     private readonly IShader _blitShader;
     private readonly SpriteBatch _batch;
-    private readonly List<(RenderTarget2D source, ViewportRect rect, BlendState blend)> _sources = new();
+    private readonly List<CompositeSource> _sources = new();
+    private long _nextSourceHandle;
 
-    public override RenderTarget2D? Output => null; // 直写屏幕
-    public override IEnumerable<RenderTarget2D> Inputs => _sources.Select(s => s.source);
+    public override RenderTarget2D? Output => null;
+    public override IEnumerable<RenderTarget2D> Inputs => _sources.Select(source => source.Source);
 
-    public ViewportCompositorPass(string name, GL gl, IShader blitShader, SpriteBatch batch)
-        : base(name)
+    public ViewportCompositorPass(
+        string name,
+        Silk.NET.OpenGL.GL gl,
+        IShader blitShader,
+        SpriteBatch batch) : base(name)
     {
         _gl = gl;
         _blitShader = blitShader;
         _batch = batch;
     }
 
-    public void AddSource(RenderTarget2D source, ViewportRect rect,
+    public CompositeSourceHandle AddSource(
+        RenderTarget2D source,
+        ViewportRect rect,
         BlendState? blend = null)
     {
-        _sources.Add((source, rect, blend ?? BlendState.Opaque));
+        ArgumentNullException.ThrowIfNull(source);
+        var handle = new CompositeSourceHandle(++_nextSourceHandle);
+        _sources.Add(new CompositeSource(handle, source, rect, blend ?? BlendState.Opaque));
+        return handle;
+    }
+
+    public bool RemoveSource(CompositeSourceHandle handle)
+    {
+        int index = _sources.FindIndex(source => source.Handle == handle);
+        if (index < 0) return false;
+        _sources.RemoveAt(index);
+        return true;
     }
 
     public void ClearSources() => _sources.Clear();
@@ -42,24 +55,28 @@ public sealed class ViewportCompositorPass : RenderPass
             0, ctx.ScreenWidth, ctx.ScreenHeight, 0, -1, 1));
 
         _batch.Begin();
-        foreach (var (source, rect, blend) in _sources)
+        foreach (var entry in _sources)
         {
             _batch.Flush();
-            blend.Apply(_gl);
-            var (x, y, w, h) = rect.ToPixels(ctx.ScreenWidth, ctx.ScreenHeight);
+            entry.Blend.Apply(_gl);
+            var (x, y, width, height) = entry.Rect.ToPixels(ctx.ScreenWidth, ctx.ScreenHeight);
             _batch.Draw(
-                textureHandle: source.ColorTexture,
+                textureHandle: entry.Source.ColorTexture,
                 position: new Vector2(x, y),
-                size: new Vector2(w, h),
+                size: new Vector2(width, height),
                 color: Vector4.One,
-                uvBounds: new Vector4(0, 1, 1, 0) // Y flip
-            );
-            // Flush AFTER each Draw so the quad uses the correct blend state
+                uvBounds: new Vector4(0, 1, 1, 0));
             _batch.Flush();
         }
         _batch.End();
-
-        // 重置混合状态
         BlendState.AlphaBlend.Apply(_gl);
     }
+
+    private sealed record CompositeSource(
+        CompositeSourceHandle Handle,
+        RenderTarget2D Source,
+        ViewportRect Rect,
+        BlendState Blend);
 }
+
+public readonly record struct CompositeSourceHandle(long Value);

@@ -420,6 +420,16 @@ public class SceneAggregate
 
     public void MarkEventsAsCommitted() => _uncommittedEvents.Clear();
 
+    /// <summary>获取稳定事件快照并清空列表；同一快照可依次交给多个消费者。</summary>
+    public IReadOnlyList<IDomainEvent> DrainUncommittedEvents()
+    {
+        if (_uncommittedEvents.Count == 0)
+            return Array.Empty<IDomainEvent>();
+        var snapshot = _uncommittedEvents.ToArray();
+        _uncommittedEvents.Clear();
+        return snapshot;
+    }
+
     /// <summary>重置场景：调用 OnDestroy + 移除所有非持久实例。</summary>
     public void Reset()
     {

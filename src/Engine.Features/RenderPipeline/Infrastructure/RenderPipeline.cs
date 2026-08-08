@@ -1,18 +1,18 @@
 namespace GameEngine.Features.RenderPipeline.Infrastructure;
 
 using Silk.NET.OpenGL;
-using GameEngine.Features.RenderPipeline.Domain;
 
-/// <summary>
-/// Pass 调度器：拓扑排序后依次执行。
-/// </summary>
+/// <summary>Pass 调度器：支持在帧边界精确挂接/卸载，再按 RenderTarget 依赖执行。</summary>
 public sealed class RenderPipeline : IDisposable
 {
     private readonly List<RenderPass> _passes = new();
+    private readonly Dictionary<RenderPassHandle, RenderPass> _passHandles = new();
     private readonly GL _gl;
     private int _screenWidth;
     private int _screenHeight;
+    private long _nextPassHandle;
     private bool _disposed;
+    private bool _isExecuting;
 
     public RenderPipeline(GL gl, int screenWidth, int screenHeight)
     {
@@ -21,11 +21,46 @@ public sealed class RenderPipeline : IDisposable
         _screenHeight = screenHeight;
     }
 
-    public void AddPass(RenderPass pass) => _passes.Add(pass);
-    public void RemovePass(string name) => _passes.RemoveAll(p => p.Name == name);
     public IReadOnlyList<RenderPass> Passes => _passes;
 
-    /// <summary>窗口 resize 后更新默认 framebuffer 的 Viewport 尺寸。</summary>
+    public RenderPassHandle AddPass(RenderPass pass)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(pass);
+        EnsureMutable();
+        if (_passes.Contains(pass))
+            throw new InvalidOperationException($"RenderPass '{pass.Name}' is already attached.");
+
+        var handle = new RenderPassHandle(++_nextPassHandle);
+        _passes.Add(pass);
+        _passHandles.Add(handle, pass);
+        return handle;
+    }
+
+    /// <summary>按稳定 Handle 移除并释放 Pass。</summary>
+    public bool RemovePass(RenderPassHandle handle)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        EnsureMutable();
+        if (!_passHandles.Remove(handle, out var pass)) return false;
+        _passes.Remove(pass);
+        pass.Dispose();
+        return true;
+    }
+
+    /// <summary>兼容名称移除；所有同名 Pass 都会被释放。</summary>
+    public int RemovePass(string name)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        EnsureMutable();
+        var handles = _passHandles
+            .Where(pair => pair.Value.Name == name)
+            .Select(pair => pair.Key)
+            .ToArray();
+        foreach (var handle in handles) RemovePass(handle);
+        return handles.Length;
+    }
+
     public void Resize(int screenWidth, int screenHeight)
     {
         if (screenWidth <= 0 || screenHeight <= 0) return;
@@ -35,31 +70,44 @@ public sealed class RenderPipeline : IDisposable
 
     public void Execute(in RenderPassContext ctx)
     {
-        var sorted = TopologicalSort(_passes);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_isExecuting)
+            throw new InvalidOperationException("RenderPipeline cannot execute recursively.");
 
-        foreach (var pass in sorted)
+        _isExecuting = true;
+        try
         {
-            if (!pass.IsEnabled) continue;
-
-            // 切换 RenderTarget
-            if (pass.Output is { } rt)
-                rt.SetAsTarget();
-            else
+            var sorted = TopologicalSort(_passes);
+            foreach (var pass in sorted)
             {
-                _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
-                _gl.Viewport(0, 0, (uint)_screenWidth, (uint)_screenHeight);
+                if (!pass.IsEnabled) continue;
+
+                if (pass.Output is { } rt)
+                    rt.SetAsTarget();
+                else
+                {
+                    _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+                    _gl.Viewport(0, 0, (uint)_screenWidth, (uint)_screenHeight);
+                }
+
+                _gl.Clear((uint)(ClearBufferMask.ColorBufferBit |
+                                 ClearBufferMask.DepthBufferBit |
+                                 ClearBufferMask.StencilBufferBit));
+                pass.Execute(ctx);
             }
-
-            // 清屏 (Color + Depth + Stencil)
-            _gl.Clear((uint)(ClearBufferMask.ColorBufferBit |
-                             ClearBufferMask.DepthBufferBit |
-                             ClearBufferMask.StencilBufferBit));
-
-            pass.Execute(ctx);
+        }
+        finally
+        {
+            _isExecuting = false;
         }
     }
 
-    /// <summary>简化版拓扑排序：依据 Output/Inputs 引用相等构建依赖图</summary>
+    private void EnsureMutable()
+    {
+        if (_isExecuting)
+            throw new InvalidOperationException("RenderPipeline cannot be mutated while executing.");
+    }
+
     private static List<RenderPass> TopologicalSort(List<RenderPass> passes)
     {
         var sorted = new List<RenderPass>(passes.Count);
@@ -71,23 +119,28 @@ public sealed class RenderPipeline : IDisposable
             int beforeCount = remaining.Count;
             for (int i = remaining.Count - 1; i >= 0; i--)
             {
-                var p = remaining[i];
+                var pass = remaining[i];
                 bool ready = true;
-                foreach (var input in p.Inputs)
+                foreach (var input in pass.Inputs)
                 {
-                    if (!visited.Contains(input)) { ready = false; break; }
+                    if (!visited.Contains(input))
+                    {
+                        ready = false;
+                        break;
+                    }
                 }
-                if (ready)
-                {
-                    sorted.Add(p);
-                    if (p.Output is not null) visited.Add(p.Output);
-                    remaining.RemoveAt(i);
-                }
+
+                if (!ready) continue;
+                sorted.Add(pass);
+                if (pass.Output is not null) visited.Add(pass.Output);
+                remaining.RemoveAt(i);
             }
+
             if (remaining.Count == beforeCount)
                 throw new InvalidOperationException(
-                    "[RenderPipeline] cyclic dependency detected between RenderPasses");
+                    "[RenderPipeline] cyclic or missing dependency detected between RenderPasses");
         }
+
         return sorted;
     }
 
@@ -95,8 +148,10 @@ public sealed class RenderPipeline : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        foreach (var pass in _passes)
-            pass.Dispose();
+        foreach (var pass in _passes) pass.Dispose();
         _passes.Clear();
+        _passHandles.Clear();
     }
 }
+
+public readonly record struct RenderPassHandle(long Value);

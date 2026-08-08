@@ -16,6 +16,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 离线 Texture Atlas：确定性多页打包、padding/extrude、采样分组、大帧旁路与标准运行时包输出。
 - 正交 `Camera2D`：平移、缩放、旋转、震屏和 Viewport resize。
 - RenderPass DAG：场景渲染、Stencil 遮罩、后处理和 Viewport 合成。
+- 动态效果装配：实例领域事件、共享 owner 集合、`ScenePipelineBuilder` 与 `RenderTargetPool`。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
 文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
@@ -153,14 +154,13 @@ PostProcessPass     -> RT_Bloom
 ViewportCompositor  -> Screen (RT_Scene opaque + RT_Bloom additive)
 ```
 
-Pass 通过输入/输出 RenderTarget 声明依赖，Pipeline 在每帧执行前进行拓扑排序。实例只声明 `RenderStyle` 和 `ShaderRef`；实际 OpenGL 状态与资源由基础设施层管理。
+Pass 通过输入/输出 RenderTarget 声明依赖，Pipeline 在每帧执行前进行拓扑排序。实例通过 `RenderEffectRequestedEvent` 声明 Spotlight 等持久效果；Builder 在 Step/Draw 边界差量维护动态 Pass，最后一个 owner 离开后归还临时 RT。完整说明见 [动态渲染效果使用指南](docs/DYNAMIC_RENDER_EFFECTS.md)。
 
 ## 下一阶段
 
-1. `RenderEffectRequested`：实例通过领域事件声明特需渲染效果。
-2. `RenderTargetPool`：复用临时 RT，并按效果 owner 集合回收动态 Pass。
-3. 将 VisualTests 纳入可重复的 GPU 快照或像素回归验证。
-4. 将 AssetCompiler 发布为可复用 dotnet tool/NuGet 构建包，并增加跨仓库缓存。
-5. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。
+1. 将 VisualTests 纳入可重复的 GPU 快照或像素回归验证。
+2. 将 AssetCompiler 发布为可复用 dotnet tool/NuGet 构建包，并增加跨仓库缓存。
+3. 增加独立 Bloom 描述符与水平/垂直 ping-pong 后处理链。
+4. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

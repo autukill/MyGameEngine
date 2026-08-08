@@ -18,4 +18,8 @@
     <ProjectReference Include="..\Camera\Camera.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="RenderPipelineTests" />
+  </ItemGroup>
+
 </Project>
