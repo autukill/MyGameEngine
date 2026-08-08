@@ -117,7 +117,7 @@ public sealed class RenderPipeline : IDisposable
         while (remaining.Count > 0)
         {
             int beforeCount = remaining.Count;
-            for (int i = remaining.Count - 1; i >= 0; i--)
+            for (int i = 0; i < remaining.Count;)
             {
                 var pass = remaining[i];
                 bool ready = true;
@@ -130,7 +130,11 @@ public sealed class RenderPipeline : IDisposable
                     }
                 }
 
-                if (!ready) continue;
+                if (!ready)
+                {
+                    i++;
+                    continue;
+                }
                 sorted.Add(pass);
                 if (pass.Output is not null) visited.Add(pass.Output);
                 remaining.RemoveAt(i);

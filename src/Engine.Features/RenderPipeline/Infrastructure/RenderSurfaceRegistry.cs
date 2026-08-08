@@ -6,36 +6,57 @@ public interface IRenderSurfaceResolver
 {
     bool TryResolve(RenderSurfaceKey key, out RenderTarget2D? surface);
     RenderTarget2D Resolve(RenderSurfaceKey key);
+    RenderSurfaceSpec Describe(RenderSurfaceKey key);
 }
 
 public readonly record struct RenderEffectOutput(
     RenderSurfaceKey Key,
     RenderTarget2D Surface);
 
+internal readonly record struct RenderSurfaceRegistration(
+    RenderTarget2D Surface,
+    RenderSurfaceSpec Spec);
+
 internal sealed class RenderSurfaceRegistry : IRenderSurfaceResolver
 {
-    private readonly Dictionary<RenderSurfaceKey, RenderTarget2D> _surfaces;
+    private readonly Dictionary<RenderSurfaceKey, RenderSurfaceRegistration> _surfaces;
 
     public RenderSurfaceRegistry(
-        IReadOnlyDictionary<RenderSurfaceKey, RenderTarget2D>? roots = null)
+        IReadOnlyDictionary<RenderSurfaceKey, RenderSurfaceRegistration>? roots = null)
     {
         _surfaces = roots is null
-            ? new Dictionary<RenderSurfaceKey, RenderTarget2D>()
-            : new Dictionary<RenderSurfaceKey, RenderTarget2D>(roots);
+            ? new Dictionary<RenderSurfaceKey, RenderSurfaceRegistration>()
+            : new Dictionary<RenderSurfaceKey, RenderSurfaceRegistration>(roots);
     }
 
-    public bool TryResolve(RenderSurfaceKey key, out RenderTarget2D? surface) =>
-        _surfaces.TryGetValue(key, out surface);
+    public bool TryResolve(RenderSurfaceKey key, out RenderTarget2D? surface)
+    {
+        if (_surfaces.TryGetValue(key, out var registration))
+        {
+            surface = registration.Surface;
+            return true;
+        }
+        surface = null;
+        return false;
+    }
 
     public RenderTarget2D Resolve(RenderSurfaceKey key) =>
-        _surfaces.TryGetValue(key, out var surface)
-            ? surface
+        _surfaces.TryGetValue(key, out var registration)
+            ? registration.Surface
             : throw new InvalidOperationException($"Render surface '{key}' is not available.");
 
-    public void Add(RenderSurfaceKey key, RenderTarget2D surface)
+    public RenderSurfaceSpec Describe(RenderSurfaceKey key) =>
+        _surfaces.TryGetValue(key, out var registration)
+            ? registration.Spec
+            : throw new InvalidOperationException($"Render surface '{key}' is not available.");
+
+    public void Add(RenderSurfaceSpec spec, RenderTarget2D surface)
     {
         ArgumentNullException.ThrowIfNull(surface);
-        if (!_surfaces.TryAdd(key, surface))
-            throw new InvalidOperationException($"Render surface '{key}' is already registered.");
+        if (surface.ColorFormat != spec.ColorFormat)
+            throw new InvalidOperationException(
+                $"Render surface '{spec.Key}' uses {surface.ColorFormat}, expected {spec.ColorFormat}.");
+        if (!_surfaces.TryAdd(spec.Key, new RenderSurfaceRegistration(surface, spec)))
+            throw new InvalidOperationException($"Render surface '{spec.Key}' is already registered.");
     }
 }

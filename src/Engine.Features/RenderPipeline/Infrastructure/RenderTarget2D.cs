@@ -1,5 +1,6 @@
 namespace GameEngine.Features.RenderPipeline.Infrastructure;
 
+using GameEngine.Features.RenderPipeline.Domain;
 using Silk.NET.OpenGL;
 using System.Numerics;
 
@@ -17,14 +18,27 @@ public sealed class RenderTarget2D : IDisposable
     public int Width { get; private set; }
     public int Height { get; private set; }
     public bool HasDepthStencil { get; }
+    public RenderTargetColorFormat ColorFormat { get; }
     public Vector2 Size => new(Width, Height);
 
     public RenderTarget2D(GL gl, int width, int height, bool withDepthStencil = true)
+        : this(gl, new RenderTargetDescriptor(
+            width,
+            height,
+            RenderTargetColorFormat.Rgba8,
+            withDepthStencil
+                ? RenderTargetDepthStencilFormat.Depth24Stencil8
+                : RenderTargetDepthStencilFormat.None))
     {
-        _gl = gl;
-        Width = width;
-        Height = height;
-        HasDepthStencil = withDepthStencil;
+    }
+
+    public RenderTarget2D(GL gl, in RenderTargetDescriptor descriptor)
+    {
+        _gl = gl ?? throw new ArgumentNullException(nameof(gl));
+        Width = descriptor.Width;
+        Height = descriptor.Height;
+        HasDepthStencil = descriptor.HasDepthStencil;
+        ColorFormat = descriptor.ColorFormat;
 
         // 1. 生成并绑定 Framebuffer
         FboHandle = gl.GenFramebuffer();
@@ -35,9 +49,9 @@ public sealed class RenderTarget2D : IDisposable
         gl.BindTexture(TextureTarget.Texture2D, ColorTexture);
         unsafe
         {
-            gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgba8,
-                (uint)width, (uint)height, 0,
-                PixelFormat.Rgba, PixelType.UnsignedByte, null);
+            gl.TexImage2D(TextureTarget.Texture2D, 0, (int)GetInternalFormat(ColorFormat),
+                (uint)Width, (uint)Height, 0,
+                PixelFormat.Rgba, GetPixelType(ColorFormat), null);
         }
         uint linear = (uint)GLEnum.Linear;
         uint clampToEdge = (uint)GLEnum.ClampToEdge;
@@ -55,12 +69,12 @@ public sealed class RenderTarget2D : IDisposable
             TextureTarget.Texture2D, ColorTexture, 0);
 
         // 3. Depth/Stencil RenderBuffer (可选)
-        if (withDepthStencil)
+        if (HasDepthStencil)
         {
             DepthStencilRbo = gl.GenRenderbuffer();
             gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, DepthStencilRbo);
             gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer,
-                InternalFormat.Depth24Stencil8, (uint)width, (uint)height);
+                InternalFormat.Depth24Stencil8, (uint)Width, (uint)Height);
             gl.FramebufferRenderbuffer(FramebufferTarget.Framebuffer,
                 FramebufferAttachment.DepthStencilAttachment,
                 RenderbufferTarget.Renderbuffer, DepthStencilRbo);
@@ -95,9 +109,9 @@ public sealed class RenderTarget2D : IDisposable
         _gl.BindTexture(TextureTarget.Texture2D, ColorTexture);
         unsafe
         {
-            _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgba8,
+            _gl.TexImage2D(TextureTarget.Texture2D, 0, (int)GetInternalFormat(ColorFormat),
                 (uint)Width, (uint)Height, 0,
-                PixelFormat.Rgba, PixelType.UnsignedByte, null);
+                PixelFormat.Rgba, GetPixelType(ColorFormat), null);
         }
 
         if (HasDepthStencil)
@@ -114,4 +128,18 @@ public sealed class RenderTarget2D : IDisposable
         if (HasDepthStencil) _gl.DeleteRenderbuffer(DepthStencilRbo);
         _gl.DeleteFramebuffer(FboHandle);
     }
+
+    private static InternalFormat GetInternalFormat(RenderTargetColorFormat format) => format switch
+    {
+        RenderTargetColorFormat.Rgba8 => InternalFormat.Rgba8,
+        RenderTargetColorFormat.Rgba16Float => InternalFormat.Rgba16f,
+        _ => throw new ArgumentOutOfRangeException(nameof(format))
+    };
+
+    private static PixelType GetPixelType(RenderTargetColorFormat format) => format switch
+    {
+        RenderTargetColorFormat.Rgba8 => PixelType.UnsignedByte,
+        RenderTargetColorFormat.Rgba16Float => PixelType.HalfFloat,
+        _ => throw new ArgumentOutOfRangeException(nameof(format))
+    };
 }

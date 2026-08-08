@@ -2,7 +2,8 @@ namespace GameEngine.Features.RenderPipeline.Domain;
 
 public enum RenderTargetColorFormat
 {
-    Rgba8
+    Rgba8,
+    Rgba16Float
 }
 
 public enum RenderTargetDepthStencilFormat
@@ -11,7 +12,7 @@ public enum RenderTargetDepthStencilFormat
     Depth24Stencil8
 }
 
-/// <summary>RenderTarget 的完整复用键。v1 固定支持 RGBA8 与可选 D24S8。</summary>
+/// <summary>RenderTarget 的完整复用键。</summary>
 public readonly record struct RenderTargetDescriptor
 {
     public int Width { get; }
@@ -29,7 +30,7 @@ public readonly record struct RenderTargetDescriptor
     {
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
-        if (colorFormat != RenderTargetColorFormat.Rgba8)
+        if (!Enum.IsDefined(colorFormat))
             throw new ArgumentOutOfRangeException(nameof(colorFormat));
         if (!Enum.IsDefined(depthStencilFormat))
             throw new ArgumentOutOfRangeException(nameof(depthStencilFormat));

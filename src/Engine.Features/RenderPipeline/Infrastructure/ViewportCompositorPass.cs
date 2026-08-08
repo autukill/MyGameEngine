@@ -30,11 +30,19 @@ public sealed class ViewportCompositorPass : RenderPass
     public CompositeSourceHandle AddSource(
         RenderTarget2D source,
         ViewportRect rect,
-        BlendState? blend = null)
+        BlendState? blend = null,
+        int order = 0)
     {
         ArgumentNullException.ThrowIfNull(source);
         var handle = new CompositeSourceHandle(++_nextSourceHandle);
-        _sources.Add(new CompositeSource(handle, source, rect, blend ?? BlendState.Opaque));
+        _sources.Add(new CompositeSource(handle, source, rect, blend ?? BlendState.Opaque, order));
+        _sources.Sort(static (left, right) =>
+        {
+            int byOrder = left.Order.CompareTo(right.Order);
+            return byOrder != 0
+                ? byOrder
+                : left.Handle.Value.CompareTo(right.Handle.Value);
+        });
         return handle;
     }
 
@@ -76,7 +84,8 @@ public sealed class ViewportCompositorPass : RenderPass
         CompositeSourceHandle Handle,
         RenderTarget2D Source,
         ViewportRect Rect,
-        BlendState Blend);
+        BlendState Blend,
+        int Order);
 }
 
 public readonly record struct CompositeSourceHandle(long Value);

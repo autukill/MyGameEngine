@@ -108,6 +108,15 @@ internal static class Program
     private static void TestResourcePoolCore()
     {
         Console.WriteLine("6. RenderTarget pool ownership core");
+        var ldrDescriptor = new RenderTargetDescriptor(320, 180);
+        var hdrDescriptor = new RenderTargetDescriptor(
+            320, 180, RenderTargetColorFormat.Rgba16Float);
+        Check(ldrDescriptor != hdrDescriptor &&
+              hdrDescriptor.ColorFormat == RenderTargetColorFormat.Rgba16Float,
+            "RGBA8 and RGBA16F are distinct pool descriptors");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new RenderTargetDescriptor(1, 1, (RenderTargetColorFormat)99),
+            "Unknown target format is rejected");
         int created = 0;
         var pool = new ResourcePoolCore<string, FakeResource>(
             key => new FakeResource($"{key}-{++created}"),
@@ -389,6 +398,43 @@ internal static class Program
                 },
                 Array.Empty<RenderSurfaceKey>()),
             "Effects cannot publish a surface owned by another effect key");
+
+        var hdrRoot = RenderSurfaceSpec.Hdr(RenderSurfaceKey.SceneColor);
+        var hdrOutput = RenderSurfaceSpec.Hdr(surfaceA);
+        var typedGraph = RenderEffectGraphPlanner.Plan(
+            new Dictionary<RenderEffectKey, RenderEffectPlan>
+            {
+                [keyA] = new RenderEffectPlan(keyA, new[] { hdrRoot }, new[] { hdrOutput })
+            },
+            new[] { hdrRoot });
+        Check(typedGraph.OrderedKeys.SequenceEqual(new[] { keyA }),
+            "Matching HDR Linear surface contracts are accepted");
+
+        CheckThrows<InvalidOperationException>(() => RenderEffectGraphPlanner.Plan(
+                new Dictionary<RenderEffectKey, RenderEffectPlan>
+                {
+                    [keyA] = new RenderEffectPlan(
+                        keyA,
+                        new[] { RenderSurfaceSpec.Hdr(RenderSurfaceKey.SceneColor) },
+                        new[] { hdrOutput })
+                },
+                new[] { RenderSurfaceSpec.Ldr(RenderSurfaceKey.SceneColor) }),
+            "HDR consumer rejects an RGBA8 Display root before runtime creation");
+
+        CheckThrows<InvalidOperationException>(() => RenderEffectGraphPlanner.Plan(
+                new Dictionary<RenderEffectKey, RenderEffectPlan>
+                {
+                    [keyA] = new RenderEffectPlan(
+                        keyA,
+                        inputSurfaces: null,
+                        outputSurfaces: new[] { hdrOutput }),
+                    [keyB] = new RenderEffectPlan(
+                        keyB,
+                        new[] { RenderSurfaceSpec.Ldr(surfaceA) },
+                        new[] { RenderSurfaceSpec.Ldr(surfaceB) })
+                },
+                Array.Empty<RenderSurfaceSpec>()),
+            "Producer and consumer surface format mismatch is rejected");
     }
 
     private static void CheckThrows<T>(Action action, string name) where T : Exception

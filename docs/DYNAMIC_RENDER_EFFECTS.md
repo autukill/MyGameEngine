@@ -145,7 +145,7 @@ RenderTarget2D target = lease.Target;
 - `RenderTargetLease.Dispose()` 幂等，只负责归还，不直接删除 GPU 资源。
 - Pool 拒绝不属于自己的资源和重复归还。
 - `RenderTargetPool.Dispose()` 会释放空闲和仍被租赁的全部资源一次。
-- 当前颜色格式固定为 RGBA8，Depth/Stencil 为 None 或 Depth24Stencil8。
+- 颜色格式支持 RGBA8 与 RGBA16F，Depth/Stencil 为 None 或 Depth24Stencil8；Pool 按完整 Descriptor 隔离。
 
 Factory 创建的 Runtime 持有 Lease；Pass 只借用 `RenderTarget2D`。挂接后 Pass 由 `RenderPipeline` 负责释放，Runtime 负责归还 Lease。
 
@@ -186,6 +186,7 @@ Factory 创建失败、未知 Kind 或描述符冲突不会破坏已经挂接的
 ## 当前边界
 
 - Stencil 遮罩几何仍使用现有白纹理 Quad 路径，尚未增加任意矢量路径或专用圆形网格。
-- Bloom 可以消费 SceneColor 或另一个动态效果输出，但所有表面仍是 RGBA8。
-- v1 不支持 HDR、MSAA、多颜色 Attachment 或跨场景共享 Pool。
+- Bloom 可以消费 SceneColor 或另一个动态效果输出，并支持 RGBA8/Display 与 RGBA16F/Linear 两条严格匹配路径。
+- Tone Mapping 消费 RGBA16F/Linear Scene 与可选 Bloom，输出 RGBA8/Display。
+- v1 不支持 MSAA、多颜色 Attachment、隐式格式转换或跨场景共享 Pool。
 - 没有全局事件总线；组合根负责在明确帧边界分发事件快照。

@@ -69,12 +69,30 @@ internal static class Program
         Check(descriptor.Key.Kind == BloomEffectDescriptor.EffectKind &&
               descriptor.Settings == defaults &&
               descriptor.Source == RenderSurfaceKey.SceneColor &&
+              descriptor.ColorFormat == RenderTargetColorFormat.Rgba8 &&
+              descriptor.Encoding == RenderSurfaceEncoding.Display &&
+              descriptor.Presentation == BloomPresentation.Additive &&
               BloomEffectDescriptor.GlowOutput(descriptor.Key) ==
               RenderSurfaceKey.FromEffect(descriptor.Key, "glow"),
             "Descriptor carries a typed key, SceneColor input, and logical glow output");
         CheckThrows<ArgumentException>(
             () => new BloomEffectDescriptor(new RenderEffectKey("other", "main"), defaults),
             "Descriptor rejects a non-Bloom key");
+        var hdrDescriptor = new BloomEffectDescriptor(
+            BloomEffectDescriptor.DefaultKey,
+            defaults,
+            colorFormat: RenderTargetColorFormat.Rgba16Float,
+            encoding: RenderSurfaceEncoding.Linear,
+            presentation: BloomPresentation.SurfaceOnly);
+        Check(hdrDescriptor.ColorFormat == RenderTargetColorFormat.Rgba16Float &&
+              hdrDescriptor.Presentation == BloomPresentation.SurfaceOnly,
+            "Bloom can publish an HDR Linear surface without direct composition");
+        CheckThrows<ArgumentException>(
+            () => new BloomEffectDescriptor(
+                BloomEffectDescriptor.DefaultKey,
+                defaults,
+                colorFormat: RenderTargetColorFormat.Rgba16Float),
+            "HDR Bloom rejects Display encoding");
     }
 
     private static void TestInstanceEventsAndSharing()

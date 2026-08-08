@@ -25,9 +25,7 @@ public sealed class RenderTargetPool : IRenderTargetPool
         _resources = new ResourcePoolCore<RenderTargetDescriptor, RenderTarget2D>(
             descriptor => new RenderTarget2D(
                 gl,
-                descriptor.Width,
-                descriptor.Height,
-                descriptor.HasDepthStencil),
+                descriptor),
             target => target.Dispose());
     }
 

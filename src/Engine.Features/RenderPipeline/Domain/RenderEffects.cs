@@ -56,9 +56,47 @@ public readonly record struct RenderSurfaceKey
     public override string ToString() => $"{ProducerKind}:{ProducerSlot}.{Output}";
 }
 
+public enum RenderSurfaceEncoding
+{
+    Linear,
+    Display
+}
+
+/// <summary>逻辑表面的物理存储格式与颜色编码契约。</summary>
+public readonly record struct RenderSurfaceSpec
+{
+    public RenderSurfaceKey Key { get; }
+    public RenderTargetColorFormat ColorFormat { get; }
+    public RenderSurfaceEncoding Encoding { get; }
+
+    public RenderSurfaceSpec(
+        RenderSurfaceKey key,
+        RenderTargetColorFormat colorFormat,
+        RenderSurfaceEncoding encoding)
+    {
+        if (!key.IsValid)
+            throw new ArgumentException("Surface key must be initialized.", nameof(key));
+        if (!Enum.IsDefined(colorFormat))
+            throw new ArgumentOutOfRangeException(nameof(colorFormat));
+        if (!Enum.IsDefined(encoding))
+            throw new ArgumentOutOfRangeException(nameof(encoding));
+        Key = key;
+        ColorFormat = colorFormat;
+        Encoding = encoding;
+    }
+
+    public static RenderSurfaceSpec Ldr(RenderSurfaceKey key) =>
+        new(key, RenderTargetColorFormat.Rgba8, RenderSurfaceEncoding.Display);
+
+    public static RenderSurfaceSpec Hdr(RenderSurfaceKey key) =>
+        new(key, RenderTargetColorFormat.Rgba16Float, RenderSurfaceEncoding.Linear);
+}
+
 /// <summary>工厂在分配 GPU 资源前声明的纯逻辑输入/输出计划。</summary>
 public sealed class RenderEffectPlan : IEquatable<RenderEffectPlan>
 {
+    private readonly RenderSurfaceSpec[] _inputSurfaces;
+    private readonly RenderSurfaceSpec[] _outputSurfaces;
     private readonly RenderSurfaceKey[] _inputs;
     private readonly RenderSurfaceKey[] _outputs;
     private readonly IReadOnlyList<RenderSurfaceKey> _inputView;
@@ -67,28 +105,45 @@ public sealed class RenderEffectPlan : IEquatable<RenderEffectPlan>
     public RenderEffectKey Key { get; }
     public IReadOnlyList<RenderSurfaceKey> Inputs => _inputView;
     public IReadOnlyList<RenderSurfaceKey> Outputs => _outputView;
+    public IReadOnlyList<RenderSurfaceSpec> InputSurfaces { get; }
+    public IReadOnlyList<RenderSurfaceSpec> OutputSurfaces { get; }
 
     public RenderEffectPlan(
         RenderEffectKey key,
         IEnumerable<RenderSurfaceKey>? inputs = null,
         IEnumerable<RenderSurfaceKey>? outputs = null)
+        : this(
+            key,
+            inputs?.Select(RenderSurfaceSpec.Ldr),
+            outputs?.Select(RenderSurfaceSpec.Ldr))
+    {
+    }
+
+    public RenderEffectPlan(
+        RenderEffectKey key,
+        IEnumerable<RenderSurfaceSpec>? inputSurfaces,
+        IEnumerable<RenderSurfaceSpec>? outputSurfaces)
     {
         if (!key.IsValid)
             throw new ArgumentException("Effect key must be initialized.", nameof(key));
         Key = key;
-        _inputs = inputs?.ToArray() ?? Array.Empty<RenderSurfaceKey>();
-        _outputs = outputs?.ToArray() ?? Array.Empty<RenderSurfaceKey>();
-        ValidateKeys(_inputs, nameof(inputs));
-        ValidateKeys(_outputs, nameof(outputs));
+        _inputSurfaces = inputSurfaces?.ToArray() ?? Array.Empty<RenderSurfaceSpec>();
+        _outputSurfaces = outputSurfaces?.ToArray() ?? Array.Empty<RenderSurfaceSpec>();
+        ValidateSurfaces(_inputSurfaces, nameof(inputSurfaces));
+        ValidateSurfaces(_outputSurfaces, nameof(outputSurfaces));
+        _inputs = _inputSurfaces.Select(surface => surface.Key).ToArray();
+        _outputs = _outputSurfaces.Select(surface => surface.Key).ToArray();
         _inputView = Array.AsReadOnly(_inputs);
         _outputView = Array.AsReadOnly(_outputs);
+        InputSurfaces = Array.AsReadOnly(_inputSurfaces);
+        OutputSurfaces = Array.AsReadOnly(_outputSurfaces);
     }
 
     public bool Equals(RenderEffectPlan? other) =>
         other is not null &&
         Key == other.Key &&
-        _inputs.SequenceEqual(other._inputs) &&
-        _outputs.SequenceEqual(other._outputs);
+        _inputSurfaces.SequenceEqual(other._inputSurfaces) &&
+        _outputSurfaces.SequenceEqual(other._outputSurfaces);
 
     public override bool Equals(object? obj) => Equals(obj as RenderEffectPlan);
 
@@ -96,16 +151,16 @@ public sealed class RenderEffectPlan : IEquatable<RenderEffectPlan>
     {
         var hash = new HashCode();
         hash.Add(Key);
-        foreach (var input in _inputs) hash.Add(input);
-        foreach (var output in _outputs) hash.Add(output);
+        foreach (var input in _inputSurfaces) hash.Add(input);
+        foreach (var output in _outputSurfaces) hash.Add(output);
         return hash.ToHashCode();
     }
 
-    private static void ValidateKeys(RenderSurfaceKey[] keys, string parameterName)
+    private static void ValidateSurfaces(RenderSurfaceSpec[] surfaces, string parameterName)
     {
-        if (keys.Any(key => !key.IsValid))
-            throw new ArgumentException("Surface keys must be initialized.", parameterName);
-        if (keys.Distinct().Count() != keys.Length)
+        if (surfaces.Any(surface => !surface.Key.IsValid))
+            throw new ArgumentException("Surface specifications must be initialized.", parameterName);
+        if (surfaces.Select(surface => surface.Key).Distinct().Count() != surfaces.Length)
             throw new ArgumentException("Surface keys cannot be duplicated within a plan.", parameterName);
     }
 }

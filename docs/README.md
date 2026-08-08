@@ -8,6 +8,8 @@
 - [动态渲染效果使用指南](DYNAMIC_RENDER_EFFECTS.md)：效果事件、owner 共享、ScenePipelineBuilder、RenderTargetPool 与 Stencil/Bloom 装配。
 - [逻辑 RenderSurface 与动态效果依赖图](RENDER_SURFACES.md)：纯逻辑输入输出、根 Surface、稳定拓扑、原子重建与效果串联。
 - [Bloom 效果使用指南](BLOOM_EFFECT.md)：独立描述符、设置边界、三目标 ping-pong 链、resize 与释放语义。
+- [HDR 与 Tone Mapping 使用指南](TONE_MAPPING.md)：RGBA16F Scene/Bloom、曝光、ACES/Reinhard 和显示输出边界。
+- [Runner 的 StencilMask 几何实现解读](STENCIL_MASK_GEOMETRY.md)：Spotlight 调用链、当前矩形边界与真正圆形 Shader 方案。
 - [GPU 像素回归测试](VISUAL_REGRESSION.md)：固定时间步截图、PNG 基线、容差、差异产物和场景扩展方式。
 - [Content Assets 使用指南](CONTENT_ASSETS.md)：声明式 Texture/Sprite 包、依赖、多图片动画和资源生命周期。
 - [离线 Texture Atlas 使用指南](TEXTURE_ATLAS.md)：Atlas 构建配置、AssetCompiler、多页、大帧旁路与编译产物。

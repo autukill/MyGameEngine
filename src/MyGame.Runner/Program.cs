@@ -13,6 +13,8 @@ using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.StencilMasking.Infrastructure;
+using GameEngine.Features.ToneMapping.Domain;
+using GameEngine.Features.ToneMapping.Infrastructure;
 using GameEngine.Features.TextureAssets.Infrastructure;
 
 /// <summary>
@@ -24,6 +26,7 @@ internal sealed class Program
     private static SpriteShader? _spriteShader;
     private static BloomExtractShader? _bloomExtractShader;
     private static GaussianBlurShader? _bloomBlurShader;
+    private static ToneMappingShader? _toneMappingShader;
     private static BlitShader? _blitShader;
     private static SpriteBatch? _batch;
     private static TextureLibrary? _textures;
@@ -43,7 +46,7 @@ internal sealed class Program
         Console.WriteLine("=== Dynamic Render Effects Demo ===");
         Console.WriteLine("  4 个 OrbitingSprite 做圆周运动");
         Console.WriteLine("  鼠标位置 = Spotlight 中心 (Stencil ShowInside)");
-        Console.WriteLine("  Spotlight 与全场景 Bloom 由独立实例事件动态装配");
+        Console.WriteLine("  HDR Scene → Bloom → ACES Tone Mapping 由实例事件动态装配");
         Console.WriteLine("  ESC: 退出");
 
         _window = new EngineWindow(EngineWindowOptions.Default);
@@ -64,6 +67,7 @@ internal sealed class Program
         _spriteShader = new SpriteShader(gl);
         _bloomExtractShader = new BloomExtractShader(gl);
         _bloomBlurShader = new GaussianBlurShader(gl);
+        _toneMappingShader = new ToneMappingShader(gl);
         _blitShader = new BlitShader(gl);
         _batch = new SpriteBatch(gl) { DefaultShader = _spriteShader };
         _textures = new TextureLibrary(gl);
@@ -86,12 +90,15 @@ internal sealed class Program
         _scene.OnStart = () => Console.WriteLine($"[Scene] '{_scene.SceneName}' started.");
 
         _mainCamera = new Camera2D(new Vector2(width, height));
-        _rtScene = new RenderTarget2D(gl, width, height, withDepthStencil: true);
+        _rtScene = new RenderTarget2D(gl, new RenderTargetDescriptor(
+            width,
+            height,
+            RenderTargetColorFormat.Rgba16Float,
+            RenderTargetDepthStencilFormat.Depth24Stencil8));
         _targetPool = new RenderTargetPool(gl);
 
         var scenePass = new SceneRenderPass("ScenePass", gl, _scene, _mainCamera, _rtScene);
         _compositorPass = new ViewportCompositorPass("CompositorPass", gl, _blitShader, _batch);
-        _compositorPass.AddSource(_rtScene, ViewportRect.FullScreen, BlendState.Opaque);
 
         _pipeline = new RenderPipeline(gl, width, height);
         _pipeline.AddPass(scenePass);
@@ -116,6 +123,9 @@ internal sealed class Program
             gl,
             _bloomExtractShader,
             _bloomBlurShader));
+        _pipelineBuilder.RegisterFactory(new ToneMappingEffectFactory(
+            gl,
+            _toneMappingShader));
 
         var center = new Vector2D(width * 0.5f, height * 0.5f);
         var colors = new[]
@@ -137,7 +147,8 @@ internal sealed class Program
 
         _scene.Add(new SceneBloomController(
             _scene.RaiseEvent,
-            new BloomSettings(0.3f, 1.5f, 1f, 2, BloomResolution.Half)));
+            new BloomSettings(0.3f, 1.5f, 1f, 2, BloomResolution.Half),
+            ToneMappingSettings.Default));
 
         _scene.Add(new SpotlightController(
             _scene.RaiseEvent,
@@ -201,6 +212,7 @@ internal sealed class Program
         _textures?.Dispose();
         _batch?.Dispose();
         _blitShader?.Dispose();
+        _toneMappingShader?.Dispose();
         _bloomBlurShader?.Dispose();
         _bloomExtractShader?.Dispose();
         _spriteShader?.Dispose();

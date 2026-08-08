@@ -31,8 +31,20 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
         var configuration = BloomEffectPolicy.ValidateAndGetConfiguration(key, owners);
         return new RenderEffectPlan(
             key,
-            new[] { configuration.Source },
-            new[] { BloomEffectDescriptor.GlowOutput(key) });
+            new[]
+            {
+                new RenderSurfaceSpec(
+                    configuration.Source,
+                    configuration.ColorFormat,
+                    configuration.Encoding)
+            },
+            new[]
+            {
+                new RenderSurfaceSpec(
+                    BloomEffectDescriptor.GlowOutput(key),
+                    configuration.ColorFormat,
+                    configuration.Encoding)
+            });
     }
 
     public IRenderEffectRuntime Create(
@@ -44,7 +56,10 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
         BloomSettings settings = configuration.Settings;
         RenderTarget2D source = context.Surfaces.Resolve(configuration.Source);
         var size = BloomPass.CalculateTargetSize(context.Width, context.Height, settings.Resolution);
-        var descriptor = new RenderTargetDescriptor(size.Width, size.Height);
+        var descriptor = new RenderTargetDescriptor(
+            size.Width,
+            size.Height,
+            configuration.ColorFormat);
         RenderTargetLease? bright = null;
         RenderTargetLease? ping = null;
         RenderTargetLease? pong = null;
@@ -99,11 +114,16 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
             _ping = ping;
             _pong = pong;
             Passes = new[] { pass };
-            CompositeSources = new[]
-            {
-                new RenderEffectCompositeSource(
-                    pong.Target, ViewportRect.FullScreen, BlendState.Additive)
-            };
+            CompositeSources = configuration.Presentation == BloomPresentation.Additive
+                ? new[]
+                {
+                    new RenderEffectCompositeSource(
+                        pong.Target,
+                        ViewportRect.FullScreen,
+                        BlendState.Additive,
+                        Order: 200)
+                }
+                : Array.Empty<RenderEffectCompositeSource>();
             Outputs = new[]
             {
                 new RenderEffectOutput(BloomEffectDescriptor.GlowOutput(key), pong.Target)
@@ -111,9 +131,13 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
         }
 
         public bool RequiresRebuild(
-            IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners) =>
-            BloomEffectPolicy.ValidateAndGetConfiguration(Key, owners).Settings.Resolution !=
-            _configuration.Settings.Resolution;
+            IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
+        {
+            var next = BloomEffectPolicy.ValidateAndGetConfiguration(Key, owners);
+            return next.Settings.Resolution != _configuration.Settings.Resolution ||
+                   next.ColorFormat != _configuration.ColorFormat ||
+                   next.Presentation != _configuration.Presentation;
+        }
 
         public void UpdateOwners(
             IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)

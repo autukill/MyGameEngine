@@ -1,37 +1,33 @@
-namespace GameEngine.Features.Bloom.Application;
+namespace GameEngine.Features.ToneMapping.Application;
 
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Events;
-using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
+using GameEngine.Features.ToneMapping.Domain;
 
-public static class GameInstanceBloomExtensions
+public static class GameInstanceToneMappingExtensions
 {
-    public static void RequestBloom(
+    public static void RequestToneMapping(
         this GameInstance instance,
-        BloomSettings settings,
+        ToneMappingSettings settings,
         Action<IDomainEvent> raiseEvent,
         RenderEffectKey? key = null,
         RenderSurfaceKey? source = null,
-        RenderTargetColorFormat colorFormat = RenderTargetColorFormat.Rgba8,
-        RenderSurfaceEncoding encoding = RenderSurfaceEncoding.Display,
-        BloomPresentation presentation = BloomPresentation.Additive)
+        RenderSurfaceKey? bloomSource = null)
     {
         ArgumentNullException.ThrowIfNull(instance);
         ArgumentNullException.ThrowIfNull(raiseEvent);
         if (!instance.IsActive) return;
         raiseEvent(new RenderEffectRequestedEvent(
             instance.Id,
-            new BloomEffectDescriptor(
-                key ?? BloomEffectDescriptor.DefaultKey,
+            new ToneMappingEffectDescriptor(
+                key ?? ToneMappingEffectDescriptor.DefaultKey,
                 settings,
                 source,
-                colorFormat,
-                encoding,
-                presentation)));
+                bloomSource)));
     }
 
-    public static void ReleaseBloom(
+    public static void ReleaseToneMapping(
         this GameInstance instance,
         Action<IDomainEvent> raiseEvent,
         RenderEffectKey? key = null)
@@ -40,6 +36,6 @@ public static class GameInstanceBloomExtensions
         ArgumentNullException.ThrowIfNull(raiseEvent);
         raiseEvent(new RenderEffectReleasedEvent(
             instance.Id,
-            key ?? BloomEffectDescriptor.DefaultKey));
+            key ?? ToneMappingEffectDescriptor.DefaultKey));
     }
 }

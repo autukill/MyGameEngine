@@ -19,6 +19,9 @@ using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.StencilMasking.Application;
 using GameEngine.Features.StencilMasking.Domain;
 using GameEngine.Features.StencilMasking.Infrastructure;
+using GameEngine.Features.ToneMapping.Application;
+using GameEngine.Features.ToneMapping.Domain;
+using GameEngine.Features.ToneMapping.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Testing.Visual;
@@ -494,6 +497,246 @@ internal sealed class BloomPingPongFixture : IDisposable
             this.RequestBloom(_settings, _raiseEvent, _key, _source);
 
         public override void OnDestroy() => this.ReleaseBloom(_raiseEvent, _key);
+    }
+}
+
+internal sealed class HdrToneMappingScenario : IVisualRegressionScenario
+{
+    private static readonly PixelComparisonOptions HdrTolerance = new(
+        SoftChannelDelta: 3,
+        HardChannelDelta: 12,
+        MaximumDifferentPixelRatio: 0.005);
+    private HdrToneMappingFixture? _fixture;
+
+    public string Name => "hdr-tone-mapping";
+    public int Width => 400;
+    public int Height => 300;
+    public int FrameCount => 4;
+    public IReadOnlyList<VisualCheckpoint> Checkpoints { get; } = new[]
+    {
+        new VisualCheckpoint(0, "aces", HdrTolerance),
+        new VisualCheckpoint(1, "reinhard-low-exposure", HdrTolerance),
+        new VisualCheckpoint(2, "resized", HdrTolerance),
+        new VisualCheckpoint(3, "released")
+    };
+
+    public void Initialize(EngineWindow window) =>
+        _fixture = new HdrToneMappingFixture(window.Graphics.Gl, 320, 240);
+
+    public void AdvanceAndDraw(int frameIndex, double fixedDeltaTime)
+    {
+        if (frameIndex == 1)
+            _fixture!.UpdateToneMapping(new ToneMappingSettings(
+                ToneMappingOperator.Reinhard, exposure: -0.75f, gamma: 2.2f));
+        if (frameIndex == 2) _fixture!.Resize(Width, Height);
+        if (frameIndex == 3) _fixture!.ReleaseEffects();
+        _fixture!.StepAndDraw(fixedDeltaTime);
+
+        int expectedEffects = frameIndex < 3 ? 2 : 0;
+        int expectedLeases = frameIndex < 3 ? 4 : 0;
+        if (_fixture.ActiveEffectCount != expectedEffects ||
+            _fixture.LeasedTargetCount != expectedLeases)
+            throw new InvalidOperationException(
+                $"HDR frame {frameIndex} expected {expectedEffects} effects and " +
+                $"{expectedLeases} leases, found {_fixture.ActiveEffectCount} and " +
+                $"{_fixture.LeasedTargetCount}.");
+        if (frameIndex == 2 && _fixture.TotalTargetCount != 4)
+            throw new InvalidOperationException(
+                "HDR resize must replace exactly three Bloom targets and one Tone Mapping target.");
+    }
+
+    public void Dispose() => _fixture?.Dispose();
+}
+
+internal sealed class HdrToneMappingFixture : IDisposable
+{
+    private readonly GL _gl;
+    private readonly SpriteShader _spriteShader;
+    private readonly BlitShader _blitShader;
+    private readonly BloomExtractShader _extractShader;
+    private readonly GaussianBlurShader _blurShader;
+    private readonly ToneMappingShader _toneShader;
+    private readonly SpriteBatch _batch;
+    private readonly TextureLibrary _textures;
+    private readonly SpriteLibrary _sprites;
+    private readonly SceneAggregate _scene;
+    private readonly Camera2D _camera;
+    private readonly RenderTarget2D _sceneTarget;
+    private readonly RenderTargetPool _pool;
+    private readonly RenderPipeline _pipeline;
+    private readonly ScenePipelineBuilder _builder;
+    private readonly HdrOwner _owner;
+    private int _width;
+    private int _height;
+    private bool _released;
+    private bool _disposed;
+
+    public int ActiveEffectCount => _builder.ActiveEffectCount;
+    public int TotalTargetCount => _pool.TotalCount;
+    public int LeasedTargetCount => _pool.LeasedCount;
+
+    public HdrToneMappingFixture(GL gl, int width, int height)
+    {
+        _gl = gl;
+        _width = width;
+        _height = height;
+        _spriteShader = new SpriteShader(gl);
+        _blitShader = new BlitShader(gl);
+        _extractShader = new BloomExtractShader(gl);
+        _blurShader = new GaussianBlurShader(gl);
+        _toneShader = new ToneMappingShader(gl);
+        _batch = new SpriteBatch(gl) { DefaultShader = _spriteShader };
+        _textures = new TextureLibrary(gl);
+        _sprites = new SpriteLibrary(_textures);
+        _batch.SpriteResolver = _sprites;
+
+        TextureRef white = _textures.RegisterRgba(
+            "regression.hdr.white",
+            1,
+            1,
+            SpriteOriginTransformScenario.CreateSolidPixels(1, 1, 255, 255, 255, 255),
+            TextureSampler.PixelArt);
+        SpriteRef tile = _sprites.RegisterSingle(
+            "regression.hdr.tile", white, new Vector2(20, 20), new Vector2(10, 10));
+
+        _scene = new SceneAggregate("hdr-tone-mapping")
+        {
+            ViewportWidth = width,
+            ViewportHeight = height,
+            Background = BackgroundConfig.FromColor(new Vector4(0.01f, 0.018f, 0.035f, 1f))
+        };
+        _scene.SetSprites(_sprites);
+        AddTile(tile, new Vector2D(75, 70), new Vector2D(5, 4),
+            new Vector4(4f, 0.18f, 0.08f, 1f));
+        AddTile(tile, new Vector2D(175, 115), new Vector2D(6, 3),
+            new Vector4(0.05f, 2.8f, 4f, 1f));
+        AddTile(tile, new Vector2D(255, 180), new Vector2D(4, 6),
+            new Vector4(2.5f, 0.2f, 4f, 1f));
+        AddTile(tile, new Vector2D(115, 195), new Vector2D(2, 2),
+            new Vector4(1f, 1f, 1f, 1f));
+        _owner = _scene.Add(new HdrOwner(_scene.RaiseEvent, ToneMappingSettings.Default));
+
+        _camera = new Camera2D(new Vector2(width, height));
+        _sceneTarget = new RenderTarget2D(gl, new RenderTargetDescriptor(
+            width,
+            height,
+            RenderTargetColorFormat.Rgba16Float,
+            RenderTargetDepthStencilFormat.Depth24Stencil8));
+        _pool = new RenderTargetPool(gl);
+        var scenePass = new SceneRenderPass("HDR Scene", gl, _scene, _camera, _sceneTarget);
+        var compositor = new ViewportCompositorPass("Compositor", gl, _blitShader, _batch);
+        _pipeline = new RenderPipeline(gl, width, height);
+        _pipeline.AddPass(scenePass);
+        _pipeline.AddPass(compositor);
+        _builder = new ScenePipelineBuilder(_pipeline, compositor, _pool, width, height);
+        _builder.RegisterRootSurface(
+            RenderSurfaceKey.SceneColor,
+            _sceneTarget,
+            RenderSurfaceEncoding.Linear);
+        _builder.RegisterFactory(new BloomEffectFactory(gl, _extractShader, _blurShader));
+        _builder.RegisterFactory(new ToneMappingEffectFactory(gl, _toneShader));
+        _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+    }
+
+    public void UpdateToneMapping(ToneMappingSettings settings) =>
+        _owner.UpdateToneMapping(settings);
+
+    public void Resize(int width, int height)
+    {
+        _width = width;
+        _height = height;
+        _scene.ViewportWidth = width;
+        _scene.ViewportHeight = height;
+        _camera.ResizeViewport(width, height);
+        _sceneTarget.Resize(width, height);
+        _pipeline.Resize(width, height);
+        _builder.Resize(width, height);
+    }
+
+    public void ReleaseEffects()
+    {
+        if (_released) return;
+        _released = true;
+        _scene.Destroy(_owner.Id);
+    }
+
+    public void StepAndDraw(double fixedDeltaTime)
+    {
+        _scene.PerformStep(fixedDeltaTime);
+        _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+        _pipeline.Execute(new RenderPassContext(
+            _gl, _spriteShader, _batch, _width, _height));
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _scene.End();
+        _builder.Dispose();
+        _pipeline.Dispose();
+        _pool.Dispose();
+        _sceneTarget.Dispose();
+        _textures.Dispose();
+        _batch.Dispose();
+        _toneShader.Dispose();
+        _blurShader.Dispose();
+        _extractShader.Dispose();
+        _blitShader.Dispose();
+        _spriteShader.Dispose();
+    }
+
+    private void AddTile(SpriteRef sprite, Vector2D position, Vector2D scale, Vector4 color) =>
+        _scene.Add(new HdrTile(sprite, position, scale, color));
+
+    private sealed class HdrTile : GameInstance
+    {
+        public HdrTile(SpriteRef sprite, Vector2D position, Vector2D scale, Vector4 color)
+        {
+            Sprite = sprite;
+            Transform = new Transform2D(position, 0, scale);
+            Color = color;
+        }
+    }
+
+    private sealed class HdrOwner : GameInstance
+    {
+        private readonly Action<IDomainEvent> _raiseEvent;
+        private ToneMappingSettings _toneSettings;
+
+        public HdrOwner(Action<IDomainEvent> raiseEvent, ToneMappingSettings toneSettings)
+        {
+            _raiseEvent = raiseEvent;
+            _toneSettings = toneSettings;
+        }
+
+        public override void OnCreate()
+        {
+            this.RequestBloom(
+                new BloomSettings(0.7f, 1.1f, 1f, 2, BloomResolution.Half),
+                _raiseEvent,
+                colorFormat: RenderTargetColorFormat.Rgba16Float,
+                encoding: RenderSurfaceEncoding.Linear,
+                presentation: BloomPresentation.SurfaceOnly);
+            RequestToneMapping();
+        }
+
+        public void UpdateToneMapping(ToneMappingSettings settings)
+        {
+            _toneSettings = settings;
+            RequestToneMapping();
+        }
+
+        public override void OnDestroy()
+        {
+            this.ReleaseToneMapping(_raiseEvent);
+            this.ReleaseBloom(_raiseEvent);
+        }
+
+        private void RequestToneMapping() => this.RequestToneMapping(
+            _toneSettings,
+            _raiseEvent,
+            bloomSource: BloomEffectDescriptor.GlowOutput(BloomEffectDescriptor.DefaultKey));
     }
 }
 

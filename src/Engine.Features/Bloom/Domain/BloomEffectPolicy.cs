@@ -7,7 +7,10 @@ internal static class BloomEffectPolicy
 {
     public readonly record struct Configuration(
         BloomSettings Settings,
-        RenderSurfaceKey Source);
+        RenderSurfaceKey Source,
+        RenderTargetColorFormat ColorFormat,
+        RenderSurfaceEncoding Encoding,
+        BloomPresentation Presentation);
 
     public static Configuration ValidateAndGetConfiguration(
         RenderEffectKey key,
@@ -27,10 +30,15 @@ internal static class BloomEffectPolicy
             if (bloom.Key != key)
                 throw new ArgumentException(
                     "Owner descriptor key does not match the effect key.", nameof(owners));
-            var configuration = new Configuration(bloom.Settings, bloom.Source);
+            var configuration = new Configuration(
+                bloom.Settings,
+                bloom.Source,
+                bloom.ColorFormat,
+                bloom.Encoding,
+                bloom.Presentation);
             if (shared is { } existing && existing != configuration)
                 throw new InvalidOperationException(
-                    $"All owners of shared bloom effect '{key}' must use identical settings and source.");
+                    $"All owners of shared bloom effect '{key}' must use identical configuration.");
             shared = configuration;
         }
         return shared!.Value;

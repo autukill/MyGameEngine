@@ -18,13 +18,22 @@ internal static class RenderEffectGraphPlanner
     public static PlannedRenderEffectGraph Plan(
         IReadOnlyDictionary<RenderEffectKey, RenderEffectPlan> plans,
         IEnumerable<RenderSurfaceKey> rootSurfaces)
+        => Plan(plans, rootSurfaces.Select(RenderSurfaceSpec.Ldr));
+
+    public static PlannedRenderEffectGraph Plan(
+        IReadOnlyDictionary<RenderEffectKey, RenderEffectPlan> plans,
+        IEnumerable<RenderSurfaceSpec> rootSurfaces)
     {
         ArgumentNullException.ThrowIfNull(plans);
         ArgumentNullException.ThrowIfNull(rootSurfaces);
-        var roots = rootSurfaces.ToHashSet();
-        if (roots.Any(root => !root.IsValid))
-            throw new ArgumentException("Root surface keys must be initialized.", nameof(rootSurfaces));
-        var producers = new Dictionary<RenderSurfaceKey, RenderEffectKey>();
+        var rootSpecs = rootSurfaces.ToArray();
+        if (rootSpecs.Any(root => !root.Key.IsValid))
+            throw new ArgumentException("Root surface specifications must be initialized.", nameof(rootSurfaces));
+        var roots = new Dictionary<RenderSurfaceKey, RenderSurfaceSpec>();
+        foreach (var root in rootSpecs)
+            if (!roots.TryAdd(root.Key, root))
+                throw new InvalidOperationException($"Root surface '{root.Key}' is duplicated.");
+        var producers = new Dictionary<RenderSurfaceKey, (RenderEffectKey Key, RenderSurfaceSpec Spec)>();
         var outgoing = plans.Keys.ToDictionary(
             key => key,
             _ => new HashSet<RenderEffectKey>());
@@ -35,16 +44,17 @@ internal static class RenderEffectGraphPlanner
             if (plan.Key != key)
                 throw new InvalidOperationException(
                     $"Factory planned effect '{plan.Key}' for requested key '{key}'.");
-            foreach (var output in plan.Outputs)
+            foreach (var outputSpec in plan.OutputSurfaces)
             {
+                var output = outputSpec.Key;
                 if (!string.Equals(output.ProducerKind, key.Kind, StringComparison.Ordinal) ||
                     !string.Equals(output.ProducerSlot, key.Slot, StringComparison.Ordinal))
                     throw new InvalidOperationException(
                         $"Effect '{key}' cannot publish foreign surface '{output}'.");
-                if (roots.Contains(output))
+                if (roots.ContainsKey(output))
                     throw new InvalidOperationException(
                         $"Effect '{key}' cannot replace root surface '{output}'.");
-                if (!producers.TryAdd(output, key))
+                if (!producers.TryAdd(output, (key, outputSpec)))
                     throw new InvalidOperationException(
                         $"Render surface '{output}' has multiple producers.");
             }
@@ -52,13 +62,19 @@ internal static class RenderEffectGraphPlanner
 
         foreach (var (consumer, plan) in plans)
         {
-            foreach (var input in plan.Inputs)
+            foreach (var inputSpec in plan.InputSurfaces)
             {
-                if (roots.Contains(input)) continue;
+                var input = inputSpec.Key;
+                if (roots.TryGetValue(input, out var rootSpec))
+                {
+                    ValidateCompatible(inputSpec, rootSpec, consumer);
+                    continue;
+                }
                 if (!producers.TryGetValue(input, out var producer))
                     throw new InvalidOperationException(
                         $"Effect '{consumer}' requires missing render surface '{input}'.");
-                if (outgoing[producer].Add(consumer)) indegree[consumer]++;
+                ValidateCompatible(inputSpec, producer.Spec, consumer);
+                if (outgoing[producer.Key].Add(consumer)) indegree[consumer]++;
             }
         }
 
@@ -81,5 +97,18 @@ internal static class RenderEffectGraphPlanner
         if (ordered.Count != plans.Count)
             throw new InvalidOperationException("Render effect dependency graph contains a cycle.");
         return new PlannedRenderEffectGraph(ordered, plans);
+    }
+
+    private static void ValidateCompatible(
+        RenderSurfaceSpec required,
+        RenderSurfaceSpec actual,
+        RenderEffectKey consumer)
+    {
+        if (required.ColorFormat == actual.ColorFormat && required.Encoding == actual.Encoding)
+            return;
+        throw new InvalidOperationException(
+            $"Effect '{consumer}' requires surface '{required.Key}' as " +
+            $"{required.ColorFormat}/{required.Encoding}, but producer provides " +
+            $"{actual.ColorFormat}/{actual.Encoding}.");
     }
 }

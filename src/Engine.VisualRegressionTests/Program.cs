@@ -57,6 +57,7 @@ internal static class Program {
         yield return new DynamicEffectResizeScenario();
         yield return new BloomPingPongScenario();
         yield return new RenderSurfaceChainScenario();
+        yield return new HdrToneMappingScenario();
     }
 
     private static void RunComparerSelfChecks() {

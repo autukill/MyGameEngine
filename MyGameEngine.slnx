@@ -36,6 +36,10 @@
     <Project Path="src/Engine.Features/TextureAtlas.Tests/TextureAtlas.Tests.csproj" />
     <Project Path="src/Engine.Features/TextureAtlas/TextureAtlas.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/ToneMapping/">
+    <Project Path="src/Engine.Features/ToneMapping.Tests/ToneMapping.Tests.csproj" />
+    <Project Path="src/Engine.Features/ToneMapping/ToneMapping.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/Sprites/">
     <Project Path="src/Engine.Features/Sprites.Tests/Sprites.Tests.csproj" />
     <Project Path="src/Engine.Features/Sprites.VisualTests/Sprites.VisualTests.csproj" />

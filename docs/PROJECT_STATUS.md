@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 32 个 .NET 项目、134 个 C# 文件，Feature 拆分为 Bloom、Camera、ContentAssets、RenderPipeline、SceneSystem、Sprites、StencilMasking、TextureAssets、TextureAtlas 九个独立模块。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 34 个 .NET 项目、142 个 C# 文件，Feature 拆分为 Bloom、Camera、ContentAssets、RenderPipeline、SceneSystem、Sprites、StencilMasking、TextureAssets、TextureAtlas、ToneMapping 十个独立模块。
 
 ## 已完成
 
@@ -19,9 +19,12 @@
 - 独立 Bloom 描述符、三目标 Bright/Ping/Pong 效果链、五采样分离高斯与分辨率重建协议。
 - 纯逻辑 `RenderSurfaceKey`、Factory Plan、根 Surface 注册、效果输出解析与稳定拓扑依赖图。
 - 动态效果结构变化采用全图原子重建；缺失输入、重复输出、循环、创建或挂接失败均保留旧图。
-- 11 个无窗口冒烟项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、编译产物、动态 owner、Bloom 设置和池所有权。
+- RenderTarget 支持 RGBA8 与 RGBA16F；Pool 按完整格式隔离复用，逻辑 Surface 同时校验存储格式与 Linear/Display 编码。
+- 独立 Tone Mapping 描述符、ACES/Reinhard、Exposure/Gamma 原地更新，以及 Scene + Bloom HDR 合并后输出 RGBA8。
+- Runner 已迁移为 RGBA16F Scene → HDR Bloom → ACES Tone Mapping，并保持 Stencil、resize 与释放行为。
+- 12 个无窗口冒烟项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、编译产物、动态 owner、Bloom/Tone Mapping 设置和池所有权。
 - `Engine.Testing.Visual` 提供隐藏固定步长窗口、RGBA8 framebuffer 捕获、PNG 编解码和像素容差比较。
-- 自动 GPU 回归覆盖 Sprite 原点/变换、Stencil 生命周期、动态效果 resize、Bloom 生命周期及双 Bloom Surface 串联，并支持 checkpoint 独立容差。
+- 自动 GPU 回归覆盖 Sprite、Stencil、动态 resize、Bloom、双 Bloom Surface 串联，以及 HDR 的 ACES/Reinhard、曝光、resize 和释放，共 13 个 checkpoint。
 - AssetCompiler 可打包为 `gameengine-assets` .NET Tool；ContentPipeline NuGet 包通过 `buildTransitive` 为外部项目提供内置编译器、增量 Build 与 Publish 接入。
 - 包集成测试使用临时本地 Feed，真实验证 Tool 安装、带空格路径、Debug/Release、缓存命中与 Publish 边界。
 
@@ -34,18 +37,18 @@
 - 各交互式 VisualTests 仍需人工观察；自动基线已覆盖五条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 
-## 下一里程碑：HDR RenderTarget 与 Tone Mapping
+## 下一里程碑：显式 Present 节点与 HDR/LDR UI 边界
 
-1. 为 RenderTargetDescriptor 增加可选 RGBA16F，并保持 Pool 按完整格式隔离复用。
-2. 新增独立 Tone Mapping 描述符与 Pass，消费逻辑 HDR Surface 并输出 RGBA8 合成表面。
-3. 让 Scene 与 Bloom 可选择 HDR 输入/中间目标，同时保留当前 RGBA8 默认路径。
-4. 建立 exposure、钳制、resize 与格式回收的 GPU 基线，再固化无显示器 CI 环境。
+1. 把当前 Runtime 的 `CompositeSources` 副作用收口为显式 Present 描述符/节点，使最终屏幕依赖也进入逻辑图。
+2. 定义 HDR World → Tone Mapping → LDR UI 的固定组合顺序，避免 UI 参与曝光与 Bloom。
+3. 为 Present 顺序、空输出、UI resize 和效果释放建立 GPU 基线。
+4. 固化无显示器 CI 的软件 OpenGL 环境，再评估自动曝光与亮度直方图。
 
 ## 已知限制
 
-- v1 RenderTarget 只支持 RGBA8 与可选 Depth24Stencil8，不支持 HDR、MSAA 或多 Attachment。
+- RenderTarget 当前支持 RGBA8/RGBA16F 与可选 Depth24Stencil8，但不支持 MSAA、多 Attachment、sRGB framebuffer 或自动曝光。
 - ContentAssets 仍是同步全量解码上传，没有流式驻留、显存预算或 LRU。
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Bloom](BLOOM_EFFECT.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

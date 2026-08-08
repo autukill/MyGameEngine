@@ -47,7 +47,11 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         StencilMaskEffectPolicy.ValidateAndOrder(key, owners);
         return new RenderEffectPlan(
             key,
-            outputs: new[] { StencilMaskEffectDescriptor.MaskOutput(key) });
+            inputSurfaces: null,
+            outputSurfaces: new[]
+            {
+                RenderSurfaceSpec.Ldr(StencilMaskEffectDescriptor.MaskOutput(key))
+            });
     }
 
     public IRenderEffectRuntime Create(
@@ -87,7 +91,8 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
                     new RenderEffectCompositeSource(
                         maskLease.Target,
                         ViewportRect.FullScreen,
-                        BlendState.AlphaBlend)
+                        BlendState.AlphaBlend,
+                        Order: 100)
                 },
                 new[]
                 {

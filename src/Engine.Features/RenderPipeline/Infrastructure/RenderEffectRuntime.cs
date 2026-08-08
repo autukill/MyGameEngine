@@ -12,7 +12,8 @@ public readonly record struct RenderEffectBuildContext(
 public readonly record struct RenderEffectCompositeSource(
     RenderTarget2D Source,
     ViewportRect Viewport,
-    BlendState Blend);
+    BlendState Blend,
+    int Order = 0);
 
 /// <summary>Factory 创建的运行时附件；Pass 在挂接后由 Pipeline 释放，Runtime 释放租约。</summary>
 public interface IRenderEffectRuntime : IDisposable
@@ -63,7 +64,7 @@ internal sealed class RenderEffectGraphEditor : IRenderEffectGraphEditor
     public RenderPassHandle AddPass(RenderPass pass) => _pipeline.AddPass(pass);
     public bool RemovePass(RenderPassHandle handle) => _pipeline.RemovePass(handle);
     public CompositeSourceHandle AddCompositeSource(in RenderEffectCompositeSource source) =>
-        _compositor.AddSource(source.Source, source.Viewport, source.Blend);
+        _compositor.AddSource(source.Source, source.Viewport, source.Blend, source.Order);
     public bool RemoveCompositeSource(CompositeSourceHandle handle) =>
         _compositor.RemoveSource(handle);
 }

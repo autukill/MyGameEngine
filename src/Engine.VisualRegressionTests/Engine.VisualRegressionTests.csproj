@@ -18,6 +18,7 @@
     <ProjectReference Include="..\Engine.Features\RenderPipeline\RenderPipeline.csproj" />
     <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" />
+    <ProjectReference Include="..\Engine.Features\ToneMapping\ToneMapping.csproj" />
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
   </ItemGroup>
 </Project>

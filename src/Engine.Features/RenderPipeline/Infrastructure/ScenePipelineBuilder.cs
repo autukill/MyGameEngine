@@ -11,7 +11,7 @@ public sealed class ScenePipelineBuilder : IDisposable
     private readonly IRenderTargetPool _targets;
     private readonly Dictionary<string, IRenderEffectFactory> _factories =
         new(StringComparer.Ordinal);
-    private readonly Dictionary<RenderSurfaceKey, RenderTarget2D> _rootSurfaces = new();
+    private readonly Dictionary<RenderSurfaceKey, RenderSurfaceRegistration> _rootSurfaces = new();
     private readonly Dictionary<RenderEffectKey, ActiveEffect> _active = new();
     private readonly List<RenderEffectKey> _activeOrder = new();
     private int _width;
@@ -57,7 +57,10 @@ public sealed class ScenePipelineBuilder : IDisposable
     }
 
     /// <summary>注册由组合根拥有的借用 Surface；必须在首个效果创建前完成。</summary>
-    public void RegisterRootSurface(RenderSurfaceKey key, RenderTarget2D surface)
+    public void RegisterRootSurface(
+        RenderSurfaceKey key,
+        RenderTarget2D surface,
+        RenderSurfaceEncoding? encoding = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(surface);
@@ -66,7 +69,13 @@ public sealed class ScenePipelineBuilder : IDisposable
         if (_active.Count != 0)
             throw new InvalidOperationException(
                 "Root render surfaces cannot change while effects are active.");
-        if (!_rootSurfaces.TryAdd(key, surface))
+        var spec = new RenderSurfaceSpec(
+            key,
+            surface.ColorFormat,
+            encoding ?? (surface.ColorFormat == RenderTargetColorFormat.Rgba16Float
+                ? RenderSurfaceEncoding.Linear
+                : RenderSurfaceEncoding.Display));
+        if (!_rootSurfaces.TryAdd(key, new RenderSurfaceRegistration(surface, spec)))
             throw new ArgumentException(
                 $"Root render surface '{key}' is already registered.", nameof(key));
     }
@@ -153,7 +162,9 @@ public sealed class ScenePipelineBuilder : IDisposable
                            $"Effect factory '{key.Kind}' returned a null plan.");
             plans.Add(key, plan);
         }
-        return RenderEffectGraphPlanner.Plan(plans, _rootSurfaces.Keys);
+        return RenderEffectGraphPlanner.Plan(
+            plans,
+            _rootSurfaces.Values.Select(root => root.Spec));
     }
 
     private void Reconcile(
@@ -221,8 +232,8 @@ public sealed class ScenePipelineBuilder : IDisposable
                 try
                 {
                     ValidateRuntime(key, planned.Plans[key], runtime);
-                    foreach (var output in runtime.Outputs)
-                        surfaces.Add(output.Key, output.Surface);
+                    for (int i = 0; i < runtime.Outputs.Count; i++)
+                        surfaces.Add(planned.Plans[key].OutputSurfaces[i], runtime.Outputs[i].Surface);
                 }
                 catch
                 {
@@ -360,6 +371,15 @@ public sealed class ScenePipelineBuilder : IDisposable
         if (runtime.Outputs.Any(output => output.Surface is null))
             throw new InvalidOperationException(
                 $"Effect runtime '{key}' returned a null render surface.");
+        for (int i = 0; i < runtime.Outputs.Count; i++)
+        {
+            var expected = plan.OutputSurfaces[i];
+            var actual = runtime.Outputs[i].Surface;
+            if (actual.ColorFormat != expected.ColorFormat)
+                throw new InvalidOperationException(
+                    $"Effect runtime '{key}' output '{expected.Key}' uses " +
+                    $"{actual.ColorFormat}, expected {expected.ColorFormat}.");
+        }
     }
 
     private static Dictionary<InstanceId, IRenderEffectDescriptor> GetOrAdd(
