@@ -38,6 +38,7 @@ src/
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
+├── build/GameEngine.Content.targets     # Build/Run/Publish 增量资产集成
 ├── Engine.DddTests/                     # 聚合、生命周期、输入与状态调度验证
 └── MyGame.Runner/                       # Stencil + Bloom 综合 Demo
 ```
@@ -95,7 +96,7 @@ dotnet run --project src/Engine.Features/TextureAtlas.Tests/TextureAtlas.Tests.c
 dotnet run --project src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj
 ```
 
-图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 的源包包含双帧 WebP 图集和两张独立 WebP 帧，运行时加载 `AssetsCompiled/assets.json` 与单页 Atlas 产物，展示两类动画、中心/非中心原点、旋转、非均匀缩放与翻转；这些项目需要本地图形窗口人工确认。
+图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 的源包包含双帧 WebP 图集和两张独立 WebP 帧，Build 自动在 `obj` 生成单页 Atlas 并复制到 `AssetsCompiled`；这些项目需要本地图形窗口人工确认。
 
 ## Sprite 便利 API
 
@@ -135,12 +136,13 @@ var idle = package.GetSprite("boss.idle");
 
 ```powershell
 dotnet run --project src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.csproj -- `
+  --incremental `
   src/Engine.Features/Sprites.VisualTests/Assets `
   assets.json `
   artifacts/sprites-visual
 ```
 
-编译器按采样方式生成确定性 Atlas PNG 页面，并输出标准 `assets.json`。单帧超过页面上限时会自动保留为独立 Texture；同一动画可以跨页面或混合 Atlas/独立 Texture。完整说明见 [离线 Texture Atlas 使用指南](docs/TEXTURE_ATLAS.md)。
+编译器按包维护内容指纹和输出 SHA-256，只重建受影响包及上游；构建使用临时目录原子替换，失败保留旧产物。Runner 与 Sprites.VisualTests 已通过共享 MSBuild Target 自动接入 Build、Run 和 Publish。完整说明见 [离线 Texture Atlas 使用指南](docs/TEXTURE_ATLAS.md)和 [`GameEngine.Content.targets` 解读](docs/GAMEENGINE_CONTENT_TARGETS.md)。
 
 ## 渲染流程
 
@@ -158,7 +160,7 @@ Pass 通过输入/输出 RenderTarget 声明依赖，Pipeline 在每帧执行前
 1. `RenderEffectRequested`：实例通过领域事件声明特需渲染效果。
 2. `RenderTargetPool`：复用临时 RT，并按效果 owner 集合回收动态 Pass。
 3. 将 VisualTests 纳入可重复的 GPU 快照或像素回归验证。
-4. 为 AssetCompiler 增加内容哈希与增量构建缓存，并接入 MSBuild 发布产物目录。
+4. 将 AssetCompiler 发布为可复用 dotnet tool/NuGet 构建包，并增加跨仓库缓存。
 5. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

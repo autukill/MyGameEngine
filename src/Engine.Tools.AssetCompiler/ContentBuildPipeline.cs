@@ -1,0 +1,717 @@
+namespace GameEngine.Tools.AssetCompiler;
+
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using GameEngine.Features.ContentAssets.Domain;
+using GameEngine.Features.ContentAssets.Infrastructure;
+
+/// <summary>
+/// Builds a complete content dependency graph into an owned, fingerprinted runtime packages root.
+/// </summary>
+public sealed class ContentBuildPipeline
+{
+    public const string CompilerVersion = "2";
+    public const string MetadataFileName = ".mygame-assets.json";
+    private const string OwnerName = "MyGameEngine.AssetCompiler";
+    private const int MetadataSchemaVersion = 1;
+
+    private sealed class GraphNode
+    {
+        public required string ManifestPath { get; init; }
+        public required string RelativeManifestPath { get; init; }
+        public required string PackageDirectory { get; init; }
+        public required AssetPackageManifest Manifest { get; init; }
+        public List<GraphNode> Dependencies { get; } = [];
+    }
+
+    private sealed class BuildMetadata
+    {
+        public int SchemaVersion { get; init; }
+        public string Owner { get; init; } = string.Empty;
+        public string CompilerVersion { get; init; } = string.Empty;
+        public string RootPackageId { get; init; } = string.Empty;
+        public string RootManifest { get; init; } = string.Empty;
+        public string InputFingerprint { get; init; } = string.Empty;
+        public int PackageCount { get; init; }
+        public int AtlasPageCount { get; init; }
+        public int PackedFrameCount { get; init; }
+        public int PassthroughFrameCount { get; init; }
+        public List<OutputFileHash> Outputs { get; init; } = [];
+        public List<PackageBuildMetadata> Packages { get; init; } = [];
+    }
+
+    private sealed record OutputFileHash(string Path, string Sha256);
+
+    private sealed class PackageBuildMetadata
+    {
+        public string Id { get; init; } = string.Empty;
+        public string Manifest { get; init; } = string.Empty;
+        public string InputFingerprint { get; init; } = string.Empty;
+        public int AtlasPageCount { get; init; }
+        public int PackedFrameCount { get; init; }
+        public int PassthroughFrameCount { get; init; }
+        public List<OutputFileHash> Outputs { get; init; } = [];
+    }
+
+    private static readonly JsonSerializerOptions MetadataJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    private readonly ContentAssetCompiler _packageCompiler;
+
+    public ContentBuildPipeline(ContentAssetCompiler? packageCompiler = null) =>
+        _packageCompiler = packageCompiler ?? new ContentAssetCompiler();
+
+    public ContentBuildResult Build(ContentBuildRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.PackagesRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.RootRelativeManifestPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(request.OutputDirectory);
+
+        string packagesRoot = Path.GetFullPath(request.PackagesRoot);
+        if (!Directory.Exists(packagesRoot))
+            throw new DirectoryNotFoundException($"Packages root '{packagesRoot}' does not exist.");
+        string output = Path.GetFullPath(request.OutputDirectory);
+        ValidateOutputBoundary(packagesRoot, output);
+
+        string rootManifest = ResolveUnderRoot(
+            packagesRoot,
+            request.RootRelativeManifestPath,
+            "Root manifest");
+        var nodesByPath = new Dictionary<string, GraphNode>(PathComparer);
+        var nodesById = new Dictionary<string, GraphNode>(StringComparer.Ordinal);
+        GraphNode root = ReadGraph(
+            packagesRoot,
+            rootManifest,
+            null,
+            nodesByPath,
+            nodesById,
+            []);
+        GraphNode[] graph = nodesById.Values
+            .OrderBy(node => PackageDepth(node.RelativeManifestPath))
+            .ThenBy(node => node.RelativeManifestPath, StringComparer.Ordinal)
+            .ToArray();
+        ValidateGraph(graph);
+
+        IReadOnlyDictionary<string, string> packageFingerprints =
+            ComputePackageFingerprints(packagesRoot, graph);
+        string fingerprint = packageFingerprints[root.Manifest.Id];
+        BuildMetadata? current = TryReadMetadata(output);
+        bool upToDate = IsUpToDate(
+            output,
+            current,
+            root.Manifest.Id,
+            NormalizeRelativePath(request.RootRelativeManifestPath),
+            fingerprint);
+
+        if (request.Mode == ContentBuildMode.Check)
+        {
+            return ResultFromMetadata(
+                root,
+                output,
+                request.RootRelativeManifestPath,
+                fingerprint,
+                upToDate ? ContentBuildStatus.UpToDate : ContentBuildStatus.Stale,
+                current,
+                graph.Length);
+        }
+        if (request.Mode == ContentBuildMode.Incremental && upToDate)
+        {
+            return ResultFromMetadata(
+                root,
+                output,
+                request.RootRelativeManifestPath,
+                fingerprint,
+                ContentBuildStatus.UpToDate,
+                current,
+                graph.Length);
+        }
+
+        EnsureReplaceableOutput(output, current);
+        string staging = output + $".tmp-{Guid.NewGuid():N}";
+        string backup = output + $".backup-{Guid.NewGuid():N}";
+        int atlasPages = 0;
+        int packedFrames = 0;
+        int passthroughFrames = 0;
+        int builtPackages = 0;
+        int reusedPackages = 0;
+        var packageMetadata = new List<PackageBuildMetadata>(graph.Length);
+
+        try
+        {
+            foreach (var node in graph)
+            {
+                string packageFingerprint = packageFingerprints[node.Manifest.Id];
+                PackageBuildMetadata? cachedPackage = current?.Packages.FirstOrDefault(item =>
+                    StringComparer.Ordinal.Equals(item.Id, node.Manifest.Id) &&
+                    StringComparer.Ordinal.Equals(item.InputFingerprint, packageFingerprint));
+                if (request.Mode == ContentBuildMode.Incremental &&
+                    cachedPackage is not null &&
+                    ArePackageOutputsValid(output, cachedPackage))
+                {
+                    CopyCachedPackageOutputs(output, staging, cachedPackage);
+                    packageMetadata.Add(cachedPackage);
+                    atlasPages += cachedPackage.AtlasPageCount;
+                    packedFrames += cachedPackage.PackedFrameCount;
+                    passthroughFrames += cachedPackage.PassthroughFrameCount;
+                    reusedPackages++;
+                    continue;
+                }
+
+                int packageAtlasPages = 0;
+                int packagePackedFrames = 0;
+                int packagePassthroughFrames = 0;
+                if (node.Manifest.Atlas is null)
+                {
+                    CopyRawPackage(staging, node);
+                }
+                else
+                {
+                    string isolatedPackage = output + $".package-{Guid.NewGuid():N}";
+                    try
+                    {
+                        string relativePackageDirectory =
+                            Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
+                        var compiled = _packageCompiler.CompilePackageOnly(
+                            packagesRoot,
+                            node.RelativeManifestPath,
+                            isolatedPackage,
+                            Path.GetFileName(node.RelativeManifestPath));
+                        CopyDirectory(
+                            isolatedPackage,
+                            ResolveOutputPath(staging, relativePackageDirectory));
+                        packageAtlasPages = compiled.AtlasPageCount;
+                        packagePackedFrames = compiled.PackedFrameCount;
+                        packagePassthroughFrames = compiled.PassthroughFrameCount;
+                    }
+                    finally
+                    {
+                        DeleteDirectoryIfExists(isolatedPackage);
+                    }
+                }
+
+                atlasPages += packageAtlasPages;
+                packedFrames += packagePackedFrames;
+                passthroughFrames += packagePassthroughFrames;
+                packageMetadata.Add(new PackageBuildMetadata
+                {
+                    Id = node.Manifest.Id,
+                    Manifest = node.RelativeManifestPath,
+                    InputFingerprint = packageFingerprint,
+                    AtlasPageCount = packageAtlasPages,
+                    PackedFrameCount = packagePackedFrames,
+                    PassthroughFrameCount = packagePassthroughFrames,
+                    Outputs = HashPackageOutput(staging, node)
+                });
+                builtPackages++;
+            }
+
+            string outputManifest = ResolveOutputPath(
+                staging,
+                NormalizeRelativePath(request.RootRelativeManifestPath));
+            if (!File.Exists(outputManifest))
+                throw new InvalidDataException("The build did not produce the root runtime manifest.");
+
+            var metadata = new BuildMetadata
+            {
+                SchemaVersion = MetadataSchemaVersion,
+                Owner = OwnerName,
+                CompilerVersion = CompilerVersion,
+                RootPackageId = root.Manifest.Id,
+                RootManifest = NormalizeRelativePath(request.RootRelativeManifestPath),
+                InputFingerprint = fingerprint,
+                PackageCount = graph.Length,
+                AtlasPageCount = atlasPages,
+                PackedFrameCount = packedFrames,
+                PassthroughFrameCount = passthroughFrames,
+                Outputs = HashOutputFiles(staging),
+                Packages = packageMetadata
+                    .OrderBy(item => item.Manifest, StringComparer.Ordinal)
+                    .ToList()
+            };
+            WriteMetadata(staging, metadata);
+            ReplaceOutputAtomically(output, staging, backup);
+
+            return new ContentBuildResult(
+                root.Manifest.Id,
+                ResolveOutputPath(output, NormalizeRelativePath(request.RootRelativeManifestPath)),
+                fingerprint,
+                ContentBuildStatus.Built,
+                graph.Length,
+                builtPackages,
+                reusedPackages,
+                atlasPages,
+                packedFrames,
+                passthroughFrames);
+        }
+        catch
+        {
+            DeleteDirectoryIfExists(staging);
+            if (Directory.Exists(backup) && !Directory.Exists(output))
+                Directory.Move(backup, output);
+            throw;
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(backup);
+        }
+    }
+
+    private static ContentBuildResult ResultFromMetadata(
+        GraphNode root,
+        string output,
+        string rootRelativeManifestPath,
+        string fingerprint,
+        ContentBuildStatus status,
+        BuildMetadata? metadata,
+        int packageCount) => new(
+            root.Manifest.Id,
+            ResolveOutputPath(output, NormalizeRelativePath(rootRelativeManifestPath)),
+            fingerprint,
+            status,
+            metadata?.PackageCount ?? packageCount,
+            0,
+            status == ContentBuildStatus.UpToDate ? packageCount : 0,
+            metadata?.AtlasPageCount ?? 0,
+            metadata?.PackedFrameCount ?? 0,
+            metadata?.PassthroughFrameCount ?? 0);
+
+    private static GraphNode ReadGraph(
+        string packagesRoot,
+        string manifestPath,
+        string? expectedId,
+        Dictionary<string, GraphNode> nodesByPath,
+        Dictionary<string, GraphNode> nodesById,
+        HashSet<string> visiting)
+    {
+        if (visiting.Contains(manifestPath))
+            throw new InvalidDataException($"Content package dependency cycle reaches '{manifestPath}'.");
+        if (nodesByPath.TryGetValue(manifestPath, out var known))
+        {
+            if (expectedId is not null && !StringComparer.Ordinal.Equals(expectedId, known.Manifest.Id))
+                throw new InvalidDataException($"Dependency expected '{expectedId}', but found '{known.Manifest.Id}'.");
+            return known;
+        }
+
+        using var stream = File.OpenRead(manifestPath);
+        AssetPackageManifest manifest = AssetPackageManifestParser.Parse(stream);
+        if (expectedId is not null && !StringComparer.Ordinal.Equals(expectedId, manifest.Id))
+            throw new InvalidDataException($"Dependency expected '{expectedId}', but found '{manifest.Id}'.");
+        if (nodesById.TryGetValue(manifest.Id, out var sameId) &&
+            !PathComparer.Equals(sameId.ManifestPath, manifestPath))
+        {
+            throw new InvalidDataException($"Package id '{manifest.Id}' resolves to multiple manifests.");
+        }
+
+        string relativeManifest = NormalizeRelativePath(Path.GetRelativePath(packagesRoot, manifestPath));
+        var node = new GraphNode
+        {
+            ManifestPath = manifestPath,
+            RelativeManifestPath = relativeManifest,
+            PackageDirectory = Path.GetDirectoryName(manifestPath)!,
+            Manifest = manifest
+        };
+        nodesByPath.Add(manifestPath, node);
+        nodesById.Add(manifest.Id, node);
+        visiting.Add(manifestPath);
+        try
+        {
+            foreach (var dependency in manifest.Dependencies)
+            {
+                string dependencyPath = ResolveUnderRoot(
+                    packagesRoot,
+                    dependency.Manifest,
+                    "Dependency manifest");
+                node.Dependencies.Add(ReadGraph(
+                    packagesRoot,
+                    dependencyPath,
+                    dependency.Id,
+                    nodesByPath,
+                    nodesById,
+                    visiting));
+            }
+        }
+        finally
+        {
+            visiting.Remove(manifestPath);
+        }
+        return node;
+    }
+
+    private static void ValidateGraph(IReadOnlyList<GraphNode> graph)
+    {
+        var packageDirectories = new HashSet<string>(PathComparer);
+        var textureOwners = new Dictionary<string, GraphNode>(StringComparer.Ordinal);
+        var spriteNames = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var node in graph)
+        {
+            if (!packageDirectories.Add(node.PackageDirectory))
+            {
+                throw new InvalidDataException(
+                    $"Multiple package manifests share directory '{node.PackageDirectory}'.");
+            }
+            foreach (var texture in node.Manifest.Textures)
+            {
+                if (!textureOwners.TryAdd(texture.Name, node))
+                    throw new InvalidDataException($"Texture '{texture.Name}' appears in multiple packages.");
+                string relativeDirectory = Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
+                string normalizedTexturePath = Path.GetRelativePath(
+                    node.PackageDirectory,
+                    Path.GetFullPath(Path.Combine(node.PackageDirectory, texture.Path)));
+                string outputPath = NormalizeRelativePath(
+                    Path.Combine(relativeDirectory, normalizedTexturePath));
+                if (StringComparer.OrdinalIgnoreCase.Equals(outputPath, MetadataFileName))
+                    throw new InvalidDataException($"Texture '{texture.Name}' uses reserved build metadata path.");
+            }
+            foreach (var sprite in node.Manifest.Sprites)
+            {
+                if (!spriteNames.Add(sprite.Name))
+                    throw new InvalidDataException($"Sprite '{sprite.Name}' appears in multiple packages.");
+            }
+        }
+
+        foreach (var consumer in graph)
+        {
+            foreach (var sprite in consumer.Manifest.Sprites)
+            {
+                foreach (string textureName in EnumerateSpriteTextureNames(sprite))
+                {
+                    if (!textureOwners.TryGetValue(textureName, out var owner))
+                        continue;
+                    if (ReferenceEquals(owner, consumer))
+                        continue;
+                    if (owner.Manifest.Atlas?.Textures.Contains(textureName, StringComparer.Ordinal) == true)
+                    {
+                        throw new InvalidDataException(
+                            $"Package '{consumer.Manifest.Id}' references build-only Atlas Texture " +
+                            $"'{textureName}' owned by dependency '{owner.Manifest.Id}'. " +
+                            "Reference the dependency Sprite instead, or remove that Texture from its Atlas inputs.");
+                    }
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateSpriteTextureNames(SpriteAssetDefinition sprite)
+    {
+        if (sprite.Layout is SpriteAssetLayout.Single or SpriteAssetLayout.Grid)
+        {
+            yield return sprite.TextureName!;
+            yield break;
+        }
+        foreach (var frame in sprite.Frames)
+            yield return frame.TextureName ?? sprite.TextureName!;
+    }
+
+    private static IReadOnlyDictionary<string, string> ComputePackageFingerprints(
+        string packagesRoot,
+        IReadOnlyList<GraphNode> graph)
+    {
+        var fingerprints = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        string Compute(GraphNode node)
+        {
+            if (fingerprints.TryGetValue(node.Manifest.Id, out string? known))
+                return known;
+
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            AppendString(hash, OwnerName);
+            AppendString(hash, CompilerVersion);
+            AppendString(hash, node.Manifest.Id);
+            AppendString(hash, node.RelativeManifestPath);
+            AppendFile(hash, node.ManifestPath);
+
+            foreach (var texture in node.Manifest.Textures
+                         .OrderBy(item => item.Name, StringComparer.Ordinal))
+            {
+                string source = ResolveUnderRoot(node.PackageDirectory, texture.Path, "Texture");
+                string relative = NormalizeRelativePath(Path.GetRelativePath(packagesRoot, source));
+                AppendString(hash, texture.Name);
+                AppendString(hash, relative);
+                AppendFile(hash, source);
+            }
+
+            foreach (var dependency in node.Dependencies)
+            {
+                AppendString(hash, dependency.Manifest.Id);
+                AppendString(hash, Compute(dependency));
+            }
+
+            string fingerprint = Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+            fingerprints.Add(node.Manifest.Id, fingerprint);
+            return fingerprint;
+        }
+
+        foreach (var node in graph)
+            Compute(node);
+        return fingerprints;
+    }
+
+    private static void AppendString(IncrementalHash hash, string value)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(value);
+        Span<byte> length = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(length, bytes.Length);
+        hash.AppendData(length);
+        hash.AppendData(bytes);
+    }
+
+    private static void AppendFile(IncrementalHash hash, string path)
+    {
+        using var stream = File.OpenRead(path);
+        byte[] buffer = new byte[64 * 1024];
+        int read;
+        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+            hash.AppendData(buffer, 0, read);
+    }
+
+    private static void CopyRawPackage(string staging, GraphNode node)
+    {
+        string manifestTarget = ResolveOutputPath(staging, node.RelativeManifestPath);
+        CopyFileExclusive(node.ManifestPath, manifestTarget);
+        string relativeDirectory = Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
+        foreach (var texture in node.Manifest.Textures)
+        {
+            string source = ResolveUnderRoot(node.PackageDirectory, texture.Path, "Texture");
+            string target = ResolveOutputPath(staging, Path.Combine(relativeDirectory, texture.Path));
+            CopyFileExclusive(source, target);
+        }
+    }
+
+    private static List<OutputFileHash> HashPackageOutput(string staging, GraphNode node)
+    {
+        string relativeDirectory = Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
+        string packageOutput = ResolveOutputPath(staging, relativeDirectory);
+        return Directory.GetFiles(packageOutput, "*", SearchOption.AllDirectories)
+            .Select(path => new OutputFileHash(
+                NormalizeRelativePath(Path.GetRelativePath(staging, path)),
+                HashFile(path)))
+            .OrderBy(item => item.Path, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private static bool ArePackageOutputsValid(
+        string output,
+        PackageBuildMetadata package)
+    {
+        if (!Directory.Exists(output) || package.Outputs.Count == 0)
+            return false;
+        foreach (var file in package.Outputs)
+        {
+            string path = ResolveOutputPath(output, file.Path);
+            if (!File.Exists(path) || !StringComparer.OrdinalIgnoreCase.Equals(
+                    HashFile(path), file.Sha256))
+                return false;
+        }
+        return true;
+    }
+
+    private static void CopyCachedPackageOutputs(
+        string output,
+        string staging,
+        PackageBuildMetadata package)
+    {
+        foreach (var file in package.Outputs)
+        {
+            CopyFileExclusive(
+                ResolveOutputPath(output, file.Path),
+                ResolveOutputPath(staging, file.Path));
+        }
+    }
+
+    private static void CopyDirectory(string source, string destination)
+    {
+        foreach (string directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
+        {
+            string relative = Path.GetRelativePath(source, directory);
+            Directory.CreateDirectory(ResolveOutputPath(destination, relative));
+        }
+        foreach (string file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+        {
+            string relative = Path.GetRelativePath(source, file);
+            CopyFileExclusive(file, ResolveOutputPath(destination, relative));
+        }
+    }
+
+    private static void CopyFileExclusive(string source, string destination)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        if (File.Exists(destination))
+            throw new InvalidDataException($"Build output path '{destination}' is produced more than once.");
+        File.Copy(source, destination, overwrite: false);
+    }
+
+    private static List<OutputFileHash> HashOutputFiles(string output) =>
+        Directory.GetFiles(output, "*", SearchOption.AllDirectories)
+            .Where(path => !PathComparer.Equals(
+                path, Path.Combine(output, MetadataFileName)))
+            .Select(path => new OutputFileHash(
+                NormalizeRelativePath(Path.GetRelativePath(output, path)),
+                HashFile(path)))
+            .OrderBy(item => item.Path, StringComparer.Ordinal)
+            .ToList();
+
+    private static string HashFile(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+    }
+
+    private static void WriteMetadata(string output, BuildMetadata metadata)
+    {
+        string path = Path.Combine(output, MetadataFileName);
+        using var stream = File.Create(path);
+        JsonSerializer.Serialize(stream, metadata, MetadataJsonOptions);
+    }
+
+    private static BuildMetadata? TryReadMetadata(string output)
+    {
+        string path = Path.Combine(output, MetadataFileName);
+        if (!File.Exists(path)) return null;
+        try
+        {
+            using var stream = File.OpenRead(path);
+            return JsonSerializer.Deserialize<BuildMetadata>(stream, MetadataJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsUpToDate(
+        string output,
+        BuildMetadata? metadata,
+        string packageId,
+        string rootManifest,
+        string fingerprint)
+    {
+        if (metadata is null ||
+            metadata.SchemaVersion != MetadataSchemaVersion ||
+            metadata.Owner != OwnerName ||
+            metadata.CompilerVersion != CompilerVersion ||
+            metadata.RootPackageId != packageId ||
+            metadata.RootManifest != rootManifest ||
+            metadata.InputFingerprint != fingerprint ||
+            !Directory.Exists(output))
+        {
+            return false;
+        }
+
+        string[] actual = Directory.GetFiles(output, "*", SearchOption.AllDirectories)
+            .Where(path => !PathComparer.Equals(
+                path, Path.Combine(output, MetadataFileName)))
+            .Select(path => NormalizeRelativePath(Path.GetRelativePath(output, path)))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+        string[] expected = metadata.Outputs
+            .Select(item => item.Path)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+        if (!actual.SequenceEqual(expected, StringComparer.Ordinal)) return false;
+
+        foreach (var expectedFile in metadata.Outputs)
+        {
+            string path = ResolveOutputPath(output, expectedFile.Path);
+            if (!File.Exists(path) || !StringComparer.OrdinalIgnoreCase.Equals(
+                    HashFile(path), expectedFile.Sha256))
+                return false;
+        }
+        return true;
+    }
+
+    private static void EnsureReplaceableOutput(string output, BuildMetadata? metadata)
+    {
+        if (!Directory.Exists(output)) return;
+        if (!Directory.EnumerateFileSystemEntries(output).Any()) return;
+        if (metadata?.SchemaVersion == MetadataSchemaVersion && metadata.Owner == OwnerName)
+            return;
+        throw new IOException(
+            $"Build output '{output}' is non-empty and is not owned by {OwnerName}.");
+    }
+
+    private static void ReplaceOutputAtomically(string output, string staging, string backup)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        bool movedOld = false;
+        try
+        {
+            if (Directory.Exists(output))
+            {
+                Directory.Move(output, backup);
+                movedOld = true;
+            }
+            Directory.Move(staging, output);
+        }
+        catch
+        {
+            if (movedOld && !Directory.Exists(output) && Directory.Exists(backup))
+                Directory.Move(backup, output);
+            throw;
+        }
+        if (movedOld)
+            DeleteDirectoryIfExists(backup);
+    }
+
+    private static void DeleteDirectoryIfExists(string path)
+    {
+        if (Directory.Exists(path))
+            Directory.Delete(path, recursive: true);
+    }
+
+    private static void ValidateOutputBoundary(string packagesRoot, string output)
+    {
+        if (Path.GetPathRoot(output)?.TrimEnd(Path.DirectorySeparatorChar) ==
+            output.TrimEnd(Path.DirectorySeparatorChar))
+            throw new ArgumentException("Build output cannot be a filesystem root.", nameof(output));
+
+        string relative = Path.GetRelativePath(packagesRoot, output);
+        if (relative == "." ||
+            (!relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
+             relative != ".." &&
+             !Path.IsPathRooted(relative)))
+        {
+            throw new ArgumentException(
+                "Build output must be outside the source packages root.",
+                nameof(output));
+        }
+    }
+
+    private static string ResolveUnderRoot(string root, string relativePath, string kind)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath))
+            throw new InvalidDataException($"{kind} paths must be non-empty and relative.");
+        string full = Path.GetFullPath(Path.Combine(root, relativePath));
+        string relative = Path.GetRelativePath(root, full);
+        if (relative == ".." ||
+            relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            Path.IsPathRooted(relative))
+        {
+            throw new InvalidDataException($"{kind} path '{relativePath}' escapes its configured root.");
+        }
+        return full;
+    }
+
+    private static string ResolveOutputPath(string output, string relativePath) =>
+        ResolveUnderRoot(output, string.IsNullOrEmpty(relativePath) ? "." : relativePath, "Output");
+
+    private static string NormalizeRelativePath(string path) =>
+        path.Replace('\\', '/').TrimStart('/');
+
+    private static int PackageDepth(string relativeManifestPath)
+    {
+        string? directory = Path.GetDirectoryName(relativeManifestPath);
+        if (string.IsNullOrEmpty(directory)) return 0;
+        return directory.Count(character =>
+            character == Path.DirectorySeparatorChar ||
+            character == Path.AltDirectorySeparatorChar) + 1;
+    }
+
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+}

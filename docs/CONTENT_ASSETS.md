@@ -295,6 +295,8 @@ shader.Dispose();
 
 离线 `Engine.Tools.AssetCompiler` 已能消费规范化的逐帧来源：小帧重映射到一个或多个 Atlas 页，放不下的大帧保持独立 Texture。这个过程不会改变 `SpriteRef`、`GameInstance`、`ImageIndex` 或 `DrawSprite` API。配置与命令行说明见 [离线 Texture Atlas 使用指南](TEXTURE_ATLAS.md)。
 
+Runner 与 VisualTests 已接入共享 MSBuild Target：Build、Run 和 Publish 会基于内容指纹自动生成 `obj/.../CompiledAssets`，运行时只读取复制到输出目录的标准包。完整构建阶段和属性说明见 [`GameEngine.Content.targets` 解读](GAMEENGINE_CONTENT_TARGETS.md)。
+
 ## 可运行示例
 
 - `src/MyGame.Runner/Assets/assets.json`：单图片 Sprite、逻辑尺寸与中心原点。

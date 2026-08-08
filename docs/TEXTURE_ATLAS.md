@@ -51,6 +51,7 @@ Atlas 是离线构建步骤，不在游戏启动时重新打包。
 
 ```powershell
 dotnet run --project src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.csproj -- `
+  --incremental `
   Content `
   characters/player/assets.json `
   artifacts/player
@@ -60,13 +61,23 @@ dotnet run --project src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.c
 
 1. packages root。
 2. 相对 packages root 的根清单路径。
-3. 输出目录；必须不存在或为空。
+3. 输出目录。首次构建必须不存在或为空；后续只允许更新带编译器所有权标记的目录。
+
+模式：
+
+- `--incremental`：默认模式；输入与输出均未变化时跳过，变化时只重建受影响包及其上游。
+- `--rebuild`：忽略缓存，强制重新生成完整依赖图。
+- `--check`：不写文件；产物有效时退出码为 `0`，缺失或过期时为 `3`。
 
 成功输出示例：
 
 ```text
-Compiled package: characters.player
+Build status: Built
+Root package: characters.player
 Manifest: .../artifacts/player/assets.json
+Packages: 3
+Built packages: 1
+Reused packages: 2
 Atlas pages: 2
 Packed frames: 18
 Passthrough frames: 1
@@ -76,6 +87,7 @@ Passthrough frames: 1
 
 ```text
 artifacts/player/
+├── .mygame-assets.json
 ├── assets.json
 ├── atlas/
 │   ├── pixel-art-0.png
@@ -94,7 +106,7 @@ artifacts/player/
 - PixelArt 与 Smooth Texture 分页打包，避免采样状态混用。
 - 未选择的 Texture 原样保留。
 - 超大帧保留原 Texture 和源矩形。
-- 依赖包按 packages-root 相对路径复制到产物中；依赖自身可单独执行编译。
+- 完整依赖图按 packages-root 相对路径输出；含 Atlas 配置的依赖也会编译，无配置依赖执行确定性复制。
 - 编译产物不再包含顶层 `atlas`，避免运行时重复构建。
 
 运行方式与普通包完全相同：
@@ -134,18 +146,53 @@ frame size + 2 × (padding + extrude)
 
 输入顺序不会改变布局或 PNG 内容，便于缓存、版本控制和回归测试。
 
+## 增量缓存与安全替换
+
+`.mygame-assets.json` 保存编译器版本、根包指纹、每个包的输入指纹，以及全部输出文件 SHA-256。包指纹包含自身 Manifest、图片字节和传递依赖指纹，因此：
+
+- 修改根包图片只重建根包。
+- 修改共享依赖会重建该依赖及引用它的上游包。
+- 无关依赖直接复用上一份已验证产物。
+- 输出文件被手动修改或缺失时，相应包会重新生成。
+
+构建始终先写入同卷临时目录，校验完成后再替换正式目录。解码、Atlas 或写入失败时，上一份有效产物保持不变。非空且没有正确所有权元数据的目录永远不会被覆盖。
+
+## MSBuild、Run 与 Publish
+
+仓库提供 [GameEngine.Content.targets](../build/GameEngine.Content.targets)。项目通过属性选择源包：
+
+```xml
+<PropertyGroup>
+  <GameEngineContentPackagesRoot>$(MSBuildProjectDirectory)\Assets</GameEngineContentPackagesRoot>
+  <GameEngineContentManifest>assets.json</GameEngineContentManifest>
+</PropertyGroup>
+
+<ProjectReference Include="..\Engine.Tools.AssetCompiler\Engine.Tools.AssetCompiler.csproj"
+                  ReferenceOutputAssembly="false" />
+<Import Project="..\..\build\GameEngine.Content.targets" />
+```
+
+Target 会在编译前增量生成到：
+
+```text
+obj/<Configuration>/<TargetFramework>/CompiledAssets/
+```
+
+随后把运行时文件复制到 `bin/.../AssetsCompiled`，并加入 Publish 文件列表。`.mygame-assets.json` 只留在 `obj`，不会进入游戏发布目录。
+
+Target 的属性、执行顺序、输出搬运、Publish 接入和排障说明见 [`GameEngine.Content.targets` 解读](GAMEENGINE_CONTENT_TARGETS.md)。
+
 ## 当前限制
 
 - 不支持旋转打包。
 - 不支持 trim、逐帧逻辑偏移或透明边界裁切。
 - 不进行相同像素内容的哈希去重；相同 Texture/矩形引用会复用，同内容但不同 Texture 名称仍视为不同来源。
 - 产物页面使用无损 PNG；暂无自定义原始 RGBA 容器。
-- 没有增量构建缓存，每次编译会重新解码参与包图的图片。
-- 输出目录必须为空或不存在，避免覆盖未知文件。
-- 依赖包会原样复制；若依赖也需要 Atlas 优化，应分别编译并按相同 packages-root 布局组织产物。
+- 编译器版本目前是显式常量；改变输出算法时必须同步提升版本以使旧缓存失效。
+- 尚未发布为独立 dotnet tool/NuGet 构建包，当前 MSBuild Target 使用仓库内项目引用。
 
 ## 可运行验证
 
 - `Engine.Features.TextureAtlas.Tests`：排布、像素复制、padding、extrude、多页、大帧旁路和确定性。
-- `Engine.Tools.AssetCompiler.Tests`：真实 PNG、编译产物字节一致性、依赖复制、跨页 Sprite 与 ContentPackageManager 加载。
-- `Sprites.VisualTests/AssetsCompiled`：由 WebP Grid 与两张独立 WebP 帧生成的一页 Atlas，图形测试直接加载编译产物。
+- `Engine.Tools.AssetCompiler.Tests`：真实 PNG、包级增量、check 模式、失败保护、依赖失效、跨页 Sprite 与运行时加载。
+- `Sprites.VisualTests`：Build 自动把 WebP Grid 与两张独立 WebP 帧编译到 `obj`，图形测试加载生成的一页 Atlas。

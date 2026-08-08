@@ -85,7 +85,7 @@ internal sealed class Program
         _batch.DefaultShader = _spriteShader;
         _textures = new TextureLibrary(gl);
         _sprites = new SpriteLibrary(_textures);
-        string assetsRoot = Path.Combine(AppContext.BaseDirectory, "Assets");
+        string assetsRoot = Path.Combine(AppContext.BaseDirectory, "AssetsCompiled");
         _content = new ContentPackageManager(_textures, _sprites, assetsRoot);
         _package = _content.Load("assets.json");
         var whiteTexture = _package.GetTexture("runner.white");

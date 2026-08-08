@@ -70,11 +70,39 @@ public sealed class ContentAssetCompiler
     public ContentAssetCompileResult Compile(
         string packagesRoot,
         string rootRelativeManifestPath,
-        string outputDirectory)
+        string outputDirectory) =>
+        CompileCore(
+            packagesRoot,
+            rootRelativeManifestPath,
+            outputDirectory,
+            outputManifestFileName: "assets.json",
+            copyDependencies: true);
+
+    internal ContentAssetCompileResult CompilePackageOnly(
+        string packagesRoot,
+        string rootRelativeManifestPath,
+        string outputDirectory,
+        string outputManifestFileName) =>
+        CompileCore(
+            packagesRoot,
+            rootRelativeManifestPath,
+            outputDirectory,
+            outputManifestFileName,
+            copyDependencies: false);
+
+    private ContentAssetCompileResult CompileCore(
+        string packagesRoot,
+        string rootRelativeManifestPath,
+        string outputDirectory,
+        string outputManifestFileName,
+        bool copyDependencies)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packagesRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(rootRelativeManifestPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputManifestFileName);
+        if (Path.GetFileName(outputManifestFileName) != outputManifestFileName)
+            throw new ArgumentException("Output manifest name cannot contain a directory.", nameof(outputManifestFileName));
 
         string root = Path.GetFullPath(packagesRoot);
         if (!Directory.Exists(root))
@@ -173,7 +201,8 @@ public sealed class ContentAssetCompiler
         {
             ValidateOutputPaths(temporary, retainedTextures);
             CopyRetainedTextures(package, retainedTextures, generatedTextures, temporary);
-            CopyDependencyPackages(root, contexts.Values, package, temporary);
+            if (copyDependencies)
+                CopyDependencyPackages(root, contexts.Values, package, temporary);
             foreach (var generated in generatedPages)
             {
                 string pagePath = ResolveOutputPath(temporary, generated.RelativePath);
@@ -181,7 +210,7 @@ public sealed class ContentAssetCompiler
                 WritePng(pagePath, generated.Page);
             }
 
-            string outputManifest = Path.Combine(temporary, "assets.json");
+            string outputManifest = Path.Combine(temporary, outputManifestFileName);
             WriteCompiledManifest(
                 outputManifest,
                 package.Manifest,
@@ -195,7 +224,7 @@ public sealed class ContentAssetCompiler
 
             return new ContentAssetCompileResult(
                 package.Manifest.Id,
-                Path.Combine(output, "assets.json"),
+                Path.Combine(output, outputManifestFileName),
                 generatedPages.Count,
                 remaps.Count,
                 passthroughKeys.Count);

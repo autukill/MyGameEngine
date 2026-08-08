@@ -77,11 +77,77 @@ internal static class Program
                 "Oversized frame remains on its independent Texture");
             Check(textures.Count == 4 && sprites.Count == 2,
                 "Existing ContentPackageManager loads the compiled standard package");
+
+            VerifyIncrementalPipeline(source, workspace);
         }
         finally
         {
             Directory.Delete(workspace, recursive: true);
         }
+    }
+
+    private static void VerifyIncrementalPipeline(string source, string workspace)
+    {
+        Console.WriteLine("2. Incremental graph build, check mode, and failure safety");
+        string output = Path.Combine(workspace, "incremental");
+        var pipeline = new ContentBuildPipeline();
+        var request = new ContentBuildRequest(source, "assets.json", output);
+
+        ContentBuildResult first = pipeline.Build(request);
+        byte[] firstMetadata = File.ReadAllBytes(
+            Path.Combine(output, ContentBuildPipeline.MetadataFileName));
+        ContentBuildResult cached = pipeline.Build(request);
+        ContentBuildResult current = pipeline.Build(request with { Mode = ContentBuildMode.Check });
+        Check(first.Status == ContentBuildStatus.Built &&
+              first.BuiltPackageCount == 2 && first.ReusedPackageCount == 0 &&
+              cached.Status == ContentBuildStatus.UpToDate &&
+              cached.BuiltPackageCount == 0 && cached.ReusedPackageCount == 2 &&
+              current.Status == ContentBuildStatus.UpToDate &&
+              first.InputFingerprint == cached.InputFingerprint,
+            "Unchanged dependency graph is skipped and check mode reports current");
+        Check(firstMetadata.SequenceEqual(File.ReadAllBytes(
+                Path.Combine(output, ContentBuildPipeline.MetadataFileName))),
+            "Cache hit performs no metadata rewrite");
+
+        WriteSolid(Path.Combine(source, "large.png"), 7, 7, SKColors.Purple);
+        ContentBuildResult stale = pipeline.Build(request with { Mode = ContentBuildMode.Check });
+        Check(stale.Status == ContentBuildStatus.Stale &&
+              firstMetadata.SequenceEqual(File.ReadAllBytes(
+                  Path.Combine(output, ContentBuildPipeline.MetadataFileName))),
+            "Changed source is detected without writing in check mode");
+
+        ContentBuildResult rebuilt = pipeline.Build(request);
+        Check(rebuilt.Status == ContentBuildStatus.Built &&
+              rebuilt.InputFingerprint != first.InputFingerprint &&
+              rebuilt.BuiltPackageCount == 1 && rebuilt.ReusedPackageCount == 1,
+            "Changed root source rebuilds only that package and reuses its dependency");
+
+        WriteSolid(Path.Combine(source, "shared", "white.png"), 1, 1, SKColors.Gray);
+        ContentBuildResult dependencyRebuilt = pipeline.Build(request);
+        byte[] validMetadata = File.ReadAllBytes(
+            Path.Combine(output, ContentBuildPipeline.MetadataFileName));
+        Check(dependencyRebuilt.BuiltPackageCount == 2 &&
+              dependencyRebuilt.ReusedPackageCount == 0,
+            "Changed dependency invalidates itself and its upstream root package");
+
+        File.WriteAllBytes(Path.Combine(source, "sheet.png"), [1, 2, 3, 4]);
+        CheckThrows<InvalidDataException>(() => pipeline.Build(
+                request with { Mode = ContentBuildMode.Rebuild }),
+            "Decode failure is surfaced during forced rebuild");
+        Check(validMetadata.SequenceEqual(File.ReadAllBytes(
+                Path.Combine(output, ContentBuildPipeline.MetadataFileName))) &&
+              File.Exists(Path.Combine(output, "assets.json")),
+            "Failed rebuild preserves the previous valid output atomically");
+        WriteSheet(Path.Combine(source, "sheet.png"));
+
+        string foreign = Path.Combine(workspace, "foreign-output");
+        Directory.CreateDirectory(foreign);
+        File.WriteAllText(Path.Combine(foreign, "user.txt"), "keep");
+        CheckThrows<IOException>(() => pipeline.Build(new ContentBuildRequest(
+                source, "assets.json", foreign, ContentBuildMode.Rebuild)),
+            "Non-empty output without compiler ownership is never overwritten");
+        Check(File.ReadAllText(Path.Combine(foreign, "user.txt")) == "keep",
+            "Foreign output remains untouched");
     }
 
     private static bool DirectoriesEqual(string left, string right)
@@ -131,6 +197,12 @@ internal static class Program
     {
         if (condition) Console.WriteLine($"  [PASS] {name}");
         else { _failures++; Console.WriteLine($"  [FAIL] {name}"); }
+    }
+
+    private static void CheckThrows<T>(Action action, string name) where T : Exception
+    {
+        try { action(); Check(false, name); }
+        catch (T) { Check(true, name); }
     }
 
     private sealed class FakeTextureBackend : ITextureBackend

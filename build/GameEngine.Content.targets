@@ -1,0 +1,41 @@
+<Project>
+  <PropertyGroup>
+    <GameEngineContentManifest Condition="'$(GameEngineContentManifest)' == ''">assets.json</GameEngineContentManifest>
+    <GameEngineContentOutputSubdirectory Condition="'$(GameEngineContentOutputSubdirectory)' == ''">AssetsCompiled</GameEngineContentOutputSubdirectory>
+    <GameEngineContentOutput Condition="'$(GameEngineContentOutput)' == ''">$(MSBuildProjectDirectory)\obj\$(Configuration)\$(TargetFramework)\CompiledAssets</GameEngineContentOutput>
+    <GameEngineAssetCompilerDll Condition="'$(GameEngineAssetCompilerDll)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\src\Engine.Tools.AssetCompiler\bin\$(Configuration)\net10.0\GameEngineAssetCompiler.dll'))</GameEngineAssetCompilerDll>
+  </PropertyGroup>
+
+  <Target Name="CompileGameEngineContent"
+          AfterTargets="ResolveProjectReferences"
+          BeforeTargets="CoreCompile"
+          Condition="'$(GameEngineContentPackagesRoot)' != ''">
+    <Error Condition="!Exists('$(GameEngineAssetCompilerDll)')"
+           Text="GameEngine AssetCompiler was not built: $(GameEngineAssetCompilerDll)" />
+    <Exec Command="dotnet &quot;$(GameEngineAssetCompilerDll)&quot; --incremental &quot;$(GameEngineContentPackagesRoot)&quot; &quot;$(GameEngineContentManifest)&quot; &quot;$(GameEngineContentOutput)&quot;" />
+
+    <ItemGroup>
+      <_GameEngineCompiledAsset Remove="@(_GameEngineCompiledAsset)" />
+      <_GameEngineCompiledAsset Include="$(GameEngineContentOutput)\**\*"
+                                Exclude="$(GameEngineContentOutput)\.mygame-assets.json" />
+    </ItemGroup>
+    <RemoveDir Directories="$(OutDir)$(GameEngineContentOutputSubdirectory)" />
+    <MakeDir Directories="$(OutDir)$(GameEngineContentOutputSubdirectory)" />
+    <Copy SourceFiles="@(_GameEngineCompiledAsset)"
+          DestinationFiles="@(_GameEngineCompiledAsset->'$(OutDir)$(GameEngineContentOutputSubdirectory)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="IncludeGameEngineContentInPublish"
+          BeforeTargets="ComputeFilesToPublish"
+          DependsOnTargets="CompileGameEngineContent"
+          Condition="'$(GameEngineContentPackagesRoot)' != ''">
+    <ItemGroup>
+      <_GameEnginePublishAsset Include="$(GameEngineContentOutput)\**\*"
+                               Exclude="$(GameEngineContentOutput)\.mygame-assets.json" />
+      <ResolvedFileToPublish Include="@(_GameEnginePublishAsset)"
+                             RelativePath="$(GameEngineContentOutputSubdirectory)\%(RecursiveDir)%(Filename)%(Extension)"
+                             CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+</Project>

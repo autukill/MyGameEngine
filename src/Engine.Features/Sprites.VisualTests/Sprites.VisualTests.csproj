@@ -7,6 +7,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Sprites.VisualTests</RootNamespace>
     <AssemblyName>SpritesVisualTests</AssemblyName>
+    <GameEngineContentPackagesRoot>$(MSBuildProjectDirectory)\Assets</GameEngineContentPackagesRoot>
+    <GameEngineContentManifest>assets.json</GameEngineContentManifest>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Silk.NET.OpenGL" />
@@ -19,8 +21,8 @@
     <ProjectReference Include="..\ContentAssets\ContentAssets.csproj" />
     <ProjectReference Include="..\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\TextureAssets\TextureAssets.csproj" />
+    <ProjectReference Include="..\..\Engine.Tools.AssetCompiler\Engine.Tools.AssetCompiler.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
-  <ItemGroup>
-    <None Update="AssetsCompiled\**\*" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+  <Import Project="..\..\..\build\GameEngine.Content.targets" />
 </Project>

@@ -8,7 +8,7 @@
 
 项目处于 Phase 1.x：最小引擎闭环已经可运行，核心模块边界基本稳定，正在从技术 Demo 向可扩展运行时收口。
 
-当前代码规模为 26 个 .NET 项目、102 个 C# 文件。Feature 已拆为 Camera、ContentAssets、RenderPipeline、SceneSystem、Sprites、StencilMasking、TextureAssets、TextureAtlas 八个独立 module，并新增离线 AssetCompiler 及其测试项目。
+当前代码规模为 26 个 .NET 项目、104 个 C# 文件。Feature 已拆为 Camera、ContentAssets、RenderPipeline、SceneSystem、Sprites、StencilMasking、TextureAssets、TextureAtlas 八个独立 module，并新增离线 AssetCompiler 及其测试项目。
 
 ## 已完成
 
@@ -22,6 +22,7 @@
 - Sprite 逐帧保存 `TextureRef + PixelRectI`，同一动画可跨独立纹理，为 Atlas 重映射建立稳定边界。
 - 确定性离线 TextureAtlas：Shelf 多页、padding、edge extrude、采样分组、页面裁切和超大帧旁路。
 - AssetCompiler 将源清单编译为标准运行时包；依赖复制、跨页动画和 ContentPackageManager 直接加载均已验证。
+- 包级 SHA-256 增量缓存、check/rebuild 模式、输出所有权、原子替换，以及 Build/Run/Publish MSBuild 集成。
 - Camera2D 与窗口 resize 传播。
 - RenderTarget、RenderPass DAG、Stencil、Bloom、Viewport 合成。
 - Runner 业务逻辑实例化：聚光灯输入由 `SpotlightController` 管理，Program 仅负责组合根装配。
@@ -31,7 +32,7 @@
 ## 仍在演进
 
 - `ShaderRef`、`ShaderLibrary` 和通用 `ShaderProgram` 已具备，但缺少 Runner 中的自定义实例 Shader 示例与统一动态 uniform API。
-- Atlas 暂不支持旋转、trim、内容哈希去重、增量缓存或自动 MSBuild/发布集成。
+- Atlas 暂不支持旋转、trim 或相同像素内容哈希去重；AssetCompiler 尚未打包为独立 dotnet tool/NuGet 构建包。
 - `SceneRenderContext` 已标记过时；生产路径已使用 `SceneAggregate + SceneRenderPass`，后续应删除兼容类型。
 - VisualTests 已实例事件化，但仍依赖人工观察，没有自动 GPU 回归基线。
 - SceneAggregate 的多次 `ToList`、LINQ 过滤与排序仍会产生每帧分配，“零 GC”尚未覆盖整个引擎循环。
