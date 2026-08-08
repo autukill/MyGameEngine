@@ -20,6 +20,10 @@
     <Project Path="src/Engine.Features/StencilMasking.VisualTests/StencilMasking.VisualTests.csproj" />
     <Project Path="src/Engine.Features/StencilMasking/StencilMasking.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/TextureAssets/">
+    <Project Path="src/Engine.Features/TextureAssets.Tests/TextureAssets.Tests.csproj" />
+    <Project Path="src/Engine.Features/TextureAssets/TextureAssets.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/Sprites/">
     <Project Path="src/Engine.Features/Sprites.Tests/Sprites.Tests.csproj" />
     <Project Path="src/Engine.Features/Sprites.VisualTests/Sprites.VisualTests.csproj" />

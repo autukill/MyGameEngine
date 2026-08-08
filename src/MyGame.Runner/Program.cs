@@ -10,6 +10,7 @@ using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.StencilMasking.Infrastructure;
+using GameEngine.Features.TextureAssets.Infrastructure;
 
 /// <summary>
 /// Phase 1.4 Demo (GMS-style): Scene Layer 感知 + Stencil 遮罩 + Bloom 后处理。
@@ -34,7 +35,7 @@ internal sealed class Program
     private static PostProcessShader? _bloomShader;
     private static BlitShader? _blitShader;
     private static SpriteBatch? _batch;
-    private static WhiteTexture? _white;
+    private static TextureLibrary? _textures;
     private static SpriteLibrary? _sprites;
 
     private static SceneAggregate? _scene;
@@ -79,10 +80,12 @@ internal sealed class Program
         _blitShader = new BlitShader(gl);
         _batch = new SpriteBatch(gl);
         _batch.DefaultShader = _spriteShader;
-        _white = new WhiteTexture(gl);
-        _sprites = new SpriteLibrary();
+        _textures = new TextureLibrary(gl);
+        var whiteTexture = _textures.RegisterRgba(
+            "runner.white", 1, 1, new byte[] { 255, 255, 255, 255 });
+        _sprites = new SpriteLibrary(_textures);
         var orbitingSprite = _sprites.RegisterSingle(
-            "runner.orbiting", _white.Handle, new Vector2(80, 80), new Vector2(40, 40));
+            "runner.orbiting", whiteTexture, new Vector2(80, 80), new Vector2(40, 40));
         _batch.SpriteResolver = _sprites;
 
         // 2. 场景（DDD 聚合根，完整 GMS Room 等价物：Layer/Background/Viewport/Hook）
@@ -112,7 +115,7 @@ internal sealed class Program
         // 5. 渲染管道（DAG）—— SceneRenderPass 现需 GL 参数（用于 Background clear）
         _scenePass = new SceneRenderPass("ScenePass", gl, _scene, _mainCamera, _rtScene);
         _stencilPass = new StencilMaskPass("StencilMaskPass", gl, _scene, _mainCamera,
-            _rtMasked, _spriteShader, _white, _sprites);
+            _rtMasked, _spriteShader, whiteTexture, _textures, _sprites);
         _bloomPass = new PostProcessPass("BloomPass", gl, _bloomShader, _rtMasked, _rtBloom);
         _compositorPass = new ViewportCompositorPass("CompositorPass", gl, _blitShader, _batch);
 
@@ -211,7 +214,7 @@ internal sealed class Program
         _rtBloom?.Dispose();
         _rtMasked?.Dispose();
         _rtScene?.Dispose();
-        _white?.Dispose();
+        _textures?.Dispose();
         _batch?.Dispose();
         _blitShader?.Dispose();
         _bloomShader?.Dispose();

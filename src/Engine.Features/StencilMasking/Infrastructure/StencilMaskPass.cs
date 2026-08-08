@@ -4,6 +4,7 @@ using Silk.NET.OpenGL;
 using System.Numerics;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.StencilMasking.Domain;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.RenderPipeline.Domain;
@@ -22,7 +23,7 @@ public sealed class StencilMaskPass : RenderPass
     private readonly RenderTarget2D _output;
     private readonly SpriteBatch _batch;
     private readonly IShader _shader;
-    private readonly WhiteTexture _white;
+    private readonly uint _whiteTextureHandle;
 
     /// <summary>当前 Stencil 配置（Mode + Ref + Mask）。外部可每帧修改。</summary>
     public StencilMaskState State { get; set; } = StencilMaskState.Default;
@@ -48,7 +49,28 @@ public sealed class StencilMaskPass : RenderPass
         _batch.DefaultShader = shader;
         _batch.SpriteResolver = spriteResolver;
         _shader = shader;
-        _white = white;
+        _whiteTextureHandle = white.Handle;
+    }
+
+    public StencilMaskPass(
+        string name, GL gl, SceneAggregate scene, Camera2D camera,
+        RenderTarget2D output, IShader shader, TextureRef whiteTexture,
+        ITextureResolver textureResolver, ISpriteResolver? spriteResolver = null) : base(name)
+    {
+        ArgumentNullException.ThrowIfNull(textureResolver);
+        if (!textureResolver.TryResolve(whiteTexture, out var resolved))
+            throw new ArgumentException($"Texture '{whiteTexture}' is not registered.", nameof(whiteTexture));
+
+        _scene = scene;
+        _camera = camera;
+        _output = output;
+        _batch = new SpriteBatch(gl)
+        {
+            DefaultShader = shader,
+            SpriteResolver = spriteResolver
+        };
+        _shader = shader;
+        _whiteTextureHandle = resolved.Handle;
     }
 
     // ---------- 直接 API（Phase 1.3 Demo 兼容） ----------
@@ -90,7 +112,7 @@ public sealed class StencilMaskPass : RenderPass
         else if (_hasDirectMask)
         {
             _batch.Draw(
-                textureHandle: _white.Handle,
+                textureHandle: _whiteTextureHandle,
                 position: _maskCenter - new Vector2(_maskRadius, _maskRadius),
                 size: new Vector2(_maskRadius * 2, _maskRadius * 2),
                 color: new Vector4(1, 1, 1, 1));

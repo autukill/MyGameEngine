@@ -6,7 +6,7 @@
 
 项目处于 Phase 1.x：最小引擎闭环已经可运行，核心模块边界基本稳定，正在从技术 Demo 向可扩展运行时收口。
 
-当前代码规模为 18 个 .NET 项目、131 个 C# 文件。Feature 已拆为 Camera、RenderPipeline、SceneSystem、Sprites、StencilMasking 五个独立 module，并分别配有控制台测试和图形 VisualTests。
+当前代码规模为 20 个 .NET 项目、150 个 C# 文件。Feature 已拆为 Camera、RenderPipeline、SceneSystem、Sprites、StencilMasking、TextureAssets 六个独立 module；TextureAssets 的 GPU 上传图形验证复用 Sprites.VisualTests。
 
 ## 已完成
 
@@ -15,16 +15,17 @@
 - SceneAggregate、GameInstance、Layer、Background 与领域事件。
 - GameMaker 风格实例事件和统一 InputSystem。
 - 逻辑 SpriteRef、SpriteLibrary、多帧 UV、原点、动画推进和 DrawSprite/DrawSpriteExt/Stretched API。
+- 逻辑 TextureRef、TextureLibrary、PNG/静态 WebP 解码、采样预设、content-root 清单加载与 GPU 句柄所有权。
 - Camera2D 与窗口 resize 传播。
 - RenderTarget、RenderPass DAG、Stencil、Bloom、Viewport 合成。
 - Runner 业务逻辑实例化：聚光灯输入由 `SpotlightController` 管理，Program 仅负责组合根装配。
 - GPU 资源关闭链路：Window Closing -> Pipeline/Pass/RT/Shader/Batch -> GraphicsDevice。
-- 6 个无窗口冒烟项目覆盖值对象、聚合、生命周期、输入沿事件、渲染状态、Sprite 帧解析和几何计算。
+- 7 个无窗口冒烟项目覆盖值对象、聚合、生命周期、输入沿事件、渲染状态、Sprite 帧/几何以及 PNG/WebP/纹理所有权。
 
 ## 仍在演进
 
 - `ShaderRef`、`ShaderLibrary` 和通用 `ShaderProgram` 已具备，但缺少 Runner 中的自定义实例 Shader 示例与统一动态 uniform API。
-- SpriteLibrary 当前只注册外部借用的纹理句柄；图片解码、TextureLibrary、资产清单和自动 Atlas 尚未实现。
+- SpriteLibrary 已使用 TextureRef；Sprite 定义清单、自动 Atlas 打包和资产热重载尚未实现。
 - `SceneRenderContext` 已标记过时；生产路径已使用 `SceneAggregate + SceneRenderPass`，后续应删除兼容类型。
 - VisualTests 已实例事件化，但仍依赖人工观察，没有自动 GPU 回归基线。
 - SceneAggregate 的多次 `ToList`、LINQ 过滤与排序仍会产生每帧分配，“零 GC”尚未覆盖整个引擎循环。
@@ -43,5 +44,5 @@
 
 - Bloom 是单 Pass 9-tap 模糊，不是水平/垂直 ping-pong 高斯链。
 - Pipeline 拓扑与 RT 生命周期仍由组合根手动装配。
-- 暂无自动 TextureAtlas、物理/Spatial Hash、音频、资产管线、编辑器与 AI Bridge 的运行时代码。
+- 暂无自动 TextureAtlas、物理/Spatial Hash、音频、完整资产构建管线、编辑器与 AI Bridge 的运行时代码。
 - NuGet 漏洞数据源不可访问时会出现 `NU1900`，不影响使用本地缓存包构建。

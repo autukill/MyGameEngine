@@ -44,6 +44,8 @@ src/
 │   ├── Sprites/         Sprites.csproj              (逻辑 Sprite 资源库)
 │   ├── Sprites.Tests/   Sprites.Tests.csproj        (帧/动画/几何测试)
 │   ├── Sprites.VisualTests/ Sprites.VisualTests.csproj
+│   ├── TextureAssets/    TextureAssets.csproj         (PNG/WebP 解码与 GPU 所有权)
+│   ├── TextureAssets.Tests/ TextureAssets.Tests.csproj
 │   ├── StencilMasking/    StencilMasking.csproj     (依赖 Camera + RenderPipeline + Silk.NET.OpenGL)
 │   ├── StencilMasking.Tests/
 │   └── StencilMasking.VisualTests/
@@ -65,9 +67,9 @@ src/
 
 ## 当前代码进度（2026-08-08）
 - `src/Engine.Core`：Domain 含逻辑 SpriteRef、SpriteDrawCommand/Metadata/Resolver、Blend/Shader/Input 抽象；Infrastructure 含 SpriteBatch 状态机、Shader 与 Input 实现。
-- `src/Engine.Features`：5 个独立 module project + 10 个测试项目（5 Feature 冒烟 + 5 VisualTests）。Sprites 支持手动单帧/UV/Grid 注册、帧循环、原点与旋转缩放。
+- `src/Engine.Features`：6 个独立 module project + 11 个测试项目（6 Feature 冒烟 + 5 VisualTests）。Sprites 使用 TextureRef；TextureAssets 支持 PNG/WebP、清单、采样与 GPU 所有权。
 - `src/MyGame.Runner`：OrbitingSprite 与 SpotlightController 均为 GameInstance；统一使用 EngineWindow.Input，Program 只做装配，并已接入 DrawGUI、resize 与关闭释放链路。
-- 解决方案 `MyGameEngine.slnx` 共 18 个项目，编译通过（0 错误）；6 个无窗口冒烟项目（含 Engine.DddTests）全部通过。
+- 解决方案 `MyGameEngine.slnx` 共 20 个项目；7 个无窗口冒烟项目（含 Engine.DddTests）。
 - **待办**：第二阶段事件装配（RenderEffectRequested + RenderTargetPool + kind/owner 聚合回收）；自定义 ShaderRef 示例与动态 uniform API；自动 GPU 回归测试。
 
 ## 设计方向（2026-08-07 推演，第一阶段已实施）

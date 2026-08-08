@@ -1,7 +1,6 @@
 namespace Sprites.VisualTests;
 
 using System.Numerics;
-using Silk.NET.OpenGL;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Graphics;
@@ -10,14 +9,16 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Sprites.Infrastructure;
+using GameEngine.Features.TextureAssets.Domain;
+using GameEngine.Features.TextureAssets.Infrastructure;
 
 internal static class Program
 {
     private static EngineWindow? _window;
     private static SpriteShader? _shader;
     private static SpriteBatch? _batch;
-    private static WhiteTexture? _white;
-    private static DemoAtlasTexture? _atlas;
+    private static TextureLibrary? _textures;
+    private static SpriteRef _markerSprite;
     private static SceneAggregate? _scene;
     private static readonly Vector2[] Origins =
     {
@@ -46,22 +47,24 @@ internal static class Program
         var gl = _window!.Graphics.Gl;
         _shader = new SpriteShader(gl);
         _batch = new SpriteBatch(gl) { DefaultShader = _shader };
-        _white = new WhiteTexture(gl);
-        _atlas = new DemoAtlasTexture(gl);
+        _textures = new TextureLibrary(gl);
+        var whiteTexture = _textures.RegisterRgba(
+            "visual.white", 1, 1, new byte[] { 255, 255, 255, 255 });
+        var atlasTexture = _textures.RegisterRgba(
+            "visual.atlas", 64, 32, CreateDemoAtlasPixels(), TextureSampler.PixelArt);
 
-        var sprites = new SpriteLibrary();
+        var sprites = new SpriteLibrary(_textures);
+        _markerSprite = sprites.RegisterSingle("visual.marker", whiteTexture, Vector2.Zero);
         var demo = sprites.RegisterGrid(
             "visual.two-frame",
-            _atlas.Handle,
-            textureSize: new Vector2(64, 32),
+            atlasTexture,
             frameSize: new Vector2(32, 32),
             origin: new Vector2(16, 16),
             frameCount: 2,
             framesPerSecond: 4f);
         var offsetOriginDemo = sprites.RegisterGrid(
             "visual.offset-origin",
-            _atlas.Handle,
-            textureSize: new Vector2(64, 32),
+            atlasTexture,
             frameSize: new Vector2(32, 32),
             origin: new Vector2(4, 28),
             frameCount: 2,
@@ -98,16 +101,15 @@ internal static class Program
         _batch!.Begin();
         _scene!.DrawActive(_batch);
         foreach (var origin in Origins)
-            _batch.Draw(_white!.Handle, origin - new Vector2(3), new Vector2(6), Vector4.One,
-                new Vector4(0, 0, 1, 1));
+            _batch.DrawSpriteStretched(
+                _markerSprite, 0, origin - new Vector2(3), new Vector2(6));
         _batch.End();
     }
 
     private static void HandleClosing()
     {
         _scene?.End();
-        _atlas?.Dispose();
-        _white?.Dispose();
+        _textures?.Dispose();
         _batch?.Dispose();
         _shader?.Dispose();
     }
@@ -173,42 +175,20 @@ internal static class Program
         }
     }
 
-    private sealed class DemoAtlasTexture : IDisposable
+    private static byte[] CreateDemoAtlasPixels()
     {
-        private readonly GL _gl;
-        public uint Handle { get; }
-
-        public unsafe DemoAtlasTexture(GL gl)
+        var pixels = new byte[64 * 32 * 4];
+        for (int y = 0; y < 32; y++)
+        for (int x = 0; x < 64; x++)
         {
-            _gl = gl;
-            Handle = gl.GenTexture();
-            gl.BindTexture(TextureTarget.Texture2D, Handle);
-
-            var pixels = new byte[64 * 32 * 4];
-            for (int y = 0; y < 32; y++)
-            for (int x = 0; x < 64; x++)
-            {
-                bool first = x < 32;
-                bool accent = ((x % 32) / 8 + y / 8) % 2 == 0;
-                int p = (y * 64 + x) * 4;
-                pixels[p + 0] = first ? (byte)255 : (byte)(accent ? 40 : 20);
-                pixels[p + 1] = first ? (byte)(accent ? 80 : 30) : (byte)220;
-                pixels[p + 2] = first ? (byte)40 : (byte)255;
-                pixels[p + 3] = 255;
-            }
-
-            fixed (byte* p = pixels)
-                gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgba8,
-                    64, 32, 0, PixelFormat.Rgba, PixelType.UnsignedByte, p);
-
-            uint nearest = (uint)GLEnum.Nearest;
-            uint clamp = (uint)GLEnum.ClampToEdge;
-            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, in nearest);
-            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, in nearest);
-            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, in clamp);
-            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, in clamp);
+            bool first = x < 32;
+            bool accent = ((x % 32) / 8 + y / 8) % 2 == 0;
+            int p = (y * 64 + x) * 4;
+            pixels[p + 0] = first ? (byte)255 : (byte)(accent ? 40 : 20);
+            pixels[p + 1] = first ? (byte)(accent ? 80 : 30) : (byte)220;
+            pixels[p + 2] = first ? (byte)40 : (byte)255;
+            pixels[p + 3] = 255;
         }
-
-        public void Dispose() => _gl.DeleteTexture(Handle);
+        return pixels;
     }
 }

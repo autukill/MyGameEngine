@@ -28,20 +28,24 @@ internal static class Program
     private static void VerifyLibrary()
     {
         Console.WriteLine("1. SpriteLibrary registration and frame resolution");
-        var library = new SpriteLibrary();
-        var single = library.RegisterSingle("single", 1u, new Vector2(32, 16), new Vector2(16, 8));
+        var textures = new TestTextureResolver();
+        var singleTexture = textures.Add("single-texture", 1u, 32, 16);
+        var framesTexture = textures.Add("frames-texture", 2u, 32, 16);
+        var gridTexture = textures.Add("grid-texture", 3u, 64, 32);
+        var library = new SpriteLibrary(textures);
+        var single = library.RegisterSingle("single", singleTexture, new Vector2(16, 8));
         Check(library.TryGetMetadata(single, out var singleMeta) &&
               singleMeta.FrameCount == 1 && singleMeta.Origin == new Vector2(16, 8),
             "Single-frame metadata");
 
-        var frames = library.RegisterFrames("frames", 2u, new Vector2(16), new Vector2(8),
+        var frames = library.RegisterFrames("frames", framesTexture, new Vector2(16), new Vector2(8),
             new[] { new Vector4(0, 0, .5f, 1), new Vector4(.5f, 0, 1, 1) }, 6f);
         Check(library.TryResolve(frames, 3, out var wrapped) && wrapped.UvBounds.X == .5f,
             "Overflow frame wraps");
         Check(library.TryResolve(frames, -1, out var reverse) && reverse.UvBounds.X == .5f,
             "Negative frame wraps");
 
-        var grid = library.RegisterGrid("grid", 3u, new Vector2(64, 32), new Vector2(16, 16),
+        var grid = library.RegisterGrid("grid", gridTexture, new Vector2(16, 16),
             new Vector2(8), frameCount: 6, framesPerSecond: 8f);
         library.TryResolve(grid, 5, out var gridFrame);
         Check(Near(gridFrame.UvBounds, new Vector4(.25f, .5f, .5f, 1f)),
@@ -52,21 +56,27 @@ internal static class Program
             "Unknown sprite resolves safely");
 
         CheckThrows<ArgumentException>(() =>
-            library.RegisterSingle("single", 9u, Vector2.One, Vector2.Zero),
+            library.RegisterSingle("single", singleTexture, Vector2.Zero),
             "Duplicate registration rejected");
         CheckThrows<ArgumentException>(() =>
-            library.RegisterFrames("empty", 9u, Vector2.One, Vector2.Zero, Array.Empty<Vector4>()),
+            library.RegisterFrames("empty", singleTexture, Vector2.One, Vector2.Zero, Array.Empty<Vector4>()),
             "Empty frame list rejected");
         CheckThrows<ArgumentOutOfRangeException>(() =>
-            library.RegisterSingle("bad-size", 9u, Vector2.Zero, Vector2.Zero),
+            library.RegisterFrames("bad-size", singleTexture, Vector2.Zero, Vector2.Zero,
+                new[] { new Vector4(0, 0, 1, 1) }),
             "Invalid size rejected");
+        CheckThrows<ArgumentException>(() =>
+            library.RegisterSingle("missing-texture", new TextureRef("missing"), Vector2.Zero),
+            "Unknown texture is rejected during registration");
     }
 
     private static void VerifyAnimation()
     {
         Console.WriteLine("2. GameInstance animation advancement");
-        var library = new SpriteLibrary();
-        var animated = library.RegisterGrid("animated", 1u, new Vector2(64, 16), new Vector2(16),
+        var textures = new TestTextureResolver();
+        var texture = textures.Add("animated-texture", 1u, 64, 16);
+        var library = new SpriteLibrary(textures);
+        var animated = library.RegisterGrid("animated", texture, new Vector2(16),
             new Vector2(8), frameCount: 4, framesPerSecond: 4f);
         var scene = new SceneAggregate("SpriteAnimation");
         scene.SetSprites(library);
@@ -136,4 +146,37 @@ internal static class Program
     private static bool Near(Vector2 a, Vector2 b) => Near(a.X, b.X) && Near(a.Y, b.Y);
     private static bool Near(Vector4 a, Vector4 b) =>
         Near(a.X, b.X) && Near(a.Y, b.Y) && Near(a.Z, b.Z) && Near(a.W, b.W);
+
+    private sealed class TestTextureResolver : ITextureResolver
+    {
+        private readonly Dictionary<string, ResolvedTexture> _textures = new(StringComparer.Ordinal);
+
+        public TextureRef Add(string name, uint handle, int width, int height)
+        {
+            var texture = new TextureRef(name);
+            _textures.Add(name, new ResolvedTexture(handle, new TextureMetadata(width, height)));
+            return texture;
+        }
+
+        public bool TryGetMetadata(TextureRef texture, out TextureMetadata metadata)
+        {
+            if (!texture.IsEmpty && _textures.TryGetValue(texture.Name, out var resolved))
+            {
+                metadata = resolved.Metadata;
+                return true;
+            }
+
+            metadata = default;
+            return false;
+        }
+
+        public bool TryResolve(TextureRef texture, out ResolvedTexture resolved)
+        {
+            if (!texture.IsEmpty && _textures.TryGetValue(texture.Name, out resolved))
+                return true;
+
+            resolved = default;
+            return false;
+        }
+    }
 }
