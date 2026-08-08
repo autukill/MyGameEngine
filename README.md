@@ -17,6 +17,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 正交 `Camera2D`：平移、缩放、旋转、震屏和 Viewport resize。
 - RenderPass DAG：场景渲染、Stencil 遮罩、后处理和 Viewport 合成。
 - 动态效果装配：实例领域事件、共享 owner 集合、`ScenePipelineBuilder` 与 `RenderTargetPool`。
+- 自动 GPU 像素回归：固定时间步、PNG 基线、容差比较以及 expected/actual/diff 诊断产物。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
 文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
@@ -58,7 +59,7 @@ Engine.Core
             └─ StencilMasking
 ```
 
-解决方案当前共 26 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 28 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -98,6 +99,14 @@ dotnet run --project src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetComp
 ```
 
 图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 的源包包含双帧 WebP 图集和两张独立 WebP 帧，Build 自动在 `obj` 生成单页 Atlas 并复制到 `AssetsCompiled`；这些项目需要本地图形窗口人工确认。
+
+三个确定性真实 OpenGL 场景可自动执行 PNG 像素回归：
+
+```bash
+dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj -- --verify
+```
+
+基线更新、单场景过滤、退出码和差异产物说明见 [GPU 像素回归测试](docs/VISUAL_REGRESSION.md)。
 
 ## Sprite 便利 API
 
@@ -158,9 +167,9 @@ Pass 通过输入/输出 RenderTarget 声明依赖，Pipeline 在每帧执行前
 
 ## 下一阶段
 
-1. 将 VisualTests 纳入可重复的 GPU 快照或像素回归验证。
-2. 将 AssetCompiler 发布为可复用 dotnet tool/NuGet 构建包，并增加跨仓库缓存。
-3. 增加独立 Bloom 描述符与水平/垂直 ping-pong 后处理链。
+1. 将 AssetCompiler 发布为可复用 dotnet tool/NuGet 构建包，并增加跨仓库缓存。
+2. 增加独立 Bloom 描述符与水平/垂直 ping-pong 后处理链，并建立专属 GPU 基线。
+3. 为无显示器 CI 固化软件 OpenGL 执行环境。
 4. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

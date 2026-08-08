@@ -1,0 +1,61 @@
+# GPU 像素回归测试
+
+自动 GPU 回归用于把关键渲染行为固定为可重复的 PNG 快照。它补充现有人工 `*.VisualTests`，不替代交互式窗口验证。
+
+## 运行方式
+
+在仓库根目录执行：
+
+```powershell
+# 验证所有场景
+dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj -- --verify
+
+# 只验证一个场景
+dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj -- `
+  --verify --scenario sprites-origin-transform
+
+# 明确更新受版本控制的 PNG 基线
+dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj -- `
+  --update-baselines
+
+# 调试时显示测试窗口
+dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj -- `
+  --verify --visible
+```
+
+默认模式等同于 `--verify`。正常通过返回 `0`，像素差异或场景断言失败返回 `1`，无法建立 OpenGL 上下文返回 `2`。CI 可以据此把“图形能力不可用”和“渲染发生回归”分开处理。
+
+## 基线与差异产物
+
+- 基线位于 `src/Engine.VisualRegressionTests/Baselines`，应随代码提交。
+- 只有 `--update-baselines` 可以写基线；验证模式发现基线缺失时会失败。
+- 失败产物写入被忽略的 `artifacts/visual-regression`，包括 expected、actual、diff PNG 和 JSON 指标。
+- 更新基线后必须立即再运行一次 `--verify`，并人工检查有意义的画面变化。
+
+比较要求宽高完全一致。默认允许单通道差值不超过 `2`；任一通道差值超过 `8` 立即构成失败；超过软阈值的像素比例最多为 `0.25%`。当 expected 与 actual 的 alpha 都为零时，透明像素的 RGB 不参与比较。
+
+## 确定性边界
+
+`Engine.Testing.Visual` 提供固定时间步隐藏窗口、当前 framebuffer RGBA8 读取、PNG 编解码与容差比较。测试主机在 `OnDraw` 内执行场景的确定性推进并在交换缓冲区前截图。
+
+`EngineWindowOptions` 为此增加：
+
+- `IsVisible`：隐藏或显示原生窗口。
+- `FramesPerSecond` / `UpdatesPerSecond`：传递给窗口调度器。
+- `FixedDeltaTime`：覆盖窗口回调提供的实际 update delta。
+
+场景仍使用真实 `GraphicsDevice`、SpriteBatch、RenderPipeline、ScenePipelineBuilder 与 OpenGL RenderTarget；测试不会维护一套假的渲染实现。
+
+## 当前场景
+
+1. `sprites-origin-transform`：中心、左上和自定义原点，以及旋转、非均匀缩放、负缩放、颜色与透明度。
+2. `stencil-owner-lifecycle`：同一 EffectKey 的两个、一个和零个 owner，最后一个 owner 离开后同时断言效果与临时 RT 已回收。
+3. `dynamic-effect-resize`：活跃动态效果从 320×240 重建到 400×300，并断言池中只保留一个新尺寸租约。
+
+第一版故意不覆盖 Bloom：当前单 Pass 采样在不同 GPU/驱动上的浮点差异更大。待独立 Bloom 描述符与 ping-pong 链稳定后，应为它设置单独场景和经过验证的容差，而不是放宽所有测试。
+
+## 新增场景
+
+实现 `IVisualRegressionScenario`，声明唯一名称、尺寸、总帧数和 checkpoint；在 `Initialize` 中创建 GPU 资源，在 `AdvanceAndDraw` 中以帧序号驱动确定性状态，在 `Dispose` 中按组合根顺序释放资源。然后把场景加入 `Program.CreateScenarios()`，显式更新基线并复验。
+
+场景名称与 checkpoint 名共同形成稳定基线 ID。名称一旦提交，不应仅为整理目录而改动，否则会被识别为删除旧基线并新增另一份基线。

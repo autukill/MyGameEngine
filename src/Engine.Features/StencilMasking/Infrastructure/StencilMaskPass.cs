@@ -96,6 +96,12 @@ public sealed class StencilMaskPass : RenderPass
     public override void Execute(in RenderPassContext context)
     {
         var gl = context.Gl;
+        // Dynamic effect targets must remain transparent outside the stencil area.
+        // Do not inherit a clear color left behind by a preceding scene pass.
+        gl.ClearColor(0f, 0f, 0f, 0f);
+        gl.Clear((uint)(
+            Silk.NET.OpenGL.ClearBufferMask.ColorBufferBit |
+            Silk.NET.OpenGL.ClearBufferMask.StencilBufferBit));
         BlendState.ColorMaskDisabled.Apply(gl);
         DepthStencilState.StencilWrite((int)State.StencilRef, State.MaskBits).Apply(gl);
         _shader.Use();

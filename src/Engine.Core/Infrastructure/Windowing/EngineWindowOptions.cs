@@ -8,7 +8,11 @@ public record EngineWindowOptions(
     Vector2D<int> Size = default,
     bool VSync = true,
     int StencilBits = 8,
-    int DepthBits = 24)
+    int DepthBits = 24,
+    bool IsVisible = true,
+    double FramesPerSecond = 0,
+    double UpdatesPerSecond = 0,
+    double? FixedDeltaTime = null)
 {
     public static EngineWindowOptions Default => new(
         Size: new Vector2D<int>(1280, 720));
@@ -19,6 +23,9 @@ public record EngineWindowOptions(
         opts.Title = Title;
         opts.Size = Size;
         opts.VSync = VSync;
+        opts.IsVisible = IsVisible;
+        opts.FramesPerSecond = FramesPerSecond;
+        opts.UpdatesPerSecond = UpdatesPerSecond;
 
         // 配置 OpenGL 3.3 Core Profile
         opts.API = new GraphicsAPI(

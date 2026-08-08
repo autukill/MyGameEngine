@@ -13,6 +13,7 @@ using GameEngine.Core.Infrastructure.Input;
 public class EngineWindow
 {
     private readonly IWindow _nativeWindow;
+    private readonly double? _fixedDeltaTime;
     public GraphicsDevice Graphics { get; private set; } = null!;
 
     /// <summary>
@@ -34,6 +35,14 @@ public class EngineWindow
 
     public EngineWindow(EngineWindowOptions options)
     {
+        if (options.FixedDeltaTime is { } fixedDeltaTime &&
+            (!double.IsFinite(fixedDeltaTime) || fixedDeltaTime <= 0))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                "Fixed delta time must be finite and positive.");
+        }
+        _fixedDeltaTime = options.FixedDeltaTime;
         _nativeWindow = Window.Create(options.ToSilkWindowOptions());
         _nativeWindow.Load += HandleLoad;
         _nativeWindow.Update += HandleUpdate;
@@ -60,6 +69,7 @@ public class EngineWindow
 
     private void HandleUpdate(double deltaTime)
     {
+        deltaTime = _fixedDeltaTime ?? deltaTime;
         Input?.BeginFrame();
         OnPreStep?.Invoke(deltaTime);
         OnStep?.Invoke(deltaTime);
