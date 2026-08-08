@@ -6,6 +6,7 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Camera.Domain;
+using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
@@ -37,6 +38,8 @@ internal sealed class Program
     private static SpriteBatch? _batch;
     private static TextureLibrary? _textures;
     private static SpriteLibrary? _sprites;
+    private static ContentPackageManager? _content;
+    private static LoadedContentPackage? _package;
 
     private static SceneAggregate? _scene;
     private static Camera2D? _mainCamera;
@@ -81,11 +84,12 @@ internal sealed class Program
         _batch = new SpriteBatch(gl);
         _batch.DefaultShader = _spriteShader;
         _textures = new TextureLibrary(gl);
-        var whiteTexture = _textures.RegisterRgba(
-            "runner.white", 1, 1, new byte[] { 255, 255, 255, 255 });
         _sprites = new SpriteLibrary(_textures);
-        var orbitingSprite = _sprites.RegisterSingle(
-            "runner.orbiting", whiteTexture, new Vector2(80, 80), new Vector2(40, 40));
+        string assetsRoot = Path.Combine(AppContext.BaseDirectory, "Assets");
+        _content = new ContentPackageManager(_textures, _sprites, assetsRoot);
+        _package = _content.Load("assets.json");
+        var whiteTexture = _package.GetTexture("runner.white");
+        var orbitingSprite = _package.GetSprite("runner.orbiting");
         _batch.SpriteResolver = _sprites;
 
         // 2. 场景（DDD 聚合根，完整 GMS Room 等价物：Layer/Background/Viewport/Hook）
@@ -214,6 +218,8 @@ internal sealed class Program
         _rtBloom?.Dispose();
         _rtMasked?.Dispose();
         _rtScene?.Dispose();
+        _package?.Dispose();
+        _content?.Dispose();
         _textures?.Dispose();
         _batch?.Dispose();
         _blitShader?.Dispose();

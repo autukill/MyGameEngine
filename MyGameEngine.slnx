@@ -5,6 +5,10 @@
     <Project Path="src/Engine.Features/Camera.VisualTests/Camera.VisualTests.csproj" />
     <Project Path="src/Engine.Features/Camera/Camera.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/ContentAssets/">
+    <Project Path="src/Engine.Features/ContentAssets.Tests/ContentAssets.Tests.csproj" />
+    <Project Path="src/Engine.Features/ContentAssets/ContentAssets.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/RenderPipeline/">
     <Project Path="src/Engine.Features/RenderPipeline.Tests/RenderPipeline.Tests.csproj" />
     <Project Path="src/Engine.Features/RenderPipeline.VisualTests/RenderPipeline.VisualTests.csproj" />

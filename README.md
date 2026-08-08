@@ -12,11 +12,12 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
 - 动画就绪 Sprite：逻辑资源名、原点、多帧 UV、自动帧推进、旋转/缩放/颜色以及 `batch.DrawSprite*` 便利 API。
 - Texture Assets：逻辑 `TextureRef`、PNG/静态 WebP 解码、采样预设、资产清单与 GPU 句柄统一回收。
+- 声明式 Content Assets：单一版本化 `assets.json`、包依赖、单图/Grid/多图片 Sprite、事务回滚与引用计数卸载。
 - 正交 `Camera2D`：平移、缩放、旋转、震屏和 Viewport resize。
 - RenderPass DAG：场景渲染、Stencil 遮罩、后处理和 Viewport 合成。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
-详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
+文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
 
 ## 工程结构
 
@@ -25,12 +26,13 @@ src/
 ├── Engine.Core/                         # 共享 Domain 与底层窗口/输入/图形基础设施
 ├── Engine.Features/
 │   ├── Camera/                          # Camera2D
+│   ├── ContentAssets/                   # 声明式包、依赖图、Texture/Sprite 装配与租约
 │   ├── RenderPipeline/                  # RenderTarget、RenderPass DAG、后处理与合成
 │   ├── SceneSystem/                     # Layer、RenderCommand（旧 Context 正在退役）
 │   ├── Sprites/                         # SpriteLibrary、帧解析与动画资源元数据
 │   ├── StencilMasking/                  # Stencil 状态、命令、事件与 Pass
 │   ├── TextureAssets/                   # TextureLibrary、Skia 解码与资产清单
-│   ├── *.Tests/                         # 6 个无窗口控制台冒烟项目
+│   ├── *.Tests/                         # 7 个无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.DddTests/                     # 聚合、生命周期、输入与状态调度验证
 └── MyGame.Runner/                       # Stencil + Bloom 综合 Demo
@@ -41,14 +43,15 @@ Feature 依赖保持单向：
 ```text
 Engine.Core
   ├─ Sprites
-├─ TextureAssets
+  ├─ TextureAssets
+  │    └─ ContentAssets（同时依赖 Sprites）
 └─ Camera
        └─ RenderPipeline
             ├─ SceneSystem
             └─ StencilMasking
 ```
 
-解决方案当前共 20 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 22 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -82,9 +85,10 @@ dotnet run --project src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csp
 dotnet run --project src/Engine.Features/Sprites.Tests/Sprites.Tests.csproj
 dotnet run --project src/Engine.Features/StencilMasking.Tests/StencilMasking.Tests.csproj
 dotnet run --project src/Engine.Features/TextureAssets.Tests/TextureAssets.Tests.csproj
+dotnet run --project src/Engine.Features/ContentAssets.Tests/ContentAssets.Tests.csproj
 ```
 
-图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 会从输出目录真实加载 `Assets/orbiting-drone-2frame.webp`，展示动画、中心/非中心原点、旋转、非均匀缩放与翻转；这些项目需要本地图形窗口人工确认。
+图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 通过 `Assets/assets.json` 同时加载双帧 WebP 图集和两张独立 WebP 帧，展示两类动画、中心/非中心原点、旋转、非均匀缩放与翻转；这些项目需要本地图形窗口人工确认。
 
 ## Sprite 便利 API
 
@@ -108,6 +112,18 @@ var playerSprite = sprites.RegisterGrid("player", playerTexture,
 
 `TextureLibrary` 拥有已上传句柄的生命周期，支持文件、流、RGBA8 内存数据和 JSON 资产清单。默认 Skia 解码器支持 PNG 与静态 WebP；动态 WebP 应显式拆为 Sprite 帧。清单路径必须位于指定 content root 内，批量加载失败时会回滚本次已创建的纹理。
 
+## 声明式 Content Assets
+
+```csharp
+using var manager = new ContentPackageManager(textures, sprites, packagesRoot);
+using var package = manager.Load("characters/boss/assets.json");
+var idle = package.GetSprite("boss.idle");
+```
+
+`assets.json` 可声明包依赖、Texture，以及 `single`、`grid`、`frames` 三种 Sprite 布局。`frames` 的每一帧都可引用不同 `TextureRef` 并指定像素裁剪区域，因此大尺寸单帧可以保留为独立图片；运行时 Sprite 引用和绘制 API 不受未来 Atlas 重映射影响。Manager 会先验证完整依赖图，再按拓扑顺序同步加载；失败只回滚本次新增资源，共享依赖在最后一个租约释放后才卸载。
+
+完整清单字段、多纹理长动画、包依赖和生命周期说明见 [Content Assets 使用指南](docs/CONTENT_ASSETS.md)。
+
 ## 渲染流程
 
 ```text
@@ -124,7 +140,7 @@ Pass 通过输入/输出 RenderTarget 声明依赖，Pipeline 在每帧执行前
 1. `RenderEffectRequested`：实例通过领域事件声明特需渲染效果。
 2. `RenderTargetPool`：复用临时 RT，并按效果 owner 集合回收动态 Pass。
 3. 将 VisualTests 纳入可重复的 GPU 快照或像素回归验证。
-4. 在已有 TextureLibrary 上增加 Sprite 清单和自动 TextureAtlas，保持解码、打包与动画定义分层。
+4. 增加离线 Atlas 构建切片，消费规范化 `SpriteFrameSource[]`；过大帧保留独立纹理，并允许动画跨 Atlas 页。
 5. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

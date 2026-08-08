@@ -8,8 +8,8 @@ using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
-using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 
 internal static class Program
@@ -18,17 +18,20 @@ internal static class Program
     private static SpriteShader? _shader;
     private static SpriteBatch? _batch;
     private static TextureLibrary? _textures;
+    private static ContentPackageManager? _content;
+    private static LoadedContentPackage? _package;
     private static SpriteRef _markerSprite;
     private static SceneAggregate? _scene;
     private static readonly Vector2[] Origins =
     {
-        new(220, 220), new(500, 220), new(780, 220), new(300, 500), new(700, 500)
+        new(180, 200), new(500, 200), new(820, 200),
+        new(180, 500), new(500, 500), new(820, 500)
     };
 
     private static void Main()
     {
         Console.WriteLine("=== Sprites Visual Test ===");
-        Console.WriteLine("Loads Assets/orbiting-drone-2frame.webp through TextureLibrary.Load(path).");
+        Console.WriteLine("Loads a declarative assets.json package with Grid and multi-image Frames Sprites.");
         Console.WriteLine("Includes a rotating GameInstance with offset origin (16, 112).");
         Console.WriteLine("双帧动画 / 中心原点 / 旋转 / 非均匀缩放 / 水平翻转");
         Console.WriteLine("白点表示各 Sprite 的世界原点；ESC 退出。");
@@ -49,30 +52,15 @@ internal static class Program
         _shader = new SpriteShader(gl);
         _batch = new SpriteBatch(gl) { DefaultShader = _shader };
         _textures = new TextureLibrary(gl);
-        var whiteTexture = _textures.RegisterRgba(
-            "visual.white", 1, 1, new byte[] { 255, 255, 255, 255 });
-        string atlasPath = Path.Combine(
-            AppContext.BaseDirectory, "Assets", "orbiting-drone-2frame.webp");
-        var atlasTexture = _textures.Load(
-            "visual.webp-atlas", atlasPath, TextureSampler.PixelArt);
-        Console.WriteLine($"Loaded WebP atlas: {atlasPath}");
-
         var sprites = new SpriteLibrary(_textures);
-        _markerSprite = sprites.RegisterSingle("visual.marker", whiteTexture, Vector2.Zero);
-        var demo = sprites.RegisterGrid(
-            "visual.two-frame",
-            atlasTexture,
-            frameSize: new Vector2(128, 128),
-            origin: new Vector2(64, 64),
-            frameCount: 2,
-            framesPerSecond: 4f);
-        var offsetOriginDemo = sprites.RegisterGrid(
-            "visual.offset-origin",
-            atlasTexture,
-            frameSize: new Vector2(128, 128),
-            origin: new Vector2(16, 112),
-            frameCount: 2,
-            framesPerSecond: 4f);
+        string assetsRoot = Path.Combine(AppContext.BaseDirectory, "Assets");
+        _content = new ContentPackageManager(_textures, sprites, assetsRoot);
+        _package = _content.Load("assets.json");
+        _markerSprite = _package.GetSprite("visual.marker");
+        var demo = _package.GetSprite("visual.two-frame");
+        var offsetOriginDemo = _package.GetSprite("visual.offset-origin");
+        var multiImageDemo = _package.GetSprite("visual.multi-image");
+        Console.WriteLine($"Loaded content package: {Path.Combine(assetsRoot, "assets.json")}");
         _batch.SpriteResolver = sprites;
 
         _scene = new SceneAggregate("SpritesVisual");
@@ -86,7 +74,9 @@ internal static class Program
             rotationSpeed: 0f, color: new Vector4(.8f, 1f, .8f, 1f)));
         _scene.Add(new DemoSprite(demo, Origins[3], new Vector2(1f, .5f), MathF.PI / 4,
             rotationSpeed: -.5f, color: new Vector4(.8f, .8f, 1f, .65f)));
-        _scene.Add(new OffsetOriginSprite(offsetOriginDemo, Origins[4]));
+        _scene.Add(new DemoSprite(multiImageDemo, Origins[4], new Vector2(.75f), 0f,
+            rotationSpeed: .35f, color: Vector4.One));
+        _scene.Add(new OffsetOriginSprite(offsetOriginDemo, Origins[5]));
         _scene.Add(new EscapeController(() => _window.NativeWindow.Close()));
     }
 
@@ -113,6 +103,8 @@ internal static class Program
     private static void HandleClosing()
     {
         _scene?.End();
+        _package?.Dispose();
+        _content?.Dispose();
         _textures?.Dispose();
         _batch?.Dispose();
         _shader?.Dispose();

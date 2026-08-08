@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "id": "sprites.visual-tests",
+  "dependencies": [],
+  "textures": [
+    {
+      "name": "visual.webp-atlas",
+      "path": "orbiting-drone-2frame.webp",
+      "sampling": "pixelArt"
+    },
+    {
+      "name": "visual.frame.0",
+      "path": "orbiting-drone-frame-0.webp",
+      "sampling": "pixelArt"
+    },
+    {
+      "name": "visual.frame.1",
+      "path": "orbiting-drone-frame-1.webp",
+      "sampling": "pixelArt"
+    },
+    {
+      "name": "visual.white",
+      "path": "white.webp",
+      "sampling": "pixelArt"
+    }
+  ],
+  "sprites": [
+    {
+      "name": "visual.marker",
+      "layout": "single",
+      "texture": "visual.white",
+      "origin": { "x": 0, "y": 0 }
+    },
+    {
+      "name": "visual.two-frame",
+      "layout": "grid",
+      "texture": "visual.webp-atlas",
+      "frameSize": { "width": 128, "height": 128 },
+      "frameCount": 2,
+      "origin": { "x": 64, "y": 64 },
+      "framesPerSecond": 4
+    },
+    {
+      "name": "visual.offset-origin",
+      "layout": "grid",
+      "texture": "visual.webp-atlas",
+      "frameSize": { "width": 128, "height": 128 },
+      "frameCount": 2,
+      "origin": { "x": 16, "y": 112 },
+      "framesPerSecond": 4
+    },
+    {
+      "name": "visual.multi-image",
+      "layout": "frames",
+      "frames": [
+        { "texture": "visual.frame.0" },
+        { "texture": "visual.frame.1" }
+      ],
+      "origin": { "x": 64, "y": 64 },
+      "framesPerSecond": 3
+    }
+  ]
+}

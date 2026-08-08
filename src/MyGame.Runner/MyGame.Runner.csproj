@@ -21,10 +21,15 @@
   <ItemGroup>
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\Engine.Features\Camera\Camera.csproj" />
+    <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\RenderPipeline\RenderPipeline.csproj" />
     <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" />
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Assets\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

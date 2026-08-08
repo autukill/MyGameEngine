@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "runner.assets",
+  "dependencies": [],
+  "textures": [
+    {
+      "name": "runner.white",
+      "path": "white.webp",
+      "sampling": "smooth"
+    }
+  ],
+  "sprites": [
+    {
+      "name": "runner.orbiting",
+      "layout": "single",
+      "texture": "runner.white",
+      "size": { "width": 80, "height": 80 },
+      "origin": { "x": 40, "y": 40 }
+    }
+  ]
+}

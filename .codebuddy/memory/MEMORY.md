@@ -35,6 +35,8 @@ src/
 │   ├── Camera/            Camera.csproj             (无 Silk 依赖，最底层)
 │   ├── Camera.Tests/      Camera.Tests.csproj       (冒烟测试)
 │   ├── Camera.VisualTests/ Camera.VisualTests.csproj (图形看效果 Demo)
+│   ├── ContentAssets/    ContentAssets.csproj        (声明式 Texture/Sprite 包装配)
+│   ├── ContentAssets.Tests/ ContentAssets.Tests.csproj
 │   ├── RenderPipeline/    RenderPipeline.csproj      (依赖 Camera + Silk.NET.OpenGL)
 │   ├── RenderPipeline.Tests/
 │   ├── RenderPipeline.VisualTests/
@@ -67,10 +69,11 @@ src/
 
 ## 当前代码进度（2026-08-08）
 - `src/Engine.Core`：Domain 含逻辑 SpriteRef、SpriteDrawCommand/Metadata/Resolver、Blend/Shader/Input 抽象；Infrastructure 含 SpriteBatch 状态机、Shader 与 Input 实现。
-- `src/Engine.Features`：6 个独立 module project + 11 个测试项目（6 Feature 冒烟 + 5 VisualTests）。Sprites 使用 TextureRef；TextureAssets 支持 PNG/WebP、清单、采样与 GPU 所有权。
-- `src/MyGame.Runner`：OrbitingSprite 与 SpotlightController 均为 GameInstance；统一使用 EngineWindow.Input，Program 只做装配，并已接入 DrawGUI、resize 与关闭释放链路。
-- 解决方案 `MyGameEngine.slnx` 共 20 个项目；7 个无窗口冒烟项目（含 Engine.DddTests）。
-- **待办**：第二阶段事件装配（RenderEffectRequested + RenderTargetPool + kind/owner 聚合回收）；自定义 ShaderRef 示例与动态 uniform API；自动 GPU 回归测试。
+- `src/Engine.Features`：7 个独立 module project + 12 个测试项目（7 Feature 冒烟 + 5 VisualTests）。ContentAssets 依赖 TextureAssets + Sprites，支持版本化 `assets.json`、依赖图、Single/Grid/多图片 Frames、引用计数和原子回滚。
+- `SpriteLibrary` 逐帧保存 `TextureRef + PixelRectI`；同一动画可跨多个独立纹理，未来 Atlas 只重映射帧来源，不改变 SpriteRef、GameInstance 或 Draw API。
+- `src/MyGame.Runner`：通过自己的 `Assets/assets.json` 装配 OrbitingSprite 与白纹理；统一使用 EngineWindow.Input，并已接入 DrawGUI、resize 与包/纹理关闭释放链路。
+- 解决方案 `MyGameEngine.slnx` 共 22 个项目；8 个无窗口冒烟项目（含 Engine.DddTests）。
+- **待办**：离线 TextureAtlas 构建切片（大帧旁路、跨页动画）；第二阶段事件装配（RenderEffectRequested + RenderTargetPool）；自动 GPU 回归测试。
 
 ## 设计方向（2026-08-07 推演，第一阶段已实施）
 - **用户明确偏好**：游戏/测试业务逻辑必须放入 GameInstance 子类，像 GMS 一样通过实例事件（Create/BeginStep/Step/EndStep/BeginDraw/Draw/EndDraw/DrawGUI/输入事件）控制业务逻辑与 shader/blend mode；Program 只做装配（组合根）。当前 VisualTests 逻辑堆在 Program 静态方法是"缺事件模型"导致的临时形态。
@@ -82,3 +85,4 @@ src/
 - 偏好使用 DDD 头脑风暴 -> 战略设计 -> 战术设计 -> 垂直切片实施的渐进式流程。
 - 使用 AI Agent 辅助开发，切片化便于 Agent 局部工作。
 - 用户偏好"先思考推演最佳实践再动手"，重大设计先给推演再确认实施。
+- `docs/` 采用渐进式维护：公共 API、清单格式、所有权、限制或里程碑随对应代码在同一提交更新；入口为 `docs/README.md`。

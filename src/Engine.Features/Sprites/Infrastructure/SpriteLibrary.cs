@@ -9,10 +9,13 @@ using GameEngine.Core.Domain.ValueObjects;
 /// </summary>
 public sealed class SpriteLibrary : ISpriteResolver
 {
-    private sealed record Entry(
+    private sealed record FrameEntry(
         TextureRef Texture,
+        Vector4 UvBounds);
+
+    private sealed record Entry(
         SpriteMetadata Metadata,
-        Vector4[] Frames);
+        FrameEntry[] Frames);
 
     private readonly ITextureResolver _textures;
     private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
@@ -28,18 +31,30 @@ public sealed class SpriteLibrary : ISpriteResolver
         Vector2 origin)
     {
         var textureMetadata = GetTextureMetadata(texture);
-        return RegisterFrames(name, texture,
-            new Vector2(textureMetadata.Width, textureMetadata.Height), origin,
-            new[] { new Vector4(0f, 0f, 1f, 1f) }, framesPerSecond: 0f);
+        return RegisterPixelFrames(
+            name,
+            new Vector2(textureMetadata.Width, textureMetadata.Height),
+            origin,
+            new[] { new SpriteFrameSource(
+                texture,
+                new PixelRectI(0, 0, textureMetadata.Width, textureMetadata.Height)) });
     }
 
     public SpriteRef RegisterSingle(
         string name,
         TextureRef texture,
         Vector2 size,
-        Vector2 origin) =>
-        RegisterFrames(name, texture, size, origin,
-            new[] { new Vector4(0f, 0f, 1f, 1f) }, framesPerSecond: 0f);
+        Vector2 origin)
+    {
+        var textureMetadata = GetTextureMetadata(texture);
+        return RegisterPixelFrames(
+            name,
+            size,
+            origin,
+            new[] { new SpriteFrameSource(
+                texture,
+                new PixelRectI(0, 0, textureMetadata.Width, textureMetadata.Height)) });
+    }
 
     public SpriteRef RegisterFrames(
         string name,
@@ -56,12 +71,64 @@ public sealed class SpriteLibrary : ISpriteResolver
         if (_entries.ContainsKey(name))
             throw new ArgumentException($"Sprite '{name}' is already registered.", nameof(name));
 
-        var frames = frameUvBounds.ToArray();
+        var frames = new FrameEntry[frameUvBounds.Length];
         for (int i = 0; i < frames.Length; i++)
-            ValidateUv(frames[i], nameof(frameUvBounds));
+        {
+            ValidateUv(frameUvBounds[i], nameof(frameUvBounds));
+            frames[i] = new FrameEntry(texture, frameUvBounds[i]);
+        }
 
         var metadata = new SpriteMetadata(size, origin, frames.Length, framesPerSecond);
-        _entries.Add(name, new Entry(texture, metadata, frames));
+        _entries.Add(name, new Entry(metadata, frames));
+        return new SpriteRef(name);
+    }
+
+    public SpriteRef RegisterPixelFrames(
+        string name,
+        Vector2 logicalSize,
+        Vector2 origin,
+        ReadOnlySpan<SpriteFrameSource> frames,
+        float framesPerSecond = 0f)
+    {
+        ValidateCommon(name, logicalSize, origin, framesPerSecond);
+        if (frames.IsEmpty)
+            throw new ArgumentException("A sprite must contain at least one frame.", nameof(frames));
+        if (_entries.ContainsKey(name))
+            throw new ArgumentException($"Sprite '{name}' is already registered.", nameof(name));
+
+        var entries = new FrameEntry[frames.Length];
+        int frameWidth = 0;
+        int frameHeight = 0;
+        for (int i = 0; i < frames.Length; i++)
+        {
+            var source = frames[i];
+            var texture = GetTextureMetadata(source.Texture);
+            ValidateSourceRect(source.SourceRect, texture, nameof(frames));
+
+            if (i == 0)
+            {
+                frameWidth = source.SourceRect.Width;
+                frameHeight = source.SourceRect.Height;
+            }
+            else if (source.SourceRect.Width != frameWidth ||
+                     source.SourceRect.Height != frameHeight)
+            {
+                throw new ArgumentException(
+                    "All Sprite frame source rectangles must have identical dimensions.",
+                    nameof(frames));
+            }
+
+            entries[i] = new FrameEntry(
+                source.Texture,
+                ToUvBounds(source.SourceRect, texture));
+        }
+
+        var metadata = new SpriteMetadata(
+            logicalSize,
+            origin,
+            entries.Length,
+            framesPerSecond);
+        _entries.Add(name, new Entry(metadata, entries));
         return new SpriteRef(name);
     }
 
@@ -113,15 +180,20 @@ public sealed class SpriteLibrary : ISpriteResolver
 
     public bool TryResolve(SpriteRef sprite, int subImage, out ResolvedSpriteFrame frame)
     {
-        if (!sprite.IsEmpty && _entries.TryGetValue(sprite.Name, out var entry) &&
-            _textures.TryResolve(entry.Texture, out var texture))
+        if (!sprite.IsEmpty && _entries.TryGetValue(sprite.Name, out var entry))
         {
             int index = NormalizeFrame(subImage, entry.Frames.Length);
+            var source = entry.Frames[index];
+            if (!_textures.TryResolve(source.Texture, out var texture))
+            {
+                frame = default;
+                return false;
+            }
             frame = new ResolvedSpriteFrame(
                 texture.Handle,
                 entry.Metadata.Size,
                 entry.Metadata.Origin,
-                entry.Frames[index]);
+                source.UvBounds);
             return true;
         }
         frame = default;
@@ -142,10 +214,16 @@ public sealed class SpriteLibrary : ISpriteResolver
     private static void ValidateCommon(
         string name, TextureRef texture, Vector2 size, Vector2 origin, float framesPerSecond)
     {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Sprite name cannot be empty.", nameof(name));
         if (texture.IsEmpty)
             throw new ArgumentException("Texture reference cannot be empty.", nameof(texture));
+        ValidateCommon(name, size, origin, framesPerSecond);
+    }
+
+    private static void ValidateCommon(
+        string name, Vector2 size, Vector2 origin, float framesPerSecond)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Sprite name cannot be empty.", nameof(name));
         ValidateSize(size, nameof(size));
         if (!float.IsFinite(origin.X) || !float.IsFinite(origin.Y))
             throw new ArgumentException("Origin must be finite.", nameof(origin));
@@ -167,6 +245,31 @@ public sealed class SpriteLibrary : ISpriteResolver
             uv.X >= uv.Z || uv.Y >= uv.W)
             throw new ArgumentException("UV bounds must be finite, ordered, and inside [0,1].", paramName);
     }
+
+    private static void ValidateSourceRect(
+        PixelRectI rect,
+        TextureMetadata texture,
+        string paramName)
+    {
+        if (rect.X < 0 || rect.Y < 0 || rect.Width <= 0 || rect.Height <= 0)
+            throw new ArgumentException("Frame rectangles must have a non-negative position and positive size.", paramName);
+
+        try
+        {
+            if (rect.Right > texture.Width || rect.Bottom > texture.Height)
+                throw new ArgumentException("Frame rectangle exceeds its source texture.", paramName);
+        }
+        catch (OverflowException)
+        {
+            throw new ArgumentException("Frame rectangle exceeds its source texture.", paramName);
+        }
+    }
+
+    private static Vector4 ToUvBounds(PixelRectI rect, TextureMetadata texture) => new(
+        (float)rect.X / texture.Width,
+        (float)rect.Y / texture.Height,
+        (float)rect.Right / texture.Width,
+        (float)rect.Bottom / texture.Height);
 
     private TextureMetadata GetTextureMetadata(TextureRef texture)
     {

@@ -32,6 +32,8 @@ internal static class Program
         var singleTexture = textures.Add("single-texture", 1u, 32, 16);
         var framesTexture = textures.Add("frames-texture", 2u, 32, 16);
         var gridTexture = textures.Add("grid-texture", 3u, 64, 32);
+        var pixelFrameA = textures.Add("pixel-frame-a", 10u, 20, 10);
+        var pixelFrameB = textures.Add("pixel-frame-b", 11u, 40, 20);
         var library = new SpriteLibrary(textures);
         var single = library.RegisterSingle("single", singleTexture, new Vector2(16, 8));
         Check(library.TryGetMetadata(single, out var singleMeta) &&
@@ -55,6 +57,24 @@ internal static class Program
         Check(!library.TryResolve(new SpriteRef("missing"), 0, out _),
             "Unknown sprite resolves safely");
 
+        var pixelFrames = library.RegisterPixelFrames(
+            "pixel-frames",
+            new Vector2(8, 6),
+            new Vector2(3, 4),
+            new[]
+            {
+                new SpriteFrameSource(pixelFrameA, new PixelRectI(2, 1, 8, 6)),
+                new SpriteFrameSource(pixelFrameB, new PixelRectI(16, 8, 8, 6))
+            },
+            12f);
+        library.TryResolve(pixelFrames, 0, out var pixelA);
+        library.TryResolve(pixelFrames, 1, out var pixelB);
+        Check(pixelA.TextureHandle == 10u && pixelB.TextureHandle == 11u,
+            "Pixel frames can resolve to different texture handles");
+        Check(Near(pixelA.UvBounds, new Vector4(.1f, .1f, .5f, .7f)) &&
+              Near(pixelB.UvBounds, new Vector4(.4f, .4f, .6f, .7f)),
+            "Pixel rectangles convert to per-texture UV bounds");
+
         CheckThrows<ArgumentException>(() =>
             library.RegisterSingle("single", singleTexture, Vector2.Zero),
             "Duplicate registration rejected");
@@ -68,6 +88,18 @@ internal static class Program
         CheckThrows<ArgumentException>(() =>
             library.RegisterSingle("missing-texture", new TextureRef("missing"), Vector2.Zero),
             "Unknown texture is rejected during registration");
+        CheckThrows<ArgumentException>(() =>
+            library.RegisterPixelFrames("pixel-out-of-bounds", Vector2.One, Vector2.Zero,
+                new[] { new SpriteFrameSource(pixelFrameA, new PixelRectI(19, 0, 2, 1)) }),
+            "Out-of-bounds pixel frame is rejected");
+        CheckThrows<ArgumentException>(() =>
+            library.RegisterPixelFrames("pixel-mismatch", Vector2.One, Vector2.Zero,
+                new[]
+                {
+                    new SpriteFrameSource(pixelFrameA, new PixelRectI(0, 0, 2, 2)),
+                    new SpriteFrameSource(pixelFrameB, new PixelRectI(0, 0, 3, 2))
+                }),
+            "Mismatched pixel frame dimensions are rejected");
     }
 
     private static void VerifyAnimation()

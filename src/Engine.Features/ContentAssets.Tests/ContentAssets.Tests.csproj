@@ -4,23 +4,16 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <RootNamespace>Sprites.VisualTests</RootNamespace>
-    <AssemblyName>SpritesVisualTests</AssemblyName>
+    <RootNamespace>ContentAssets.Tests</RootNamespace>
+    <AssemblyName>ContentAssetsTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Silk.NET.OpenGL" />
-    <PackageReference Include="Silk.NET.Windowing" />
-    <PackageReference Include="Silk.NET.Input" />
-    <PackageReference Include="Silk.NET.Maths" />
+    <PackageReference Include="SkiaSharp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\ContentAssets\ContentAssets.csproj" />
     <ProjectReference Include="..\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\TextureAssets\TextureAssets.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Update="Assets\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
