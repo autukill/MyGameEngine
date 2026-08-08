@@ -5,7 +5,11 @@ using GameEngine.Features.RenderPipeline.Domain;
 
 internal static class BloomEffectPolicy
 {
-    public static BloomSettings ValidateAndGetSettings(
+    public readonly record struct Configuration(
+        BloomSettings Settings,
+        RenderSurfaceKey Source);
+
+    public static Configuration ValidateAndGetConfiguration(
         RenderEffectKey key,
         IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
     {
@@ -14,7 +18,7 @@ internal static class BloomEffectPolicy
         if (owners.Count == 0)
             throw new ArgumentException("A bloom effect requires at least one owner.", nameof(owners));
 
-        BloomSettings? shared = null;
+        Configuration? shared = null;
         foreach (var (_, descriptor) in owners.OrderBy(pair => pair.Key))
         {
             if (descriptor is not BloomEffectDescriptor bloom)
@@ -23,11 +27,17 @@ internal static class BloomEffectPolicy
             if (bloom.Key != key)
                 throw new ArgumentException(
                     "Owner descriptor key does not match the effect key.", nameof(owners));
-            if (shared is { } settings && settings != bloom.Settings)
+            var configuration = new Configuration(bloom.Settings, bloom.Source);
+            if (shared is { } existing && existing != configuration)
                 throw new InvalidOperationException(
-                    $"All owners of shared bloom effect '{key}' must use identical settings.");
-            shared = bloom.Settings;
+                    $"All owners of shared bloom effect '{key}' must use identical settings and source.");
+            shared = configuration;
         }
         return shared!.Value;
     }
+
+    public static BloomSettings ValidateAndGetSettings(
+        RenderEffectKey key,
+        IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners) =>
+        ValidateAndGetConfiguration(key, owners).Settings;
 }

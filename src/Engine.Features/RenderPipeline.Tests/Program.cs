@@ -95,6 +95,7 @@ internal static class Program
         Check(stencils.Count == 2, "DepthStencilState works as set element");
 
         TestResourcePoolCore();
+        TestRenderEffectGraphPlanner();
         TestScenePipelineBuilder();
 
         Console.WriteLine();
@@ -140,7 +141,7 @@ internal static class Program
 
     private static void TestScenePipelineBuilder()
     {
-        Console.WriteLine("7. Dynamic effect owner reconciliation");
+        Console.WriteLine("8. Dynamic effect owner reconciliation");
         var graph = new FakeGraphEditor();
         var targets = new FakeTargetPool();
         var factory = new FakeEffectFactory("test");
@@ -222,6 +223,25 @@ internal static class Program
         Check(conflictRejected && builder.GetOwnerCount(key) == 1,
             "Conflicting shared configuration is rejected atomically");
 
+        var beforeMissingRuntime = factory.LastRuntime!;
+        int beforeMissingCreates = factory.CreateCount;
+        bool missingSurfaceRejected = false;
+        try
+        {
+            builder.ApplyEvents(new IDomainEvent[]
+            {
+                new RenderEffectRequestedEvent(ownerA, new FakeDescriptor(
+                    key,
+                    6,
+                    7,
+                    new RenderSurfaceKey("missing", "main", "color")))
+            });
+        }
+        catch (InvalidOperationException) { missingSurfaceRejected = true; }
+        Check(missingSurfaceRejected && factory.CreateCount == beforeMissingCreates &&
+              beforeMissingRuntime.DisposeCount == 0 && builder.ActiveEffectCount == 1,
+            "Missing planned input is rejected before mutating the active graph");
+
         var inPlaceRuntime = factory.LastRuntime!;
         int beforeInPlaceUpdates = inPlaceRuntime.UpdateCount;
         int beforeInPlaceCreates = factory.CreateCount;
@@ -259,6 +279,22 @@ internal static class Program
               builder.ActiveEffectCount == 1 && graph.PassCount == 1,
             "Structural rebuild failure preserves the prior runtime atomically");
 
+        graph.FailNextAddPass = true;
+        bool attachFailureSurfaced = false;
+        try
+        {
+            builder.ApplyEvents(new IDomainEvent[]
+            {
+                new RenderEffectRequestedEvent(ownerA, new FakeDescriptor(key, 6, 11))
+            });
+        }
+        catch (InvalidOperationException) { attachFailureSurfaced = true; }
+        var failedAttachRuntime = factory.LastRuntime!;
+        Check(attachFailureSurfaced && stableRuntime.DisposeCount == 0 &&
+              failedAttachRuntime.DisposeCount == 1 &&
+              builder.ActiveEffectCount == 1 && graph.PassCount == 1,
+            "Graph attachment failure preserves the prior runtime atomically");
+
         factory.FailNextCreate = true;
         bool creationFailureSurfaced = false;
         try
@@ -274,7 +310,7 @@ internal static class Program
         Check(creationFailureSurfaced && builder.ActiveEffectCount == 1 && graph.PassCount == 1,
             "Factory creation failure preserves the previous graph atomically");
 
-        var beforeResizeRuntime = factory.LastRuntime!;
+        var beforeResizeRuntime = stableRuntime;
         int beforeResizeCreates = factory.CreateCount;
         builder.Resize(1024, 768);
         Check(factory.CreateCount == beforeResizeCreates + 1 && beforeResizeRuntime.DisposeCount == 1,
@@ -288,6 +324,86 @@ internal static class Program
         Check(graph.PassCount == 0, "Builder disposal is idempotent and detaches all passes");
     }
 
+    private static void TestRenderEffectGraphPlanner()
+    {
+        Console.WriteLine("7. Logical render surface dependency planning");
+        var keyA = new RenderEffectKey("a", "main");
+        var keyB = new RenderEffectKey("b", "main");
+        var keyC = new RenderEffectKey("c", "main");
+        var surfaceA = RenderSurfaceKey.FromEffect(keyA, "color");
+        var surfaceB = RenderSurfaceKey.FromEffect(keyB, "color");
+        var surfaceC = RenderSurfaceKey.FromEffect(keyC, "color");
+
+        var graph = RenderEffectGraphPlanner.Plan(
+            new Dictionary<RenderEffectKey, RenderEffectPlan>
+            {
+                [keyC] = new RenderEffectPlan(
+                    keyC, new[] { RenderSurfaceKey.SceneColor }, new[] { surfaceC }),
+                [keyB] = new RenderEffectPlan(keyB, new[] { surfaceA }, new[] { surfaceB }),
+                [keyA] = new RenderEffectPlan(
+                    keyA, new[] { RenderSurfaceKey.SceneColor }, new[] { surfaceA })
+            },
+            new[] { RenderSurfaceKey.SceneColor });
+        Check(graph.OrderedKeys.SequenceEqual(new[] { keyA, keyB, keyC }),
+            "Dependencies are topological and independent effects use stable keys");
+
+        CheckThrows<InvalidOperationException>(() => RenderEffectGraphPlanner.Plan(
+                new Dictionary<RenderEffectKey, RenderEffectPlan>
+                {
+                    [keyA] = new RenderEffectPlan(
+                        keyA, new[] { surfaceB }, new[] { surfaceA })
+                },
+                new[] { RenderSurfaceKey.SceneColor }),
+            "Missing logical input is rejected before runtime creation");
+
+        CheckThrows<InvalidOperationException>(() => RenderEffectGraphPlanner.Plan(
+                new Dictionary<RenderEffectKey, RenderEffectPlan>
+                {
+                    [keyA] = new RenderEffectPlan(keyA, outputs: new[] { surfaceA }),
+                    [keyB] = new RenderEffectPlan(keyB, outputs: new[] { surfaceA })
+                },
+                Array.Empty<RenderSurfaceKey>()),
+            "Duplicate logical output producer is rejected");
+
+        CheckThrows<InvalidOperationException>(() => RenderEffectGraphPlanner.Plan(
+                new Dictionary<RenderEffectKey, RenderEffectPlan>
+                {
+                    [keyA] = new RenderEffectPlan(keyA, new[] { surfaceB }, new[] { surfaceA }),
+                    [keyB] = new RenderEffectPlan(keyB, new[] { surfaceA }, new[] { surfaceB })
+                },
+                Array.Empty<RenderSurfaceKey>()),
+            "Logical surface dependency cycle is rejected");
+
+        CheckThrows<InvalidOperationException>(() => RenderEffectGraphPlanner.Plan(
+                new Dictionary<RenderEffectKey, RenderEffectPlan>
+                {
+                    [keyA] = new RenderEffectPlan(keyA, outputs: new[] { surfaceA })
+                },
+                new[] { surfaceA }),
+            "Effects cannot replace a borrowed root surface");
+
+        CheckThrows<InvalidOperationException>(() => RenderEffectGraphPlanner.Plan(
+                new Dictionary<RenderEffectKey, RenderEffectPlan>
+                {
+                    [keyA] = new RenderEffectPlan(keyA, outputs: new[] { surfaceB })
+                },
+                Array.Empty<RenderSurfaceKey>()),
+            "Effects cannot publish a surface owned by another effect key");
+    }
+
+    private static void CheckThrows<T>(Action action, string name) where T : Exception
+    {
+        try
+        {
+            action();
+            Check(false, name);
+        }
+        catch (T)
+        {
+            Check(true, name);
+        }
+    }
+
     private sealed class FakeResource : IDisposable
     {
         public string Name { get; }
@@ -299,7 +415,8 @@ internal static class Program
     private sealed record FakeDescriptor(
         RenderEffectKey Key,
         int Value,
-        int SharedConfiguration) : IRenderEffectDescriptor;
+        int SharedConfiguration,
+        RenderSurfaceKey? Input = null) : IRenderEffectDescriptor;
 
     private sealed class FakeEffectFactory : IRenderEffectFactory
     {
@@ -309,12 +426,18 @@ internal static class Program
         public bool FailNextCreate { get; set; }
         public FakeEffectFactory(string kind) => Kind = kind;
 
-        public void Validate(
+        public RenderEffectPlan Plan(
             RenderEffectKey key,
             IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
         {
-            if (owners.Values.Cast<FakeDescriptor>().Select(value => value.SharedConfiguration).Distinct().Count() > 1)
+            var descriptors = owners.Values.Cast<FakeDescriptor>().ToArray();
+            if (descriptors.Select(value => value.SharedConfiguration).Distinct().Count() > 1)
                 throw new InvalidOperationException("Conflicting shared configuration.");
+            if (descriptors.Select(value => value.Input).Distinct().Count() > 1)
+                throw new InvalidOperationException("Conflicting logical input.");
+            return descriptors[0].Input is { } input
+                ? new RenderEffectPlan(key, new[] { input })
+                : new RenderEffectPlan(key);
         }
 
         public IRenderEffectRuntime Create(
@@ -341,6 +464,8 @@ internal static class Program
         public IReadOnlyList<RenderPass> Passes { get; }
         public IReadOnlyList<RenderEffectCompositeSource> CompositeSources { get; } =
             Array.Empty<RenderEffectCompositeSource>();
+        public IReadOnlyList<RenderEffectOutput> Outputs { get; } =
+            Array.Empty<RenderEffectOutput>();
         public int OwnerCount { get; private set; }
         public int UpdateCount { get; private set; }
         public int DisposeCount { get; private set; }
@@ -379,8 +504,14 @@ internal static class Program
         private long _nextPass;
         private readonly Dictionary<RenderPassHandle, RenderPass> _passes = new();
         public int PassCount => _passes.Count;
+        public bool FailNextAddPass { get; set; }
         public RenderPassHandle AddPass(RenderPass pass)
         {
+            if (FailNextAddPass)
+            {
+                FailNextAddPass = false;
+                throw new InvalidOperationException("Synthetic graph attachment failure.");
+            }
             var handle = new RenderPassHandle(++_nextPass);
             _passes.Add(handle, pass);
             return handle;

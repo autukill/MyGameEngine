@@ -52,6 +52,7 @@ dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTes
 2. `stencil-owner-lifecycle`：同一 EffectKey 的两个、一个和零个 owner，最后一个 owner 离开后同时断言效果与临时 RT 已回收。
 3. `dynamic-effect-resize`：活跃动态效果从 320×240 重建到 400×300，并断言池中只保留一个新尺寸租约。
 4. `bloom-ping-pong`：覆盖 Bloom 活跃、resize 和 release；活跃时断言恰好租用 Bright/Ping/Pong 三个目标，释放后断言效果和租约归零。
+5. `render-surface-chain`：真实执行 SceneColor → Bloom(main).glow → Bloom(secondary).glow，断言两个效果占用六个租约，并在同批释放后全部归零。
 
 checkpoint 可以携带独立的 `PixelComparisonOptions`。Bloom 的 active 与 resized-active 使用 soft `3`、hard `12`、差异比例 `0.5%`；release 和其他场景继续使用默认容差，因此浮点采样差异不会放宽整个回归套件。
 

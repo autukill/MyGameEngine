@@ -4,14 +4,16 @@ using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.RenderPipeline.Domain;
 
-/// <summary>在 Step/Draw 边界把领域效果状态差量映射为 RenderPass 图。</summary>
+/// <summary>在 Step/Draw 边界把领域效果状态原子映射为有逻辑 Surface 依赖的 RenderPass 图。</summary>
 public sealed class ScenePipelineBuilder : IDisposable
 {
     private readonly IRenderEffectGraphEditor _graph;
     private readonly IRenderTargetPool _targets;
     private readonly Dictionary<string, IRenderEffectFactory> _factories =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<RenderSurfaceKey, RenderTarget2D> _rootSurfaces = new();
     private readonly Dictionary<RenderEffectKey, ActiveEffect> _active = new();
+    private readonly List<RenderEffectKey> _activeOrder = new();
     private int _width;
     private int _height;
     private bool _disposed;
@@ -54,6 +56,21 @@ public sealed class ScenePipelineBuilder : IDisposable
                 nameof(factory));
     }
 
+    /// <summary>注册由组合根拥有的借用 Surface；必须在首个效果创建前完成。</summary>
+    public void RegisterRootSurface(RenderSurfaceKey key, RenderTarget2D surface)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(surface);
+        if (!key.IsValid)
+            throw new ArgumentException("Root render surface key must be initialized.", nameof(key));
+        if (_active.Count != 0)
+            throw new InvalidOperationException(
+                "Root render surfaces cannot change while effects are active.");
+        if (!_rootSurfaces.TryAdd(key, surface))
+            throw new ArgumentException(
+                $"Root render surface '{key}' is already registered.", nameof(key));
+    }
+
     public int GetOwnerCount(RenderEffectKey key) =>
         _active.TryGetValue(key, out var effect) ? effect.Owners.Count : 0;
 
@@ -71,8 +88,10 @@ public sealed class ScenePipelineBuilder : IDisposable
                     ArgumentNullException.ThrowIfNull(requested.Descriptor);
                     if (!_factories.ContainsKey(requested.Descriptor.Key.Kind))
                         throw new InvalidOperationException(
-                            $"No render effect factory is registered for '{requested.Descriptor.Key.Kind}'.");
-                    GetOrAdd(candidate, requested.Descriptor.Key)[requested.OwnerId] = requested.Descriptor;
+                            $"No render effect factory is registered for " +
+                            $"'{requested.Descriptor.Key.Kind}'.");
+                    GetOrAdd(candidate, requested.Descriptor.Key)[requested.OwnerId] =
+                        requested.Descriptor;
                     break;
 
                 case RenderEffectReleasedEvent released:
@@ -89,11 +108,14 @@ public sealed class ScenePipelineBuilder : IDisposable
             }
         }
 
-        foreach (var empty in candidate.Where(pair => pair.Value.Count == 0).Select(pair => pair.Key).ToArray())
+        foreach (var empty in candidate
+                     .Where(pair => pair.Value.Count == 0)
+                     .Select(pair => pair.Key)
+                     .ToArray())
             candidate.Remove(empty);
 
-        ValidateCandidate(candidate);
-        Reconcile(candidate, _width, _height);
+        var planned = PlanCandidate(candidate);
+        Reconcile(candidate, planned, _width, _height);
     }
 
     public void Resize(int width, int height)
@@ -104,164 +126,170 @@ public sealed class ScenePipelineBuilder : IDisposable
         if (width == _width && height == _height) return;
 
         var owners = CloneOwnerState();
-        RebuildAll(owners, width, height);
+        var planned = PlanCandidate(owners);
+        RebuildAll(owners, planned, width, height);
         _width = width;
         _height = height;
         _targets.TrimExceptSize(width, height);
     }
 
-    private Dictionary<RenderEffectKey, Dictionary<InstanceId, IRenderEffectDescriptor>> CloneOwnerState() =>
+    private Dictionary<RenderEffectKey, Dictionary<InstanceId, IRenderEffectDescriptor>>
+        CloneOwnerState() =>
         _active.ToDictionary(
             pair => pair.Key,
             pair => new Dictionary<InstanceId, IRenderEffectDescriptor>(pair.Value.Owners));
 
-    private void ValidateCandidate(
+    private PlannedRenderEffectGraph PlanCandidate(
         Dictionary<RenderEffectKey, Dictionary<InstanceId, IRenderEffectDescriptor>> candidate)
     {
+        var plans = new Dictionary<RenderEffectKey, RenderEffectPlan>();
         foreach (var (key, owners) in candidate)
         {
             if (!_factories.TryGetValue(key.Kind, out var factory))
                 throw new InvalidOperationException(
                     $"No render effect factory is registered for '{key.Kind}'.");
-            factory.Validate(key, owners);
+            var plan = factory.Plan(key, owners) ??
+                       throw new InvalidOperationException(
+                           $"Effect factory '{key.Kind}' returned a null plan.");
+            plans.Add(key, plan);
         }
+        return RenderEffectGraphPlanner.Plan(plans, _rootSurfaces.Keys);
     }
 
     private void Reconcile(
         Dictionary<RenderEffectKey, Dictionary<InstanceId, IRenderEffectDescriptor>> candidate,
+        PlannedRenderEffectGraph planned,
         int width,
         int height)
     {
-        if (candidate.Any(pair =>
-                _active.TryGetValue(pair.Key, out var active) &&
-                active.Runtime.RequiresRebuild(pair.Value)))
+        bool structureChanged =
+            _active.Count != candidate.Count ||
+            planned.OrderedKeys.Count != _activeOrder.Count ||
+            !planned.OrderedKeys.SequenceEqual(_activeOrder) ||
+            planned.OrderedKeys.Any(key =>
+                !_active.TryGetValue(key, out var effect) ||
+                !effect.Plan.Equals(planned.Plans[key]) ||
+                effect.Runtime.RequiresRebuild(candidate[key]));
+
+        if (structureChanged)
         {
-            RebuildAll(candidate, width, height);
+            RebuildAll(candidate, planned, width, height);
             return;
         }
 
-        var context = new RenderEffectBuildContext(width, height, _targets);
-        var created = new Dictionary<RenderEffectKey, IRenderEffectRuntime>();
+        var updated = new List<(
+            ActiveEffect Effect,
+            Dictionary<InstanceId, IRenderEffectDescriptor> OldOwners)>();
         try
         {
-            foreach (var (key, owners) in candidate)
+            foreach (var key in planned.OrderedKeys)
             {
-                if (_active.ContainsKey(key)) continue;
-                var runtime = _factories[key.Kind].Create(context, key, owners);
-                ValidateRuntime(key, runtime);
-                created.Add(key, runtime);
+                var effect = _active[key];
+                var oldOwners =
+                    new Dictionary<InstanceId, IRenderEffectDescriptor>(effect.Owners);
+                effect.Runtime.UpdateOwners(candidate[key]);
+                updated.Add((effect, oldOwners));
             }
         }
         catch
         {
-            foreach (var runtime in created.Values) DisposeUnattached(runtime);
-            throw;
-        }
-
-        var updated = new List<(ActiveEffect Effect, Dictionary<InstanceId, IRenderEffectDescriptor> OldOwners)>();
-        var attached = new Dictionary<RenderEffectKey, ActiveEffect>();
-        try
-        {
-            foreach (var (key, owners) in candidate)
-            {
-                if (!_active.TryGetValue(key, out var current)) continue;
-                var oldOwners = new Dictionary<InstanceId, IRenderEffectDescriptor>(current.Owners);
-                current.Runtime.UpdateOwners(owners);
-                updated.Add((current, oldOwners));
-            }
-
-            foreach (var (key, runtime) in created.ToArray())
-            {
-                try
-                {
-                    attached.Add(key, Attach(runtime, candidate[key]));
-                }
-                catch
-                {
-                    // Attach 已完整清理当前 runtime，避免外层再次释放。
-                    created.Remove(key);
-                    throw;
-                }
-            }
-        }
-        catch
-        {
-            foreach (var effect in attached.Values) Detach(effect);
-            foreach (var (key, runtime) in created)
-                if (!attached.ContainsKey(key)) DisposeUnattached(runtime);
             for (int i = updated.Count - 1; i >= 0; i--)
                 updated[i].Effect.Runtime.UpdateOwners(updated[i].OldOwners);
             throw;
         }
 
-        foreach (var key in _active.Keys.Where(key => !candidate.ContainsKey(key)).ToArray())
-        {
-            Detach(_active[key]);
-            _active.Remove(key);
-        }
-
-        foreach (var (key, owners) in candidate)
-        {
-            if (attached.TryGetValue(key, out var newEffect))
-                _active.Add(key, newEffect);
-            else
-                _active[key].Owners = new Dictionary<InstanceId, IRenderEffectDescriptor>(owners);
-        }
+        foreach (var key in planned.OrderedKeys)
+            _active[key].Owners =
+                new Dictionary<InstanceId, IRenderEffectDescriptor>(candidate[key]);
     }
 
     private void RebuildAll(
         Dictionary<RenderEffectKey, Dictionary<InstanceId, IRenderEffectDescriptor>> owners,
+        PlannedRenderEffectGraph planned,
         int width,
         int height)
     {
-        var context = new RenderEffectBuildContext(width, height, _targets);
+        var surfaces = new RenderSurfaceRegistry(_rootSurfaces);
         var replacements = new Dictionary<RenderEffectKey, IRenderEffectRuntime>();
+        var createdOrder = new List<RenderEffectKey>(planned.OrderedKeys.Count);
         try
         {
-            foreach (var (key, effectOwners) in owners)
+            foreach (var key in planned.OrderedKeys)
             {
-                var runtime = _factories[key.Kind].Create(context, key, effectOwners);
-                ValidateRuntime(key, runtime);
+                var context = new RenderEffectBuildContext(width, height, _targets, surfaces);
+                var runtime = _factories[key.Kind].Create(context, key, owners[key]);
+                try
+                {
+                    ValidateRuntime(key, planned.Plans[key], runtime);
+                    foreach (var output in runtime.Outputs)
+                        surfaces.Add(output.Key, output.Surface);
+                }
+                catch
+                {
+                    DisposeUnattached(runtime);
+                    throw;
+                }
                 replacements.Add(key, runtime);
+                createdOrder.Add(key);
             }
         }
         catch
         {
-            foreach (var runtime in replacements.Values) DisposeUnattached(runtime);
+            for (int i = createdOrder.Count - 1; i >= 0; i--)
+                DisposeUnattached(replacements[createdOrder[i]]);
             throw;
         }
 
         var attached = new Dictionary<RenderEffectKey, ActiveEffect>();
+        var attachedOrder = new List<RenderEffectKey>(createdOrder.Count);
+        var consumed = new HashSet<RenderEffectKey>();
         try
         {
-            foreach (var (key, runtime) in replacements.ToArray())
+            foreach (var key in createdOrder)
             {
                 try
                 {
-                    attached.Add(key, Attach(runtime, owners[key]));
+                    attached.Add(key, Attach(
+                        replacements[key],
+                        planned.Plans[key],
+                        owners[key]));
+                    attachedOrder.Add(key);
+                    consumed.Add(key);
                 }
                 catch
                 {
-                    replacements.Remove(key);
+                    // Attach 已清理当前 runtime。
+                    consumed.Add(key);
                     throw;
                 }
             }
         }
         catch
         {
-            foreach (var effect in attached.Values) Detach(effect);
-            foreach (var (key, runtime) in replacements)
-                if (!attached.ContainsKey(key)) DisposeUnattached(runtime);
+            for (int i = attachedOrder.Count - 1; i >= 0; i--)
+                Detach(attached[attachedOrder[i]]);
+            for (int i = createdOrder.Count - 1; i >= 0; i--)
+            {
+                var key = createdOrder[i];
+                if (!consumed.Contains(key)) DisposeUnattached(replacements[key]);
+            }
             throw;
         }
 
-        foreach (var effect in _active.Values) Detach(effect);
+        for (int i = _activeOrder.Count - 1; i >= 0; i--)
+            Detach(_active[_activeOrder[i]]);
         _active.Clear();
-        foreach (var (key, effect) in attached) _active.Add(key, effect);
+        _activeOrder.Clear();
+        foreach (var key in attachedOrder)
+        {
+            _active.Add(key, attached[key]);
+            _activeOrder.Add(key);
+        }
     }
 
     private ActiveEffect Attach(
         IRenderEffectRuntime runtime,
+        RenderEffectPlan plan,
         IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
     {
         var passHandles = new List<RenderPassHandle>(runtime.Passes.Count);
@@ -291,6 +319,7 @@ public sealed class ScenePipelineBuilder : IDisposable
 
         return new ActiveEffect(
             runtime,
+            plan,
             new Dictionary<InstanceId, IRenderEffectDescriptor>(owners),
             passHandles,
             sourceHandles);
@@ -307,16 +336,30 @@ public sealed class ScenePipelineBuilder : IDisposable
 
     private static void DisposeUnattached(IRenderEffectRuntime runtime)
     {
-        foreach (var pass in runtime.Passes) pass.Dispose();
+        for (int i = runtime.Passes.Count - 1; i >= 0; i--)
+            runtime.Passes[i].Dispose();
         runtime.Dispose();
     }
 
-    private static void ValidateRuntime(RenderEffectKey key, IRenderEffectRuntime runtime)
+    private static void ValidateRuntime(
+        RenderEffectKey key,
+        RenderEffectPlan plan,
+        IRenderEffectRuntime runtime)
     {
-        if (runtime is null) throw new InvalidOperationException("Effect factory returned null.");
+        if (runtime is null)
+            throw new InvalidOperationException("Effect factory returned null.");
         if (runtime.Key != key)
             throw new InvalidOperationException(
                 $"Effect factory returned runtime '{runtime.Key}' for requested key '{key}'.");
+        if (runtime.Passes is null || runtime.CompositeSources is null || runtime.Outputs is null)
+            throw new InvalidOperationException(
+                $"Effect runtime '{key}' returned a null collection.");
+        if (!runtime.Outputs.Select(output => output.Key).SequenceEqual(plan.Outputs))
+            throw new InvalidOperationException(
+                $"Effect runtime '{key}' outputs do not match its logical plan.");
+        if (runtime.Outputs.Any(output => output.Surface is null))
+            throw new InvalidOperationException(
+                $"Effect runtime '{key}' returned a null render surface.");
     }
 
     private static Dictionary<InstanceId, IRenderEffectDescriptor> GetOrAdd(
@@ -347,25 +390,31 @@ public sealed class ScenePipelineBuilder : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        foreach (var effect in _active.Values) Detach(effect);
+        for (int i = _activeOrder.Count - 1; i >= 0; i--)
+            Detach(_active[_activeOrder[i]]);
         _active.Clear();
+        _activeOrder.Clear();
+        _rootSurfaces.Clear();
         _factories.Clear();
     }
 
     private sealed class ActiveEffect
     {
         public IRenderEffectRuntime Runtime { get; }
+        public RenderEffectPlan Plan { get; }
         public Dictionary<InstanceId, IRenderEffectDescriptor> Owners { get; set; }
         public IReadOnlyList<RenderPassHandle> PassHandles { get; }
         public IReadOnlyList<CompositeSourceHandle> SourceHandles { get; }
 
         public ActiveEffect(
             IRenderEffectRuntime runtime,
+            RenderEffectPlan plan,
             Dictionary<InstanceId, IRenderEffectDescriptor> owners,
             IReadOnlyList<RenderPassHandle> passHandles,
             IReadOnlyList<CompositeSourceHandle> sourceHandles)
         {
             Runtime = runtime;
+            Plan = plan;
             Owners = owners;
             PassHandles = passHandles;
             SourceHandles = sourceHandles;

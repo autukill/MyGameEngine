@@ -16,9 +16,10 @@ SceneAggregate.DrainUncommittedEvents()
                 ▼
 ScenePipelineBuilder.ApplyEvents(...)
      ├─ owner 状态校验与合并
-     ├─ IRenderEffectFactory
+     ├─ IRenderEffectFactory.Plan(...)
+     ├─ RenderSurface 依赖校验与稳定拓扑排序
      ├─ RenderTargetPool.Rent(...)
-     └─ 差量添加/更新/移除 Pass 与合成源
+     └─ 原子添加/更新/移除 Pass、输出与合成源
                 │
                 ▼
 RenderPipeline.Execute(...)
@@ -80,6 +81,10 @@ var builder = new ScenePipelineBuilder(
     window.Width,
     window.Height);
 
+builder.RegisterRootSurface(
+    RenderSurfaceKey.SceneColor,
+    sceneRenderTarget);
+
 builder.RegisterFactory(new StencilMaskEffectFactory(
     gl,
     scene,
@@ -91,7 +96,6 @@ builder.RegisterFactory(new StencilMaskEffectFactory(
 
 builder.RegisterFactory(new BloomEffectFactory(
     gl,
-    sceneRenderTarget,
     bloomExtractShader,
     gaussianBlurShader));
 ```
@@ -106,7 +110,9 @@ RT_Scene -> Bright -> Ping(H) -> Pong(V)
 RT_Pong  -> ViewportCompositor (Additive)
 ```
 
-组合根不保存动态 Stencil/Bloom Pass 或对应 RenderTarget；它只保存 Builder 和 Pool。
+组合根不保存动态 Stencil/Bloom Pass 或对应 RenderTarget；它只保存 Builder、Pool 和借用的 SceneColor 根 Surface。Bloom Factory 通过构建上下文解析 SceneColor，不再直接持有 Scene RT。
+
+效果间数据流由 `RenderEffectPlan` 的逻辑输入/输出声明。缺失输入、重复输出和循环会在分配 GPU 资源前失败；完整规则见 [逻辑 RenderSurface 与动态效果依赖图](RENDER_SURFACES.md)。
 
 ## 每帧同步边界
 
@@ -122,7 +128,7 @@ pipeline.Execute(context);
 
 事件快照可以先交给其他消费者，再交给 Builder。`ApplyEvents` 必须位于 Step 之后、Draw 之前；Pipeline 在 `Execute` 期间禁止修改。
 
-同一批事件按顺序应用：Request 后 Release 的最终状态是释放，Release 后 Request 的最终状态是重新获取。整批事件会先完成工厂、描述符和共享配置校验，再修改当前图。
+同一批事件按顺序应用：Request 后 Release 的最终状态是释放，Release 后 Request 的最终状态是重新获取。整批事件会先完成工厂、描述符、共享配置和 Surface 依赖图校验，再修改当前图。
 
 ## RenderTargetPool 所有权
 
@@ -169,16 +175,17 @@ Builder 先移除动态 Pass 和合成源，再归还 Lease；这样不会让 Pa
 ## 扩展新效果
 
 1. 定义实现 `IRenderEffectDescriptor` 的纯领域描述符。
-2. 实现 `IRenderEffectFactory`，在 `Validate` 中完成所有共享配置检查。
-3. Factory 从 Pool 租赁目标并返回 `IRenderEffectRuntime`。
-4. Runtime 暴露 Pass、合成源，并在 `UpdateOwners` 中更新参数；结构参数变化时实现 `RequiresRebuild`。
-5. 在组合根注册 Factory；GameInstance 发 Request/Release 事件。
+2. 实现 `IRenderEffectFactory.Plan`，完成共享配置检查并声明逻辑输入/输出。
+3. Factory 在 `Create` 中通过 `context.Surfaces` 解析上游，再从 Pool 租赁目标。
+4. Runtime 暴露与 Plan 完全一致的 `Outputs`、Pass 和合成源。
+5. 在 `UpdateOwners` 中更新普通参数；结构参数变化时实现 `RequiresRebuild`。
+6. 在组合根注册根 Surface 与 Factory；GameInstance 发 Request/Release 事件。
 
 Factory 创建失败、未知 Kind 或描述符冲突不会破坏已经挂接的效果图。
 
 ## 当前边界
 
 - Stencil 遮罩几何仍使用现有白纹理 Quad 路径，尚未增加任意矢量路径或专用圆形网格。
-- Bloom v1 只消费完整 Scene RT，不能把 Stencil 或其他动态效果输出作为输入。
+- Bloom 可以消费 SceneColor 或另一个动态效果输出，但所有表面仍是 RGBA8。
 - v1 不支持 HDR、MSAA、多颜色 Attachment 或跨场景共享 Pool。
 - 没有全局事件总线；组合根负责在明确帧边界分发事件快照。

@@ -67,8 +67,11 @@ internal static class Program
 
         var descriptor = new BloomEffectDescriptor(BloomEffectDescriptor.DefaultKey, defaults);
         Check(descriptor.Key.Kind == BloomEffectDescriptor.EffectKind &&
-              descriptor.Settings == defaults,
-            "Descriptor carries a typed key and settings");
+              descriptor.Settings == defaults &&
+              descriptor.Source == RenderSurfaceKey.SceneColor &&
+              BloomEffectDescriptor.GlowOutput(descriptor.Key) ==
+              RenderSurfaceKey.FromEffect(descriptor.Key, "glow"),
+            "Descriptor carries a typed key, SceneColor input, and logical glow output");
         CheckThrows<ArgumentException>(
             () => new BloomEffectDescriptor(new RenderEffectKey("other", "main"), defaults),
             "Descriptor rejects a non-Bloom key");
@@ -85,6 +88,20 @@ internal static class Program
                 Descriptor: BloomEffectDescriptor bloom
             } && bloom.Settings == BloomSettings.Default,
             "Active instance raises a typed Bloom request");
+
+        var upstreamKey = new RenderEffectKey(BloomEffectDescriptor.EffectKind, "upstream");
+        var upstreamGlow = BloomEffectDescriptor.GlowOutput(upstreamKey);
+        events.Clear();
+        instance.RequestBloom(
+            BloomSettings.Default,
+            events.Add,
+            new RenderEffectKey(BloomEffectDescriptor.EffectKind, "downstream"),
+            upstreamGlow);
+        Check(events.Single() is RenderEffectRequestedEvent
+            {
+                Descriptor: BloomEffectDescriptor { Source: var source }
+            } && source == upstreamGlow,
+            "Bloom request can consume another effect's logical output");
 
         events.Clear();
         instance.ReleaseBloom(events.Add);
@@ -110,6 +127,16 @@ internal static class Program
         CheckThrows<InvalidOperationException>(
             () => BloomEffectPolicy.ValidateAndGetSettings(key, owners),
             "Owners with conflicting settings are rejected");
+
+        owners = new Dictionary<InstanceId, IRenderEffectDescriptor>
+        {
+            [InstanceId.New()] = new BloomEffectDescriptor(key, BloomSettings.Default),
+            [InstanceId.New()] = new BloomEffectDescriptor(
+                key, BloomSettings.Default, upstreamGlow)
+        };
+        CheckThrows<InvalidOperationException>(
+            () => BloomEffectPolicy.ValidateAndGetConfiguration(key, owners),
+            "Owners with conflicting logical sources are rejected");
     }
 
     private static void TestTargetPlanning()

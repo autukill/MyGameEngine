@@ -1,8 +1,8 @@
 # 项目现状
 
-更新日期：2026-08-08
+更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 32 个 .NET 项目、131 个 C# 文件，Feature 拆分为 Bloom、Camera、ContentAssets、RenderPipeline、SceneSystem、Sprites、StencilMasking、TextureAssets、TextureAtlas 九个独立模块。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 32 个 .NET 项目、134 个 C# 文件，Feature 拆分为 Bloom、Camera、ContentAssets、RenderPipeline、SceneSystem、Sprites、StencilMasking、TextureAssets、TextureAtlas 九个独立模块。
 
 ## 已完成
 
@@ -17,9 +17,11 @@
 - `RenderTargetPool` 按完整 Descriptor 复用临时 RT，并在 resize 时安全重建活跃效果。
 - Runner 的 SpotlightController 只声明 Stencil；SceneBloomController 独立声明完整 Scene Bloom。
 - 独立 Bloom 描述符、三目标 Bright/Ping/Pong 效果链、五采样分离高斯与分辨率重建协议。
+- 纯逻辑 `RenderSurfaceKey`、Factory Plan、根 Surface 注册、效果输出解析与稳定拓扑依赖图。
+- 动态效果结构变化采用全图原子重建；缺失输入、重复输出、循环、创建或挂接失败均保留旧图。
 - 11 个无窗口冒烟项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、编译产物、动态 owner、Bloom 设置和池所有权。
 - `Engine.Testing.Visual` 提供隐藏固定步长窗口、RGBA8 framebuffer 捕获、PNG 编解码和像素容差比较。
-- 自动 GPU 回归覆盖 Sprite 原点/变换、Stencil 两/一/零 owner、动态效果 resize，以及 Bloom active/resize/release，并支持 checkpoint 独立容差。
+- 自动 GPU 回归覆盖 Sprite 原点/变换、Stencil 生命周期、动态效果 resize、Bloom 生命周期及双 Bloom Surface 串联，并支持 checkpoint 独立容差。
 - AssetCompiler 可打包为 `gameengine-assets` .NET Tool；ContentPipeline NuGet 包通过 `buildTransitive` 为外部项目提供内置编译器、增量 Build 与 Publish 接入。
 - 包集成测试使用临时本地 Feed，真实验证 Tool 安装、带空格路径、Debug/Release、缓存命中与 Publish 边界。
 
@@ -29,15 +31,15 @@
 - Stencil 几何仍使用白纹理 Quad；尚未增加任意矢量路径或专用圆形网格。
 - Atlas 暂不支持旋转、trim 或相同像素内容哈希去重。
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
-- 各交互式 VisualTests 仍需人工观察；自动基线已覆盖四条高价值确定性路径，但无显示器 CI 环境尚未固化。
+- 各交互式 VisualTests 仍需人工观察；自动基线已覆盖五条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 
-## 下一里程碑：渲染效果图与 HDR 边界
+## 下一里程碑：HDR RenderTarget 与 Tone Mapping
 
-1. 为动态效果声明显式输入/输出依赖，评估多效果串联与稳定排序，而不让描述符引用 GPU 对象。
-2. 设计可选 HDR RenderTarget 格式和 tone mapping 边界，再决定 Bloom 是否迁移到 HDR。
-3. 为无显示器 CI 固化软件 OpenGL 执行环境，并验证 Bloom checkpoint 的跨驱动容差。
-4. 继续减少 SceneAggregate 每帧分配，再推进 Spatial Hash。
+1. 为 RenderTargetDescriptor 增加可选 RGBA16F，并保持 Pool 按完整格式隔离复用。
+2. 新增独立 Tone Mapping 描述符与 Pass，消费逻辑 HDR Surface 并输出 RGBA8 合成表面。
+3. 让 Scene 与 Bloom 可选择 HDR 输入/中间目标，同时保留当前 RGBA8 默认路径。
+4. 建立 exposure、钳制、resize 与格式回收的 GPU 基线，再固化无显示器 CI 环境。
 
 ## 已知限制
 
@@ -46,4 +48,4 @@
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[Bloom](BLOOM_EFFECT.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Bloom](BLOOM_EFFECT.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

@@ -8,6 +8,8 @@ public sealed record StencilMaskEffectDescriptor : IRenderEffectDescriptor
 {
     public const string EffectKind = "stencil-mask";
     public static RenderEffectKey DefaultKey => new(EffectKind, "main");
+    public static RenderSurfaceKey MaskOutput(RenderEffectKey key) =>
+        RenderSurfaceKey.FromEffect(key, "mask");
 
     public RenderEffectKey Key { get; }
     public Vector2D Center { get; }

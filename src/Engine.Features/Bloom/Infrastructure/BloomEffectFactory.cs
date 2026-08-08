@@ -9,7 +9,6 @@ using Silk.NET.OpenGL;
 public sealed class BloomEffectFactory : IRenderEffectFactory
 {
     private readonly GL _gl;
-    private readonly RenderTarget2D _sceneSource;
     private readonly BloomExtractShader _extractShader;
     private readonly GaussianBlurShader _blurShader;
 
@@ -17,27 +16,33 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
 
     public BloomEffectFactory(
         GL gl,
-        RenderTarget2D sceneSource,
         BloomExtractShader extractShader,
         GaussianBlurShader blurShader)
     {
         _gl = gl ?? throw new ArgumentNullException(nameof(gl));
-        _sceneSource = sceneSource ?? throw new ArgumentNullException(nameof(sceneSource));
         _extractShader = extractShader ?? throw new ArgumentNullException(nameof(extractShader));
         _blurShader = blurShader ?? throw new ArgumentNullException(nameof(blurShader));
     }
 
-    public void Validate(
+    public RenderEffectPlan Plan(
         RenderEffectKey key,
-        IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners) =>
-        BloomEffectPolicy.ValidateAndGetSettings(key, owners);
+        IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
+    {
+        var configuration = BloomEffectPolicy.ValidateAndGetConfiguration(key, owners);
+        return new RenderEffectPlan(
+            key,
+            new[] { configuration.Source },
+            new[] { BloomEffectDescriptor.GlowOutput(key) });
+    }
 
     public IRenderEffectRuntime Create(
         in RenderEffectBuildContext context,
         RenderEffectKey key,
         IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
     {
-        BloomSettings settings = BloomEffectPolicy.ValidateAndGetSettings(key, owners);
+        var configuration = BloomEffectPolicy.ValidateAndGetConfiguration(key, owners);
+        BloomSettings settings = configuration.Settings;
+        RenderTarget2D source = context.Surfaces.Resolve(configuration.Source);
         var size = BloomPass.CalculateTargetSize(context.Width, context.Height, settings.Resolution);
         var descriptor = new RenderTargetDescriptor(size.Width, size.Height);
         RenderTargetLease? bright = null;
@@ -50,10 +55,11 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
             ping = context.Targets.Rent(descriptor);
             pong = context.Targets.Rent(descriptor);
             pass = new BloomPass(
-                $"Bloom:{key.Slot}", _gl, _sceneSource,
+                $"Bloom:{key.Slot}", _gl, source,
                 bright.Target, ping.Target, pong.Target,
                 _extractShader, _blurShader, settings);
-            return new BloomEffectRuntime(key, settings, pass, bright, ping, pong);
+            return new BloomEffectRuntime(
+                key, configuration, pass, bright, ping, pong);
         }
         catch
         {
@@ -68,7 +74,7 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
     private sealed class BloomEffectRuntime : IRenderEffectRuntime
     {
         private readonly BloomPass _pass;
-        private BloomSettings _settings;
+        private BloomEffectPolicy.Configuration _configuration;
         private RenderTargetLease? _bright;
         private RenderTargetLease? _ping;
         private RenderTargetLease? _pong;
@@ -76,17 +82,18 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
         public RenderEffectKey Key { get; }
         public IReadOnlyList<RenderPass> Passes { get; }
         public IReadOnlyList<RenderEffectCompositeSource> CompositeSources { get; }
+        public IReadOnlyList<RenderEffectOutput> Outputs { get; }
 
         public BloomEffectRuntime(
             RenderEffectKey key,
-            BloomSettings settings,
+            BloomEffectPolicy.Configuration configuration,
             BloomPass pass,
             RenderTargetLease bright,
             RenderTargetLease ping,
             RenderTargetLease pong)
         {
             Key = key;
-            _settings = settings;
+            _configuration = configuration;
             _pass = pass;
             _bright = bright;
             _ping = ping;
@@ -97,17 +104,22 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
                 new RenderEffectCompositeSource(
                     pong.Target, ViewportRect.FullScreen, BlendState.Additive)
             };
+            Outputs = new[]
+            {
+                new RenderEffectOutput(BloomEffectDescriptor.GlowOutput(key), pong.Target)
+            };
         }
 
         public bool RequiresRebuild(
             IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners) =>
-            BloomEffectPolicy.ValidateAndGetSettings(Key, owners).Resolution != _settings.Resolution;
+            BloomEffectPolicy.ValidateAndGetConfiguration(Key, owners).Settings.Resolution !=
+            _configuration.Settings.Resolution;
 
         public void UpdateOwners(
             IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
         {
-            _settings = BloomEffectPolicy.ValidateAndGetSettings(Key, owners);
-            _pass.UpdateSettings(_settings);
+            _configuration = BloomEffectPolicy.ValidateAndGetConfiguration(Key, owners);
+            _pass.UpdateSettings(_configuration.Settings);
         }
 
         public void Dispose()

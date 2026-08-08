@@ -103,6 +103,7 @@ internal sealed class Program
             _targetPool,
             width,
             height);
+        _pipelineBuilder.RegisterRootSurface(RenderSurfaceKey.SceneColor, _rtScene);
         _pipelineBuilder.RegisterFactory(new StencilMaskEffectFactory(
             gl,
             _scene,
@@ -113,7 +114,6 @@ internal sealed class Program
             _sprites));
         _pipelineBuilder.RegisterFactory(new BloomEffectFactory(
             gl,
-            _rtScene,
             _bloomExtractShader,
             _bloomBlurShader));
 

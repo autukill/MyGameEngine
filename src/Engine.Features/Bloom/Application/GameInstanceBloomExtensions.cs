@@ -11,14 +11,18 @@ public static class GameInstanceBloomExtensions
         this GameInstance instance,
         BloomSettings settings,
         Action<IDomainEvent> raiseEvent,
-        RenderEffectKey? key = null)
+        RenderEffectKey? key = null,
+        RenderSurfaceKey? source = null)
     {
         ArgumentNullException.ThrowIfNull(instance);
         ArgumentNullException.ThrowIfNull(raiseEvent);
         if (!instance.IsActive) return;
         raiseEvent(new RenderEffectRequestedEvent(
             instance.Id,
-            new BloomEffectDescriptor(key ?? BloomEffectDescriptor.DefaultKey, settings)));
+            new BloomEffectDescriptor(
+                key ?? BloomEffectDescriptor.DefaultKey,
+                settings,
+                source)));
     }
 
     public static void ReleaseBloom(

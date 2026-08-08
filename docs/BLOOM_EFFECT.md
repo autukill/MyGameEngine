@@ -1,6 +1,6 @@
 # Bloom 效果使用指南
 
-Bloom 是独立于 Stencil 的动态渲染效果。它读取组合根提供的完整 Scene RenderTarget，提取高亮区域，执行水平/垂直分离高斯模糊，最后以 Additive 混合回屏幕。
+Bloom 是独立于 Stencil 的动态渲染效果。它默认读取组合根注册的 SceneColor，也可以读取另一个动态效果的逻辑输出；随后提取高亮区域，执行水平/垂直分离高斯模糊，最后以 Additive 混合回屏幕。
 
 ## 实例声明
 
@@ -45,12 +45,17 @@ var blurShader = new GaussianBlurShader(gl);
 
 builder.RegisterFactory(new BloomEffectFactory(
     gl,
-    sceneRenderTarget,
     extractShader,
     blurShader));
 ```
 
-每个 Bloom Key 会从 `RenderTargetPool` 租用三个 RGBA8 目标：Bright、Ping 和 Pong。单个 `BloomPass` 对管线只声明 Scene 输入与 Pong 输出，内部执行：
+组合根需先注册 SceneColor：
+
+```csharp
+builder.RegisterRootSurface(RenderSurfaceKey.SceneColor, sceneRenderTarget);
+```
+
+每个 Bloom Key 会从 `RenderTargetPool` 租用三个 RGBA8 目标：Bright、Ping 和 Pong。Factory 的逻辑 Plan 声明 Source 输入与 `BloomEffectDescriptor.GlowOutput(key)` 输出；单个 `BloomPass` 内部执行：
 
 ```text
 RT_Scene -> Bright (Rec.709 threshold)
@@ -61,6 +66,8 @@ Pong -> ViewportCompositor (Additive)
 
 高斯模糊每个方向固定五次采样：中心权重 `0.227027`，`±1.384615` 权重 `0.316216`，`±3.230769` 权重 `0.070270`。BlurRadius 会乘到按目标纹理宽高计算的采样方向上。
 
+`RequestBloom` 的可选 `source` 参数可以指向另一个效果输出。共享同一 Bloom Key 的 owner 必须同时使用相同设置和相同 Source。改变 Source 或 Resolution 会原子重建效果图；其他设置原地更新。
+
 ## Resize、释放与所有权
 
 - resize 会先创建并挂接三张新尺寸中间目标；成功后才移除旧链并归还旧租约。
@@ -70,7 +77,7 @@ Pong -> ViewportCompositor (Additive)
 
 ## 当前边界
 
-- v1 只读取完整 Scene RenderTarget，不能引用 Stencil 或其他动态效果输出。
+- 输入必须是当前 Scene 中已注册的根 Surface 或活跃效果输出。
 - 中间目标固定为 RGBA8；高强度结果会被钳制，不提供 HDR。
 - 暂不支持软阈值 Knee、Mip Pyramid、Temporal Bloom、Lens Dirt 或 Anamorphic Bloom。
 - 不支持 MSAA 和多颜色 Attachment。

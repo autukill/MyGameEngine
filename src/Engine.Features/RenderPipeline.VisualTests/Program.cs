@@ -104,8 +104,9 @@ internal static class Program
         _pipeline.AddPass(scenePass);
         _pipeline.AddPass(compositorPass);
         _builder = new ScenePipelineBuilder(_pipeline, compositorPass, _targetPool, vw, vh);
+        _builder.RegisterRootSurface(RenderSurfaceKey.SceneColor, _rtScene);
         _builder.RegisterFactory(new BloomEffectFactory(
-            gl, _rtScene, _extractShader, _blurShader));
+            gl, _extractShader, _blurShader));
     }
 
     private static void HandleStep(double dt)

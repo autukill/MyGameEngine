@@ -56,6 +56,7 @@ internal static class Program {
         yield return new StencilOwnerLifecycleScenario();
         yield return new DynamicEffectResizeScenario();
         yield return new BloomPingPongScenario();
+        yield return new RenderSurfaceChainScenario();
     }
 
     private static void RunComparerSelfChecks() {

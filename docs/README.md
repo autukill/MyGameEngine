@@ -6,6 +6,7 @@
 
 - [项目现状](PROJECT_STATUS.md)：当前能力、限制和近期里程碑。
 - [动态渲染效果使用指南](DYNAMIC_RENDER_EFFECTS.md)：效果事件、owner 共享、ScenePipelineBuilder、RenderTargetPool 与 Stencil/Bloom 装配。
+- [逻辑 RenderSurface 与动态效果依赖图](RENDER_SURFACES.md)：纯逻辑输入输出、根 Surface、稳定拓扑、原子重建与效果串联。
 - [Bloom 效果使用指南](BLOOM_EFFECT.md)：独立描述符、设置边界、三目标 ping-pong 链、resize 与释放语义。
 - [GPU 像素回归测试](VISUAL_REGRESSION.md)：固定时间步截图、PNG 基线、容差、差异产物和场景扩展方式。
 - [Content Assets 使用指南](CONTENT_ASSETS.md)：声明式 Texture/Sprite 包、依赖、多图片动画和资源生命周期。

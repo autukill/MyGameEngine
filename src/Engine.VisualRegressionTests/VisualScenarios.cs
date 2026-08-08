@@ -276,8 +276,51 @@ internal sealed class BloomPingPongScenario : IVisualRegressionScenario
     public void Dispose() => _fixture?.Dispose();
 }
 
+internal sealed class RenderSurfaceChainScenario : IVisualRegressionScenario
+{
+    private static readonly PixelComparisonOptions BloomTolerance = new(
+        SoftChannelDelta: 3,
+        HardChannelDelta: 12,
+        MaximumDifferentPixelRatio: 0.005);
+    private BloomPingPongFixture? _fixture;
+
+    public string Name => "render-surface-chain";
+    public int Width => 400;
+    public int Height => 300;
+    public int FrameCount => 2;
+    public IReadOnlyList<VisualCheckpoint> Checkpoints { get; } = new[]
+    {
+        new VisualCheckpoint(0, "scene-bloom-bloom", BloomTolerance)
+    };
+
+    public void Initialize(EngineWindow window) =>
+        _fixture = new BloomPingPongFixture(
+            window.Graphics.Gl, Width, Height, chained: true);
+
+    public void AdvanceAndDraw(int frameIndex, double fixedDeltaTime)
+    {
+        if (frameIndex == 1) _fixture!.ReleaseBloom();
+        _fixture!.StepAndDraw(fixedDeltaTime);
+
+        int expectedEffects = frameIndex == 0 ? 2 : 0;
+        int expectedLeases = frameIndex == 0 ? 6 : 0;
+        if (_fixture.ActiveEffectCount != expectedEffects ||
+            _fixture.TotalOwnerCount != expectedEffects ||
+            _fixture.LeasedTargetCount != expectedLeases)
+            throw new InvalidOperationException(
+                $"Chained Bloom frame {frameIndex} expected {expectedEffects} effects and " +
+                $"{expectedLeases} leases, found {_fixture.ActiveEffectCount} and " +
+                $"{_fixture.LeasedTargetCount}.");
+    }
+
+    public void Dispose() => _fixture?.Dispose();
+}
+
 internal sealed class BloomPingPongFixture : IDisposable
 {
+    private static readonly RenderEffectKey UpstreamKey = BloomEffectDescriptor.DefaultKey;
+    private static readonly RenderEffectKey DownstreamKey =
+        new(BloomEffectDescriptor.EffectKind, "secondary");
     private readonly GL _gl;
     private readonly SpriteShader _spriteShader;
     private readonly BlitShader _blitShader;
@@ -293,17 +336,20 @@ internal sealed class BloomPingPongFixture : IDisposable
     private readonly RenderPipeline _pipeline;
     private readonly ScenePipelineBuilder _builder;
     private readonly BloomOwner _owner;
+    private readonly BloomOwner? _downstreamOwner;
     private int _width;
     private int _height;
     private bool _released;
     private bool _disposed;
 
     public int OwnerCount => _builder.GetOwnerCount(BloomEffectDescriptor.DefaultKey);
+    public int TotalOwnerCount =>
+        _builder.GetOwnerCount(UpstreamKey) + _builder.GetOwnerCount(DownstreamKey);
     public int ActiveEffectCount => _builder.ActiveEffectCount;
     public int TotalTargetCount => _pool.TotalCount;
     public int LeasedTargetCount => _pool.LeasedCount;
 
-    public BloomPingPongFixture(GL gl, int width, int height)
+    public BloomPingPongFixture(GL gl, int width, int height, bool chained = false)
     {
         _gl = gl;
         _width = width;
@@ -338,7 +384,17 @@ internal sealed class BloomPingPongFixture : IDisposable
         AddTile(tile, new Vector2D(255, 175), new Vector2D(3, 6),
             new Vector4(0.85f, 0.2f, 1f, 1f));
         AddTile(tile, new Vector2D(105, 195), new Vector2D(2, 2), Vector4.One);
-        _owner = _scene.Add(new BloomOwner(_scene.RaiseEvent));
+        _owner = _scene.Add(new BloomOwner(
+            _scene.RaiseEvent,
+            UpstreamKey,
+            RenderSurfaceKey.SceneColor,
+            new BloomSettings(0.35f, 1.35f, 1f, 2, BloomResolution.Half)));
+        if (chained)
+            _downstreamOwner = _scene.Add(new BloomOwner(
+                _scene.RaiseEvent,
+                DownstreamKey,
+                BloomEffectDescriptor.GlowOutput(UpstreamKey),
+                new BloomSettings(0.12f, 0.8f, 1.25f, 2, BloomResolution.Half)));
 
         _camera = new Camera2D(new Vector2(width, height));
         _sceneTarget = new RenderTarget2D(gl, width, height, withDepthStencil: true);
@@ -350,8 +406,9 @@ internal sealed class BloomPingPongFixture : IDisposable
         _pipeline.AddPass(scenePass);
         _pipeline.AddPass(compositor);
         _builder = new ScenePipelineBuilder(_pipeline, compositor, _pool, width, height);
+        _builder.RegisterRootSurface(RenderSurfaceKey.SceneColor, _sceneTarget);
         _builder.RegisterFactory(new BloomEffectFactory(
-            gl, _sceneTarget, _extractShader, _blurShader));
+            gl, _extractShader, _blurShader));
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
     }
 
@@ -371,6 +428,7 @@ internal sealed class BloomPingPongFixture : IDisposable
     {
         if (_released) return;
         _released = true;
+        if (_downstreamOwner is not null) _scene.Destroy(_downstreamOwner.Id);
         _scene.Destroy(_owner.Id);
     }
 
@@ -416,14 +474,26 @@ internal sealed class BloomPingPongFixture : IDisposable
     private sealed class BloomOwner : GameInstance
     {
         private readonly Action<IDomainEvent> _raiseEvent;
+        private readonly RenderEffectKey _key;
+        private readonly RenderSurfaceKey _source;
+        private readonly BloomSettings _settings;
 
-        public BloomOwner(Action<IDomainEvent> raiseEvent) => _raiseEvent = raiseEvent;
+        public BloomOwner(
+            Action<IDomainEvent> raiseEvent,
+            RenderEffectKey key,
+            RenderSurfaceKey source,
+            BloomSettings settings)
+        {
+            _raiseEvent = raiseEvent;
+            _key = key;
+            _source = source;
+            _settings = settings;
+        }
 
-        public override void OnCreate() => this.RequestBloom(
-            new BloomSettings(0.35f, 1.35f, 1f, 2, BloomResolution.Half),
-            _raiseEvent);
+        public override void OnCreate() =>
+            this.RequestBloom(_settings, _raiseEvent, _key, _source);
 
-        public override void OnDestroy() => this.ReleaseBloom(_raiseEvent);
+        public override void OnDestroy() => this.ReleaseBloom(_raiseEvent, _key);
     }
 }
 

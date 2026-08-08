@@ -17,6 +17,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 正交 `Camera2D`：平移、缩放、旋转、震屏和 Viewport resize。
 - RenderPass DAG：场景渲染、Stencil 遮罩、后处理和 Viewport 合成。
 - 动态效果装配：实例领域事件、共享 owner 集合、`ScenePipelineBuilder` 与 `RenderTargetPool`。
+- 逻辑 RenderSurface：纯值输入输出、根表面注册、稳定拓扑排序与失败原子重建。
 - 自动 GPU 像素回归：固定时间步、PNG 基线、容差比较以及 expected/actual/diff 诊断产物。
 - 可分发内容工具链：`gameengine-assets` .NET Tool 与内置编译器的 `buildTransitive` NuGet 包。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
@@ -168,15 +169,15 @@ dotnet run --project src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.c
 ```text
 SceneRenderPass      -> RT_Scene
 StencilMaskPass      -> RT_Masked (AlphaBlend)
-BloomPass            -> Bright -> Ping(H) -> Pong(V)
+BloomPass            -> Bright -> Ping(H) -> Pong(V) -> logical glow output
 ViewportCompositor   -> Screen (Scene opaque + Mask alpha + Bloom additive)
 ```
 
-Pass 通过输入/输出 RenderTarget 声明依赖，Pipeline 在每帧执行前进行拓扑排序。实例通过 `RenderEffectRequestedEvent` 分别声明 Spotlight 与 Bloom；Builder 在 Step/Draw 边界差量维护动态 Pass，最后一个 owner 离开后归还临时 RT。完整说明见 [动态渲染效果使用指南](docs/DYNAMIC_RENDER_EFFECTS.md)和 [Bloom 效果使用指南](docs/BLOOM_EFFECT.md)。
+Factory 先用 `RenderEffectPlan` 声明纯逻辑 Surface 输入/输出，Builder 验证唯一生产者、缺失输入和循环后稳定拓扑创建 Runtime；底层 Pass 再通过实际 RenderTarget 声明执行依赖。完整说明见 [动态渲染效果使用指南](docs/DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](docs/RENDER_SURFACES.md)和 [Bloom 效果使用指南](docs/BLOOM_EFFECT.md)。
 
 ## 下一阶段
 
-1. 设计动态效果间的显式依赖与可选 HDR/tone mapping 边界。
+1. 增加可选 RGBA16F RenderTarget 与独立 Tone Mapping 效果切片。
 2. 为内容工具包增加签名、远程 Feed 发布与跨仓库缓存。
 3. 为无显示器 CI 固化软件 OpenGL 执行环境。
 4. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。

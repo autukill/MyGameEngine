@@ -6,7 +6,8 @@ using GameEngine.Features.RenderPipeline.Domain;
 public readonly record struct RenderEffectBuildContext(
     int Width,
     int Height,
-    IRenderTargetPool Targets);
+    IRenderTargetPool Targets,
+    IRenderSurfaceResolver Surfaces);
 
 public readonly record struct RenderEffectCompositeSource(
     RenderTarget2D Source,
@@ -19,6 +20,7 @@ public interface IRenderEffectRuntime : IDisposable
     RenderEffectKey Key { get; }
     IReadOnlyList<RenderPass> Passes { get; }
     IReadOnlyList<RenderEffectCompositeSource> CompositeSources { get; }
+    IReadOnlyList<RenderEffectOutput> Outputs { get; }
     bool RequiresRebuild(IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners) => false;
     void UpdateOwners(IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners);
 }
@@ -27,8 +29,8 @@ public interface IRenderEffectFactory
 {
     string Kind { get; }
 
-    /// <summary>必须完成所有会使 UpdateOwners 失败的验证。</summary>
-    void Validate(
+    /// <summary>必须完成共享配置校验，并在分配 GPU 资源前声明逻辑依赖。</summary>
+    RenderEffectPlan Plan(
         RenderEffectKey key,
         IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners);
 

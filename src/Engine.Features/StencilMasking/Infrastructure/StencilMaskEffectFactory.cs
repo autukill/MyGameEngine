@@ -40,10 +40,15 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         _sprites = sprites;
     }
 
-    public void Validate(
+    public RenderEffectPlan Plan(
         RenderEffectKey key,
-        IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners) =>
+        IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
+    {
         StencilMaskEffectPolicy.ValidateAndOrder(key, owners);
+        return new RenderEffectPlan(
+            key,
+            outputs: new[] { StencilMaskEffectDescriptor.MaskOutput(key) });
+    }
 
     public IRenderEffectRuntime Create(
         in RenderEffectBuildContext context,
@@ -84,6 +89,12 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
                         ViewportRect.FullScreen,
                         BlendState.AlphaBlend)
                 },
+                new[]
+                {
+                    new RenderEffectOutput(
+                        StencilMaskEffectDescriptor.MaskOutput(key),
+                        maskLease.Target)
+                },
                 maskLease);
         }
         catch
@@ -102,18 +113,21 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         public RenderEffectKey Key { get; }
         public IReadOnlyList<RenderPass> Passes { get; }
         public IReadOnlyList<RenderEffectCompositeSource> CompositeSources { get; }
+        public IReadOnlyList<RenderEffectOutput> Outputs { get; }
 
         public StencilMaskEffectRuntime(
             RenderEffectKey key,
             StencilMaskPass stencilPass,
             IReadOnlyList<RenderPass> passes,
             IReadOnlyList<RenderEffectCompositeSource> compositeSources,
+            IReadOnlyList<RenderEffectOutput> outputs,
             RenderTargetLease maskLease)
         {
             Key = key;
             _stencilPass = stencilPass;
             Passes = passes;
             CompositeSources = compositeSources;
+            Outputs = outputs;
             _maskLease = maskLease;
         }
 
