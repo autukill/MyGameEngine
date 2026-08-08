@@ -65,6 +65,7 @@ var player = scene.Add(new PlayerInstance
 - `dependencies`：依赖包列表，可为空。
 - `textures`：本包拥有的 Texture 定义，可为空。
 - `sprites`：本包拥有的 Sprite 定义，可为空。
+- `atlas`：可选的离线构建配置；运行时加载源包时不会自动执行打包。
 - 一个包至少需要声明一个 Texture 或 Sprite。
 - 未知 JSON 字段会被拒绝，以便尽早发现拼写错误。
 
@@ -283,16 +284,16 @@ shader.Dispose();
 
 ## 性能边界
 
-v1 在 `Load` 时同步解码并上传包内全部图片，不提供：
+运行时直接加载源包时，会同步解码并上传清单内全部图片，不提供：
 
 - 流式驻留或帧预取。
 - 显存预算、LRU 或自动卸载单帧。
 - 解码后 CPU 像素缓存。
-- 自动 Atlas 打包。
+- 运行时自动 Atlas 打包。
 
 多图片长动画在功能上可以直接使用，但 SpriteBatch 遇到 Texture 变化时需要 Flush。大量实例同时播放跨纹理动画时，纹理切换可能成为主要成本。
 
-后续 Atlas 构建切片将消费规范化的逐帧来源：小帧可重映射到一个或多个 Atlas 页，放不下的大帧继续保持独立 Texture。这个过程不会改变 `SpriteRef`、`GameInstance`、`ImageIndex` 或 `DrawSprite` API。
+离线 `Engine.Tools.AssetCompiler` 已能消费规范化的逐帧来源：小帧重映射到一个或多个 Atlas 页，放不下的大帧保持独立 Texture。这个过程不会改变 `SpriteRef`、`GameInstance`、`ImageIndex` 或 `DrawSprite` API。配置与命令行说明见 [离线 Texture Atlas 使用指南](TEXTURE_ATLAS.md)。
 
 ## 可运行示例
 

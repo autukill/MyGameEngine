@@ -17,6 +17,12 @@ public enum SpriteAssetLayout
 
 public readonly record struct PixelSizeI(int Width, int Height);
 
+public sealed record AtlasAssetBuildDefinition(
+    PixelSizeI MaxPageSize,
+    int Padding,
+    int Extrude,
+    IReadOnlyList<string> Textures);
+
 public sealed record SpriteAssetFrameDefinition(
     string? TextureName,
     PixelRectI? SourceRect);
@@ -42,13 +48,15 @@ public sealed class AssetPackageManifest
         string id,
         IEnumerable<AssetPackageDependency> dependencies,
         IEnumerable<TextureAssetDefinition> textures,
-        IEnumerable<SpriteAssetDefinition> sprites)
+        IEnumerable<SpriteAssetDefinition> sprites,
+        AtlasAssetBuildDefinition? atlas = null)
     {
         SchemaVersion = schemaVersion;
         Id = id;
         Dependencies = dependencies.ToArray();
         Textures = textures.ToArray();
         Sprites = sprites.ToArray();
+        Atlas = atlas;
     }
 
     public int SchemaVersion { get; }
@@ -56,4 +64,5 @@ public sealed class AssetPackageManifest
     public IReadOnlyList<AssetPackageDependency> Dependencies { get; }
     public IReadOnlyList<TextureAssetDefinition> Textures { get; }
     public IReadOnlyList<SpriteAssetDefinition> Sprites { get; }
+    public AtlasAssetBuildDefinition? Atlas { get; }
 }

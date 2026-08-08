@@ -28,6 +28,10 @@
     <Project Path="src/Engine.Features/TextureAssets.Tests/TextureAssets.Tests.csproj" />
     <Project Path="src/Engine.Features/TextureAssets/TextureAssets.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/TextureAtlas/">
+    <Project Path="src/Engine.Features/TextureAtlas.Tests/TextureAtlas.Tests.csproj" />
+    <Project Path="src/Engine.Features/TextureAtlas/TextureAtlas.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/Sprites/">
     <Project Path="src/Engine.Features/Sprites.Tests/Sprites.Tests.csproj" />
     <Project Path="src/Engine.Features/Sprites.VisualTests/Sprites.VisualTests.csproj" />
@@ -38,5 +42,9 @@
 
   <!-- 引擎综合测试 & 主程序 -->
   <Project Path="src/Engine.DddTests/Engine.DddTests.csproj" />
+  <Folder Name="/Engine.Tools/AssetCompiler/">
+    <Project Path="src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj" />
+    <Project Path="src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.csproj" />
+  </Folder>
   <Project Path="src/MyGame.Runner/MyGame.Runner.csproj" />
 </Solution>

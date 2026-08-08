@@ -21,6 +21,6 @@
     <ProjectReference Include="..\TextureAssets\TextureAssets.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Update="Assets\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="AssetsCompiled\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AssetCompiler.Tests</RootNamespace>
+    <AssemblyName>AssetCompilerTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" />
+    <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" />
+    <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
+    <ProjectReference Include="..\Engine.Features\TextureAtlas\TextureAtlas.csproj" />
+    <ProjectReference Include="..\Engine.Tools.AssetCompiler\Engine.Tools.AssetCompiler.csproj" />
+  </ItemGroup>
+</Project>

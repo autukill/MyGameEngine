@@ -41,6 +41,7 @@ public static class AssetPackageManifestParser
         var dependencies = ParseDependencies(document.Dependencies);
         var textures = ParseTextures(document.Textures);
         var sprites = ParseSprites(document.Sprites);
+        var atlas = ParseAtlas(document.Atlas, textures);
         if (textures.Count == 0 && sprites.Count == 0)
             throw new InvalidDataException("An asset package must contain at least one Texture or Sprite.");
 
@@ -49,7 +50,42 @@ public static class AssetPackageManifestParser
             document.Id,
             dependencies,
             textures,
-            sprites);
+            sprites,
+            atlas);
+    }
+
+    private static AtlasAssetBuildDefinition? ParseAtlas(
+        AtlasDto? source,
+        IReadOnlyList<TextureAssetDefinition> textures)
+    {
+        if (source is null) return null;
+        if (source.Textures is null || source.Textures.Count == 0)
+            throw new InvalidDataException("Atlas build configuration requires at least one Texture name.");
+
+        PixelSizeI maxPageSize = source.MaxPageSize is null
+            ? new PixelSizeI(2048, 2048)
+            : ParsePositiveSize(source.MaxPageSize, "Atlas maxPageSize");
+        int padding = source.Padding ?? 1;
+        int extrude = source.Extrude ?? 1;
+        if (padding < 0 || extrude < 0)
+            throw new InvalidDataException("Atlas padding and extrude must be non-negative.");
+
+        var localTextures = textures.Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
+        var selected = new string[source.Textures.Count];
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < source.Textures.Count; i++)
+        {
+            string? name = source.Textures[i];
+            if (string.IsNullOrWhiteSpace(name))
+                throw new InvalidDataException($"Atlas Texture entry {i} is empty.");
+            if (!names.Add(name))
+                throw new InvalidDataException($"Atlas Texture '{name}' appears more than once.");
+            if (!localTextures.Contains(name))
+                throw new InvalidDataException($"Atlas Texture '{name}' is not declared by this package.");
+            selected[i] = name;
+        }
+
+        return new AtlasAssetBuildDefinition(maxPageSize, padding, extrude, selected);
     }
 
     private static IReadOnlyList<AssetPackageDependency> ParseDependencies(
@@ -221,6 +257,13 @@ public static class AssetPackageManifestParser
         return new PixelSizeI(size.Width, size.Height);
     }
 
+    private static PixelSizeI ParsePositiveSize(SizeIntDto size, string fieldName)
+    {
+        if (size.Width <= 0 || size.Height <= 0)
+            throw new InvalidDataException($"{fieldName} must be positive.");
+        return new PixelSizeI(size.Width, size.Height);
+    }
+
     private static Vector2 ParseLogicalSize(SizeFloatDto size, string spriteName)
     {
         if (!float.IsFinite(size.Width) || !float.IsFinite(size.Height) ||
@@ -244,6 +287,7 @@ public static class AssetPackageManifestParser
         public List<DependencyDto?>? Dependencies { get; init; }
         public List<TextureDto?>? Textures { get; init; }
         public List<SpriteDto?>? Sprites { get; init; }
+        public AtlasDto? Atlas { get; init; }
     }
 
     private sealed class DependencyDto
@@ -303,5 +347,13 @@ public static class AssetPackageManifestParser
     {
         public float? X { get; init; }
         public float? Y { get; init; }
+    }
+
+    private sealed class AtlasDto
+    {
+        public SizeIntDto? MaxPageSize { get; init; }
+        public int? Padding { get; init; }
+        public int? Extrude { get; init; }
+        public List<string?>? Textures { get; init; }
     }
 }

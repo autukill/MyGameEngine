@@ -36,6 +36,12 @@ internal static class Program
               "schemaVersion": 1,
               "id": "parser.assets",
               "dependencies": [{ "id": "shared", "manifest": "shared/assets.json" }],
+              "atlas": {
+                "maxPageSize": { "width": 1024, "height": 512 },
+                "padding": 2,
+                "extrude": 1,
+                "textures": ["atlas", "frame.1"]
+              },
               "textures": [
                 { "name": "atlas", "path": "atlas.webp", "sampling": "pixelArt" },
                 { "name": "frame.1", "path": "frame-1.webp" }
@@ -68,6 +74,9 @@ internal static class Program
         Check(manifest.SchemaVersion == 1 && manifest.Id == "parser.assets" &&
               manifest.Dependencies.Count == 1 && manifest.Textures.Count == 2,
             "Package identity, dependencies, and textures parse");
+        Check(manifest.Atlas?.MaxPageSize == new PixelSizeI(1024, 512) &&
+              manifest.Atlas.Padding == 2 && manifest.Atlas.Textures.Count == 2,
+            "Atlas build policy parses without affecting runtime assets");
         Check(manifest.Sprites[0].SourceRect?.X == 2 &&
               manifest.Sprites[1].Layout == SpriteAssetLayout.Grid,
             "Single crop and Grid layout parse");

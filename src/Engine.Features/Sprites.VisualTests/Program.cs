@@ -31,7 +31,7 @@ internal static class Program
     private static void Main()
     {
         Console.WriteLine("=== Sprites Visual Test ===");
-        Console.WriteLine("Loads a declarative assets.json package with Grid and multi-image Frames Sprites.");
+        Console.WriteLine("Loads an offline-compiled Atlas package generated from Grid and multi-image Frames Sprites.");
         Console.WriteLine("Includes a rotating GameInstance with offset origin (16, 112).");
         Console.WriteLine("双帧动画 / 中心原点 / 旋转 / 非均匀缩放 / 水平翻转");
         Console.WriteLine("白点表示各 Sprite 的世界原点；ESC 退出。");
@@ -53,7 +53,7 @@ internal static class Program
         _batch = new SpriteBatch(gl) { DefaultShader = _shader };
         _textures = new TextureLibrary(gl);
         var sprites = new SpriteLibrary(_textures);
-        string assetsRoot = Path.Combine(AppContext.BaseDirectory, "Assets");
+        string assetsRoot = Path.Combine(AppContext.BaseDirectory, "AssetsCompiled");
         _content = new ContentPackageManager(_textures, sprites, assetsRoot);
         _package = _content.Load("assets.json");
         _markerSprite = _package.GetSprite("visual.marker");
