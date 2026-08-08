@@ -10,6 +10,9 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Camera.Domain;
+using GameEngine.Features.Bloom.Application;
+using GameEngine.Features.Bloom.Domain;
+using GameEngine.Features.Bloom.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
@@ -226,6 +229,202 @@ internal sealed class DynamicEffectResizeScenario : IVisualRegressionScenario
     }
 
     public void Dispose() => _fixture?.Dispose();
+}
+
+internal sealed class BloomPingPongScenario : IVisualRegressionScenario
+{
+    private static readonly PixelComparisonOptions BloomTolerance = new(
+        SoftChannelDelta: 3,
+        HardChannelDelta: 12,
+        MaximumDifferentPixelRatio: 0.005);
+    private BloomPingPongFixture? _fixture;
+
+    public string Name => "bloom-ping-pong";
+    public int Width => 400;
+    public int Height => 300;
+    public int FrameCount => 3;
+    public IReadOnlyList<VisualCheckpoint> Checkpoints { get; } = new[]
+    {
+        new VisualCheckpoint(0, "active", BloomTolerance),
+        new VisualCheckpoint(1, "resized-active", BloomTolerance),
+        new VisualCheckpoint(2, "released")
+    };
+
+    public void Initialize(EngineWindow window) =>
+        _fixture = new BloomPingPongFixture(window.Graphics.Gl, 320, 240);
+
+    public void AdvanceAndDraw(int frameIndex, double fixedDeltaTime)
+    {
+        if (frameIndex == 1) _fixture!.Resize(Width, Height);
+        if (frameIndex == 2) _fixture!.ReleaseBloom();
+        _fixture!.StepAndDraw(fixedDeltaTime);
+
+        int expectedEffects = frameIndex < 2 ? 1 : 0;
+        int expectedLeases = frameIndex < 2 ? 3 : 0;
+        if (_fixture.ActiveEffectCount != expectedEffects ||
+            _fixture.OwnerCount != expectedEffects ||
+            _fixture.LeasedTargetCount != expectedLeases)
+            throw new InvalidOperationException(
+                $"Bloom frame {frameIndex} expected {expectedEffects} effect and " +
+                $"{expectedLeases} leases, found {_fixture.ActiveEffectCount} and " +
+                $"{_fixture.LeasedTargetCount}.");
+        if (frameIndex == 1 && _fixture.TotalTargetCount != 3)
+            throw new InvalidOperationException(
+                "Bloom resize must replace exactly three intermediate targets.");
+    }
+
+    public void Dispose() => _fixture?.Dispose();
+}
+
+internal sealed class BloomPingPongFixture : IDisposable
+{
+    private readonly GL _gl;
+    private readonly SpriteShader _spriteShader;
+    private readonly BlitShader _blitShader;
+    private readonly BloomExtractShader _extractShader;
+    private readonly GaussianBlurShader _blurShader;
+    private readonly SpriteBatch _batch;
+    private readonly TextureLibrary _textures;
+    private readonly SpriteLibrary _sprites;
+    private readonly SceneAggregate _scene;
+    private readonly Camera2D _camera;
+    private readonly RenderTarget2D _sceneTarget;
+    private readonly RenderTargetPool _pool;
+    private readonly RenderPipeline _pipeline;
+    private readonly ScenePipelineBuilder _builder;
+    private readonly BloomOwner _owner;
+    private int _width;
+    private int _height;
+    private bool _released;
+    private bool _disposed;
+
+    public int OwnerCount => _builder.GetOwnerCount(BloomEffectDescriptor.DefaultKey);
+    public int ActiveEffectCount => _builder.ActiveEffectCount;
+    public int TotalTargetCount => _pool.TotalCount;
+    public int LeasedTargetCount => _pool.LeasedCount;
+
+    public BloomPingPongFixture(GL gl, int width, int height)
+    {
+        _gl = gl;
+        _width = width;
+        _height = height;
+        _spriteShader = new SpriteShader(gl);
+        _blitShader = new BlitShader(gl);
+        _extractShader = new BloomExtractShader(gl);
+        _blurShader = new GaussianBlurShader(gl);
+        _batch = new SpriteBatch(gl) { DefaultShader = _spriteShader };
+        _textures = new TextureLibrary(gl);
+        _sprites = new SpriteLibrary(_textures);
+        _batch.SpriteResolver = _sprites;
+
+        TextureRef white = _textures.RegisterRgba(
+            "regression.bloom.white", 1, 1,
+            SpriteOriginTransformScenario.CreateSolidPixels(1, 1, 255, 255, 255, 255),
+            TextureSampler.PixelArt);
+        SpriteRef tile = _sprites.RegisterSingle(
+            "regression.bloom.tile", white, new Vector2(20, 20), new Vector2(10, 10));
+
+        _scene = new SceneAggregate("bloom-ping-pong")
+        {
+            ViewportWidth = width,
+            ViewportHeight = height,
+            Background = BackgroundConfig.FromColor(new Vector4(0.018f, 0.025f, 0.045f, 1f))
+        };
+        _scene.SetSprites(_sprites);
+        AddTile(tile, new Vector2D(70, 65), new Vector2D(4, 4),
+            new Vector4(1f, 0.12f, 0.08f, 1f));
+        AddTile(tile, new Vector2D(165, 120), new Vector2D(6, 2),
+            new Vector4(0.05f, 0.9f, 1f, 1f));
+        AddTile(tile, new Vector2D(255, 175), new Vector2D(3, 6),
+            new Vector4(0.85f, 0.2f, 1f, 1f));
+        AddTile(tile, new Vector2D(105, 195), new Vector2D(2, 2), Vector4.One);
+        _owner = _scene.Add(new BloomOwner(_scene.RaiseEvent));
+
+        _camera = new Camera2D(new Vector2(width, height));
+        _sceneTarget = new RenderTarget2D(gl, width, height, withDepthStencil: true);
+        _pool = new RenderTargetPool(gl);
+        var scenePass = new SceneRenderPass("Scene", gl, _scene, _camera, _sceneTarget);
+        var compositor = new ViewportCompositorPass("Compositor", gl, _blitShader, _batch);
+        compositor.AddSource(_sceneTarget, ViewportRect.FullScreen, BlendState.Opaque);
+        _pipeline = new RenderPipeline(gl, width, height);
+        _pipeline.AddPass(scenePass);
+        _pipeline.AddPass(compositor);
+        _builder = new ScenePipelineBuilder(_pipeline, compositor, _pool, width, height);
+        _builder.RegisterFactory(new BloomEffectFactory(
+            gl, _sceneTarget, _extractShader, _blurShader));
+        _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+    }
+
+    public void Resize(int width, int height)
+    {
+        _width = width;
+        _height = height;
+        _scene.ViewportWidth = width;
+        _scene.ViewportHeight = height;
+        _camera.ResizeViewport(width, height);
+        _sceneTarget.Resize(width, height);
+        _pipeline.Resize(width, height);
+        _builder.Resize(width, height);
+    }
+
+    public void ReleaseBloom()
+    {
+        if (_released) return;
+        _released = true;
+        _scene.Destroy(_owner.Id);
+    }
+
+    public void StepAndDraw(double fixedDeltaTime)
+    {
+        _scene.PerformStep(fixedDeltaTime);
+        _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+        var context = new RenderPassContext(
+            _gl, _spriteShader, _batch, _width, _height);
+        _pipeline.Execute(context);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _scene.End();
+        _builder.Dispose();
+        _pipeline.Dispose();
+        _pool.Dispose();
+        _sceneTarget.Dispose();
+        _textures.Dispose();
+        _batch.Dispose();
+        _blurShader.Dispose();
+        _extractShader.Dispose();
+        _blitShader.Dispose();
+        _spriteShader.Dispose();
+    }
+
+    private void AddTile(SpriteRef sprite, Vector2D position, Vector2D scale, Vector4 color) =>
+        _scene.Add(new BloomTile(sprite, position, scale, color));
+
+    private sealed class BloomTile : GameInstance
+    {
+        public BloomTile(SpriteRef sprite, Vector2D position, Vector2D scale, Vector4 color)
+        {
+            Sprite = sprite;
+            Transform = new Transform2D(position, 0, scale);
+            Color = color;
+        }
+    }
+
+    private sealed class BloomOwner : GameInstance
+    {
+        private readonly Action<IDomainEvent> _raiseEvent;
+
+        public BloomOwner(Action<IDomainEvent> raiseEvent) => _raiseEvent = raiseEvent;
+
+        public override void OnCreate() => this.RequestBloom(
+            new BloomSettings(0.35f, 1.35f, 1f, 2, BloomResolution.Half),
+            _raiseEvent);
+
+        public override void OnDestroy() => this.ReleaseBloom(_raiseEvent);
+    }
 }
 
 internal sealed class DynamicStencilFixture : IDisposable

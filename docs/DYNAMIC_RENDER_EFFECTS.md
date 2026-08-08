@@ -87,19 +87,24 @@ builder.RegisterFactory(new StencilMaskEffectFactory(
     spriteShader,
     whiteTexture,
     textures,
-    sprites,
-    bloomShader));
+    sprites));
+
+builder.RegisterFactory(new BloomEffectFactory(
+    gl,
+    sceneRenderTarget,
+    bloomExtractShader,
+    gaussianBlurShader));
 ```
 
-传入 `bloomShader` 时，Stencil Factory 创建以下动态附件：
+Stencil 与 Bloom 是两个互不依赖的效果 Key。Stencil Factory 只创建一个带 Depth24Stencil8 的遮罩目标，并以 AlphaBlend 合成；Bloom Factory 独立读取完整 Scene RT：
 
 ```text
 StencilMaskPass -> RT_Masked (D24S8)
-PostProcessPass -> RT_Bloom  (RGBA8)
-RT_Bloom        -> ViewportCompositor (Additive)
-```
+RT_Masked       -> ViewportCompositor (AlphaBlend)
 
-不传 Bloom Shader 时，Factory 只创建 Stencil Pass，并以 AlphaBlend 合成其输出。
+RT_Scene -> Bright -> Ping(H) -> Pong(V)
+RT_Pong  -> ViewportCompositor (Additive)
+```
 
 组合根不保存动态 Stencil/Bloom Pass 或对应 RenderTarget；它只保存 Builder 和 Pool。
 
@@ -147,6 +152,8 @@ pipelineBuilder.Resize(width, height);
 
 Builder 会先为全部活跃效果创建新尺寸 Runtime，成功挂接后再移除旧附件；失败时保留旧图。旧 Lease 归还后，Pool 清理不匹配当前窗口尺寸的空闲资源。owner 不需要重新发送请求。
 
+运行时还可以通过 `RequiresRebuild(nextOwners)` 声明“这次参数变化不能原地更新”。Bloom 在 Resolution 改变时使用该协议重建三张中间目标；Threshold、Intensity、BlurRadius 和 Iterations 则由 `UpdateOwners` 原地更新。该重建同样保持失败原子性。
+
 关闭顺序固定为：
 
 ```text
@@ -164,7 +171,7 @@ Builder 先移除动态 Pass 和合成源，再归还 Lease；这样不会让 Pa
 1. 定义实现 `IRenderEffectDescriptor` 的纯领域描述符。
 2. 实现 `IRenderEffectFactory`，在 `Validate` 中完成所有共享配置检查。
 3. Factory 从 Pool 租赁目标并返回 `IRenderEffectRuntime`。
-4. Runtime 暴露 Pass、合成源，并在 `UpdateOwners` 中更新每个 owner 的参数。
+4. Runtime 暴露 Pass、合成源，并在 `UpdateOwners` 中更新参数；结构参数变化时实现 `RequiresRebuild`。
 5. 在组合根注册 Factory；GameInstance 发 Request/Release 事件。
 
 Factory 创建失败、未知 Kind 或描述符冲突不会破坏已经挂接的效果图。
@@ -172,6 +179,6 @@ Factory 创建失败、未知 Kind 或描述符冲突不会破坏已经挂接的
 ## 当前边界
 
 - Stencil 遮罩几何仍使用现有白纹理 Quad 路径，尚未增加任意矢量路径或专用圆形网格。
-- Bloom 仍是单 Pass 9-tap 近似，不是水平/垂直 ping-pong 链。
+- Bloom v1 只消费完整 Scene RT，不能把 Stencil 或其他动态效果输出作为输入。
 - v1 不支持 HDR、MSAA、多颜色 Attachment 或跨场景共享 Pool。
 - 没有全局事件总线；组合根负责在明确帧边界分发事件快照。

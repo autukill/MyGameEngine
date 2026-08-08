@@ -9,6 +9,9 @@ using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Features.Bloom.Application;
+using GameEngine.Features.Bloom.Domain;
+using GameEngine.Features.Bloom.Infrastructure;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
@@ -18,9 +21,8 @@ using GameEngine.Features.RenderPipeline.Infrastructure;
 ///
 /// 展示内容：
 ///   - Pass 1: SceneRenderPass → RT_Scene  (场景实例：背景方块 + 高亮光源)
-///   - Pass 2: BloomPass  → RT_Bloom (后处理：只提取高亮区域做 9-tap 模糊)
+///   - Pass 2: BloomPass 内部执行 Bright + Horizontal/Vertical Ping-Pong
 ///   - Pass 3: CompositorPass → 屏幕 (RT_Scene Opaque 打底 + RT_Bloom Additive 叠加)
-///   - 左上角 1/4 视口放 Bloom 结果（分屏/小地图 PIP 演示）
 ///   - 鼠标移动高亮光源
 ///   - ESC 退出
 /// </summary>
@@ -28,7 +30,8 @@ internal static class Program
 {
     private static EngineWindow? _window;
     private static SpriteShader? _spriteShader;
-    private static PostProcessShader? _bloomShader;
+    private static BloomExtractShader? _extractShader;
+    private static GaussianBlurShader? _blurShader;
     private static BlitShader? _blitShader;
     private static SpriteBatch? _batch;
     private static WhiteTexture? _white;
@@ -36,8 +39,9 @@ internal static class Program
     private static SceneAggregate? _scene;
 
     private static RenderTarget2D? _rtScene;
-    private static RenderTarget2D? _rtBloom;
+    private static RenderTargetPool? _targetPool;
     private static RenderPipeline? _pipeline;
+    private static ScenePipelineBuilder? _builder;
 
     private static void Main()
     {
@@ -48,6 +52,8 @@ internal static class Program
         _window.OnLoad += HandleLoad;
         _window.OnStep += HandleStep;
         _window.OnDraw += HandleDraw;
+        _window.OnResize += HandleResize;
+        _window.OnClosing += HandleClosing;
         _window.Run();
     }
 
@@ -57,7 +63,8 @@ internal static class Program
         var (vw, vh) = (_window.Width, _window.Height);
 
         _spriteShader = new SpriteShader(gl);
-        _bloomShader = new PostProcessShader(gl);
+        _extractShader = new BloomExtractShader(gl);
+        _blurShader = new GaussianBlurShader(gl);
         _blitShader = new BlitShader(gl);
         _batch = new SpriteBatch(gl);
         _batch.DefaultShader = _spriteShader;
@@ -79,37 +86,33 @@ internal static class Program
                 new Vector2(60 + i * 90, 160), new Vector4(0.18f, 0.20f, 0.28f, 1f)));
         }
         _scene.Add(new LightSource(_white.Handle, _window));
+        _scene.Add(new BloomController(
+            _scene.RaiseEvent,
+            new BloomSettings(0.1f, 1.8f, 1.25f, 2, BloomResolution.Half)));
 
         _rtScene = new RenderTarget2D(gl, vw, vh, withDepthStencil: true);
-        _rtBloom = new RenderTarget2D(gl, vw, vh, withDepthStencil: false);
+        _targetPool = new RenderTargetPool(gl);
 
         // Pass 1: 画场景到 RT_Scene（SceneRenderPass 消费场景实例）
         var scenePass = new SceneRenderPass("ScenePass", gl, _scene, _camera, _rtScene);
 
-        // Pass 2: 提取高亮 → Bloom 到 RT_Bloom
-        _bloomShader.Use();
-        _bloomShader.SetBrightnessThreshold(0.1f);
-        _bloomShader.SetIntensity(1.8f);
-        _bloomShader.SetTextureSize(vw, vh);
-        var bloomPass = new PostProcessPass("BloomPass", gl, _bloomShader, _rtScene, _rtBloom);
-
-        // Pass 3: 合成到屏幕
+        // Bloom Pass 由 ScenePipelineBuilder 根据实例请求动态装配。
         var compositorPass = new ViewportCompositorPass("CompositorPass", gl, _blitShader, _batch);
         compositorPass.AddSource(_rtScene, ViewportRect.FullScreen, BlendState.Opaque);
-        compositorPass.AddSource(_rtBloom, ViewportRect.FullScreen, BlendState.Additive);
-        // 左上 1/4 单独展示 Bloom 结果（PIP 小地图演示）
-        compositorPass.AddSource(_rtBloom, ViewportRect.TopLeftQuarter, BlendState.Opaque);
 
         _pipeline = new RenderPipeline(gl, vw, vh);
         _pipeline.AddPass(scenePass);
-        _pipeline.AddPass(bloomPass);
         _pipeline.AddPass(compositorPass);
+        _builder = new ScenePipelineBuilder(_pipeline, compositorPass, _targetPool, vw, vh);
+        _builder.RegisterFactory(new BloomEffectFactory(
+            gl, _rtScene, _extractShader, _blurShader));
     }
 
     private static void HandleStep(double dt)
     {
         _scene!.PerformInput(_window!.Input.KeysPressed, _window.Input.KeysReleased);
         _scene.PerformStep(dt);
+        _builder!.ApplyEvents(_scene.DrainUncommittedEvents());
     }
 
     private static void HandleDraw()
@@ -118,6 +121,32 @@ internal static class Program
             _window!.Graphics.Gl, _spriteShader!, _batch!,
             _window.Width, _window.Height);
         _pipeline!.Execute(ctx);
+    }
+
+    private static void HandleResize(int width, int height)
+    {
+        if (width <= 0 || height <= 0) return;
+        _scene!.ViewportWidth = width;
+        _scene.ViewportHeight = height;
+        _camera!.ResizeViewport(width, height);
+        _rtScene!.Resize(width, height);
+        _pipeline!.Resize(width, height);
+        _builder!.Resize(width, height);
+    }
+
+    private static void HandleClosing()
+    {
+        _scene?.End();
+        _builder?.Dispose();
+        _pipeline?.Dispose();
+        _targetPool?.Dispose();
+        _rtScene?.Dispose();
+        _white?.Dispose();
+        _batch?.Dispose();
+        _blitShader?.Dispose();
+        _blurShader?.Dispose();
+        _extractShader?.Dispose();
+        _spriteShader?.Dispose();
     }
 
     /// <summary>背景装饰方块（Background 层）</summary>
@@ -184,5 +213,22 @@ internal static class Program
         {
             if (key == InputKey.Escape) _window.NativeWindow.Close();
         }
+    }
+
+    private sealed class BloomController : GameInstance
+    {
+        private readonly Action<GameEngine.Core.Domain.Events.IDomainEvent> _raiseEvent;
+        private readonly BloomSettings _settings;
+
+        public BloomController(
+            Action<GameEngine.Core.Domain.Events.IDomainEvent> raiseEvent,
+            BloomSettings settings)
+        {
+            _raiseEvent = raiseEvent;
+            _settings = settings;
+        }
+
+        public override void OnCreate() => this.RequestBloom(_settings, _raiseEvent);
+        public override void OnDestroy() => this.ReleaseBloom(_raiseEvent);
     }
 }

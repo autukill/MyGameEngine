@@ -19,6 +19,7 @@ public interface IRenderEffectRuntime : IDisposable
     RenderEffectKey Key { get; }
     IReadOnlyList<RenderPass> Passes { get; }
     IReadOnlyList<RenderEffectCompositeSource> CompositeSources { get; }
+    bool RequiresRebuild(IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners) => false;
     void UpdateOwners(IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners);
 }
 

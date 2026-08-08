@@ -9,7 +9,7 @@ using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.StencilMasking.Domain;
 
-/// <summary>把类型化 Stencil owner 集合装配为共享 Stencil Pass 和可选 Bloom Pass。</summary>
+/// <summary>把类型化 Stencil owner 集合装配为共享 Stencil Pass。</summary>
 public sealed class StencilMaskEffectFactory : IRenderEffectFactory
 {
     private readonly Silk.NET.OpenGL.GL _gl;
@@ -19,7 +19,6 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
     private readonly TextureRef _whiteTexture;
     private readonly ITextureResolver _textures;
     private readonly ISpriteResolver? _sprites;
-    private readonly PostProcessShader? _bloomShader;
 
     public string Kind => StencilMaskEffectDescriptor.EffectKind;
 
@@ -30,8 +29,7 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         IShader spriteShader,
         TextureRef whiteTexture,
         ITextureResolver textures,
-        ISpriteResolver? sprites = null,
-        PostProcessShader? bloomShader = null)
+        ISpriteResolver? sprites = null)
     {
         _gl = gl;
         _scene = scene;
@@ -40,7 +38,6 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         _whiteTexture = whiteTexture;
         _textures = textures;
         _sprites = sprites;
-        _bloomShader = bloomShader;
     }
 
     public void Validate(
@@ -55,9 +52,7 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
     {
         var descriptors = StencilMaskEffectPolicy.ValidateAndOrder(key, owners);
         RenderTargetLease? maskLease = null;
-        RenderTargetLease? bloomLease = null;
         StencilMaskPass? stencilPass = null;
-        PostProcessPass? bloomPass = null;
         try
         {
             maskLease = context.Targets.Rent(new RenderTargetDescriptor(
@@ -77,25 +72,6 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
             stencilPass.UpdateMasks(descriptors);
 
             var passes = new List<RenderPass> { stencilPass };
-            RenderTarget2D compositeTarget = maskLease.Target;
-            BlendState compositeBlend = BlendState.AlphaBlend;
-
-            if (_bloomShader is not null)
-            {
-                bloomLease = context.Targets.Rent(new RenderTargetDescriptor(
-                    context.Width,
-                    context.Height));
-                _bloomShader.SetTextureSize(context.Width, context.Height);
-                bloomPass = new PostProcessPass(
-                    $"StencilBloom:{key.Slot}",
-                    _gl,
-                    _bloomShader,
-                    maskLease.Target,
-                    bloomLease.Target);
-                passes.Add(bloomPass);
-                compositeTarget = bloomLease.Target;
-                compositeBlend = BlendState.Additive;
-            }
 
             return new StencilMaskEffectRuntime(
                 key,
@@ -104,18 +80,15 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
                 new[]
                 {
                     new RenderEffectCompositeSource(
-                        compositeTarget,
+                        maskLease.Target,
                         ViewportRect.FullScreen,
-                        compositeBlend)
+                        BlendState.AlphaBlend)
                 },
-                maskLease,
-                bloomLease);
+                maskLease);
         }
         catch
         {
-            bloomPass?.Dispose();
             stencilPass?.Dispose();
-            bloomLease?.Dispose();
             maskLease?.Dispose();
             throw;
         }
@@ -125,7 +98,6 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
     {
         private readonly StencilMaskPass _stencilPass;
         private RenderTargetLease? _maskLease;
-        private RenderTargetLease? _bloomLease;
 
         public RenderEffectKey Key { get; }
         public IReadOnlyList<RenderPass> Passes { get; }
@@ -136,15 +108,13 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
             StencilMaskPass stencilPass,
             IReadOnlyList<RenderPass> passes,
             IReadOnlyList<RenderEffectCompositeSource> compositeSources,
-            RenderTargetLease maskLease,
-            RenderTargetLease? bloomLease)
+            RenderTargetLease maskLease)
         {
             Key = key;
             _stencilPass = stencilPass;
             Passes = passes;
             CompositeSources = compositeSources;
             _maskLease = maskLease;
-            _bloomLease = bloomLease;
         }
 
         public void UpdateOwners(
@@ -153,7 +123,6 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
 
         public void Dispose()
         {
-            Interlocked.Exchange(ref _bloomLease, null)?.Dispose();
             Interlocked.Exchange(ref _maskLease, null)?.Dispose();
         }
     }

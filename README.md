@@ -30,6 +30,7 @@ src/
 ├── Engine.Core/                         # 共享 Domain 与底层窗口/输入/图形基础设施
 ├── Engine.Features/
 │   ├── Camera/                          # Camera2D
+│   ├── Bloom/                           # 独立阈值提取与水平/垂直 ping-pong 效果链
 │   ├── ContentAssets/                   # 声明式包、依赖图、Texture/Sprite 装配与租约
 │   ├── RenderPipeline/                  # RenderTarget、RenderPass DAG、后处理与合成
 │   ├── SceneSystem/                     # Layer、RenderCommand（旧 Context 正在退役）
@@ -37,7 +38,7 @@ src/
 │   ├── StencilMasking/                  # Stencil 状态、命令、事件与 Pass
 │   ├── TextureAssets/                   # TextureLibrary、Skia 解码与资产清单
 │   ├── TextureAtlas/                    # 纯 CPU Atlas 排布与像素页面生成
-│   ├── *.Tests/                         # 8 个 Feature 无窗口控制台冒烟项目
+│   ├── *.Tests/                         # 9 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
@@ -58,11 +59,12 @@ Engine.Core
   ├─ TextureAtlas
 └─ Camera
        └─ RenderPipeline
+            ├─ Bloom
             ├─ SceneSystem
             └─ StencilMasking
 ```
 
-解决方案当前共 30 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 32 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -90,6 +92,7 @@ Runner 内容：4 个彩色方块绕场景中心运动，鼠标控制圆形 Sten
 
 ```bash
 dotnet run --project src/Engine.DddTests/Engine.DddTests.csproj
+dotnet run --project src/Engine.Features/Bloom.Tests/Bloom.Tests.csproj
 dotnet run --project src/Engine.Features/Camera.Tests/Camera.Tests.csproj
 dotnet run --project src/Engine.Features/RenderPipeline.Tests/RenderPipeline.Tests.csproj
 dotnet run --project src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csproj
@@ -104,7 +107,7 @@ dotnet run --project src/Engine.Build.ContentPipeline.Tests/Engine.Build.Content
 
 图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 的源包包含双帧 WebP 图集和两张独立 WebP 帧，Build 自动在 `obj` 生成单页 Atlas 并复制到 `AssetsCompiled`；这些项目需要本地图形窗口人工确认。
 
-三个确定性真实 OpenGL 场景可自动执行 PNG 像素回归：
+四个确定性真实 OpenGL 场景可自动执行 PNG 像素回归：
 
 ```bash
 dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj -- --verify
@@ -164,16 +167,16 @@ dotnet run --project src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.c
 
 ```text
 SceneRenderPass      -> RT_Scene
-StencilMaskPass     -> RT_Masked
-PostProcessPass     -> RT_Bloom
-ViewportCompositor  -> Screen (RT_Scene opaque + RT_Bloom additive)
+StencilMaskPass      -> RT_Masked (AlphaBlend)
+BloomPass            -> Bright -> Ping(H) -> Pong(V)
+ViewportCompositor   -> Screen (Scene opaque + Mask alpha + Bloom additive)
 ```
 
-Pass 通过输入/输出 RenderTarget 声明依赖，Pipeline 在每帧执行前进行拓扑排序。实例通过 `RenderEffectRequestedEvent` 声明 Spotlight 等持久效果；Builder 在 Step/Draw 边界差量维护动态 Pass，最后一个 owner 离开后归还临时 RT。完整说明见 [动态渲染效果使用指南](docs/DYNAMIC_RENDER_EFFECTS.md)。
+Pass 通过输入/输出 RenderTarget 声明依赖，Pipeline 在每帧执行前进行拓扑排序。实例通过 `RenderEffectRequestedEvent` 分别声明 Spotlight 与 Bloom；Builder 在 Step/Draw 边界差量维护动态 Pass，最后一个 owner 离开后归还临时 RT。完整说明见 [动态渲染效果使用指南](docs/DYNAMIC_RENDER_EFFECTS.md)和 [Bloom 效果使用指南](docs/BLOOM_EFFECT.md)。
 
 ## 下一阶段
 
-1. 增加独立 Bloom 描述符与水平/垂直 ping-pong 后处理链，并建立专属 GPU 基线。
+1. 设计动态效果间的显式依赖与可选 HDR/tone mapping 边界。
 2. 为内容工具包增加签名、远程 Feed 发布与跨仓库缓存。
 3. 为无显示器 CI 固化软件 OpenGL 执行环境。
 4. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。

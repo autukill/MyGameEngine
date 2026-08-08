@@ -222,6 +222,43 @@ internal static class Program
         Check(conflictRejected && builder.GetOwnerCount(key) == 1,
             "Conflicting shared configuration is rejected atomically");
 
+        var inPlaceRuntime = factory.LastRuntime!;
+        int beforeInPlaceUpdates = inPlaceRuntime.UpdateCount;
+        int beforeInPlaceCreates = factory.CreateCount;
+        builder.ApplyEvents(new IDomainEvent[]
+        {
+            new RenderEffectRequestedEvent(ownerA, new FakeDescriptor(key, 6, 7))
+        });
+        Check(factory.CreateCount == beforeInPlaceCreates &&
+              ReferenceEquals(factory.LastRuntime, inPlaceRuntime) &&
+              inPlaceRuntime.UpdateCount == beforeInPlaceUpdates + 1,
+            "Non-structural descriptor updates stay on the existing runtime");
+
+        int beforeStructuralCreates = factory.CreateCount;
+        var beforeStructuralRuntime = factory.LastRuntime!;
+        builder.ApplyEvents(new IDomainEvent[]
+        {
+            new RenderEffectRequestedEvent(ownerA, new FakeDescriptor(key, 6, 9))
+        });
+        Check(factory.CreateCount == beforeStructuralCreates + 1 &&
+              beforeStructuralRuntime.DisposeCount == 1 && graph.PassCount == 1,
+            "Runtime-requested structural change atomically rebuilds the effect graph");
+
+        var stableRuntime = factory.LastRuntime!;
+        factory.FailNextCreate = true;
+        bool rebuildFailureSurfaced = false;
+        try
+        {
+            builder.ApplyEvents(new IDomainEvent[]
+            {
+                new RenderEffectRequestedEvent(ownerA, new FakeDescriptor(key, 6, 10))
+            });
+        }
+        catch (InvalidOperationException) { rebuildFailureSurfaced = true; }
+        Check(rebuildFailureSurfaced && stableRuntime.DisposeCount == 0 &&
+              builder.ActiveEffectCount == 1 && graph.PassCount == 1,
+            "Structural rebuild failure preserves the prior runtime atomically");
+
         factory.FailNextCreate = true;
         bool creationFailureSurfaced = false;
         try
@@ -307,6 +344,7 @@ internal static class Program
         public int OwnerCount { get; private set; }
         public int UpdateCount { get; private set; }
         public int DisposeCount { get; private set; }
+        private int _sharedConfiguration;
 
         public FakeRuntime(RenderEffectKey key)
         {
@@ -317,8 +355,13 @@ internal static class Program
         public void UpdateOwners(IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
         {
             OwnerCount = owners.Count;
+            _sharedConfiguration = owners.Values.Cast<FakeDescriptor>().First().SharedConfiguration;
             UpdateCount++;
         }
+
+        public bool RequiresRebuild(
+            IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners) =>
+            owners.Values.Cast<FakeDescriptor>().First().SharedConfiguration != _sharedConfiguration;
 
         public void Dispose() => DisposeCount++;
     }

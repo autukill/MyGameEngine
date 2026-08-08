@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\Engine.Features\Bloom\Bloom.csproj" />
     <ProjectReference Include="..\Engine.Features\Camera\Camera.csproj" />
     <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\RenderPipeline\RenderPipeline.csproj" />

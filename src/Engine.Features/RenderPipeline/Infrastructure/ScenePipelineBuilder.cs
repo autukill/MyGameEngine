@@ -132,6 +132,14 @@ public sealed class ScenePipelineBuilder : IDisposable
         int width,
         int height)
     {
+        if (candidate.Any(pair =>
+                _active.TryGetValue(pair.Key, out var active) &&
+                active.Runtime.RequiresRebuild(pair.Value)))
+        {
+            RebuildAll(candidate, width, height);
+            return;
+        }
+
         var context = new RenderEffectBuildContext(width, height, _targets);
         var created = new Dictionary<RenderEffectKey, IRenderEffectRuntime>();
         try

@@ -5,16 +5,21 @@ using GameEngine.Core.Infrastructure.Windowing;
 
 public readonly record struct VisualCheckpoint
 {
-    public VisualCheckpoint(int frameIndex, string name)
+    public VisualCheckpoint(
+        int frameIndex,
+        string name,
+        PixelComparisonOptions? comparisonOptions = null)
     {
         if (frameIndex < 0) throw new ArgumentOutOfRangeException(nameof(frameIndex));
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         FrameIndex = frameIndex;
         Name = name;
+        ComparisonOptions = comparisonOptions;
     }
 
     public int FrameIndex { get; }
     public string Name { get; }
+    public PixelComparisonOptions? ComparisonOptions { get; }
 }
 
 public interface IVisualRegressionScenario : IDisposable
@@ -35,7 +40,11 @@ public readonly record struct VisualRegressionHostOptions(
     public static VisualRegressionHostOptions Default => new(false, 1d / 60d);
 }
 
-public sealed record VisualCapture(string Scenario, string Checkpoint, CapturedFrame Frame)
+public sealed record VisualCapture(
+    string Scenario,
+    string Checkpoint,
+    CapturedFrame Frame,
+    PixelComparisonOptions? ComparisonOptions = null)
 {
     public string Id => $"{Scenario}.{Checkpoint}";
 }
@@ -61,7 +70,7 @@ public static class VisualRegressionHost
 
         var checkpoints = scenario.Checkpoints.ToDictionary(
             checkpoint => checkpoint.FrameIndex,
-            checkpoint => checkpoint.Name);
+            checkpoint => checkpoint);
         if (checkpoints.Keys.Any(frame => frame >= scenario.FrameCount))
             throw new ArgumentException("Checkpoint frame exceeds scenario frame count.", nameof(scenario));
 
@@ -102,15 +111,16 @@ public static class VisualRegressionHost
                 try
                 {
                     scenario.AdvanceAndDraw(frameIndex, hostOptions.FixedDeltaTime);
-                    if (checkpoints.TryGetValue(frameIndex, out string? checkpoint))
+                    if (checkpoints.TryGetValue(frameIndex, out VisualCheckpoint checkpoint))
                     {
                         captures.Add(new VisualCapture(
                             scenario.Name,
-                            checkpoint,
+                            checkpoint.Name,
                             FramebufferCapture.Capture(
                                 window.Graphics.Gl,
                                 window.Width,
-                                window.Height)));
+                                window.Height),
+                            checkpoint.ComparisonOptions));
                     }
                     frameIndex++;
                     if (frameIndex >= scenario.FrameCount)

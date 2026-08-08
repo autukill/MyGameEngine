@@ -51,8 +51,9 @@ dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTes
 1. `sprites-origin-transform`：中心、左上和自定义原点，以及旋转、非均匀缩放、负缩放、颜色与透明度。
 2. `stencil-owner-lifecycle`：同一 EffectKey 的两个、一个和零个 owner，最后一个 owner 离开后同时断言效果与临时 RT 已回收。
 3. `dynamic-effect-resize`：活跃动态效果从 320×240 重建到 400×300，并断言池中只保留一个新尺寸租约。
+4. `bloom-ping-pong`：覆盖 Bloom 活跃、resize 和 release；活跃时断言恰好租用 Bright/Ping/Pong 三个目标，释放后断言效果和租约归零。
 
-第一版故意不覆盖 Bloom：当前单 Pass 采样在不同 GPU/驱动上的浮点差异更大。待独立 Bloom 描述符与 ping-pong 链稳定后，应为它设置单独场景和经过验证的容差，而不是放宽所有测试。
+checkpoint 可以携带独立的 `PixelComparisonOptions`。Bloom 的 active 与 resized-active 使用 soft `3`、hard `12`、差异比例 `0.5%`；release 和其他场景继续使用默认容差，因此浮点采样差异不会放宽整个回归套件。
 
 ## 新增场景
 

@@ -45,7 +45,10 @@ public static class VisualBaselineVerifier
             }
 
             var expected = PngFrameCodec.Load(baselinePath);
-            var comparison = PixelComparer.Compare(expected, capture.Frame, options);
+            var comparison = PixelComparer.Compare(
+                expected,
+                capture.Frame,
+                capture.ComparisonOptions ?? options);
             if (comparison.IsMatch)
             {
                 results.Add(new VisualVerificationResult(capture.Id, true, false, null));

@@ -5,6 +5,8 @@ using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Features.Bloom.Domain;
+using GameEngine.Features.Bloom.Infrastructure;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
@@ -14,13 +16,14 @@ using GameEngine.Features.StencilMasking.Infrastructure;
 using GameEngine.Features.TextureAssets.Infrastructure;
 
 /// <summary>
-/// GMS 风格动态效果 Demo：GameInstance 声明 Spotlight，ScenePipelineBuilder 装配 Stencil + Bloom。
+/// GMS 风格动态效果 Demo：GameInstance 独立声明 Spotlight 与全场景 Bloom。
 /// </summary>
 internal sealed class Program
 {
     private static EngineWindow? _window;
     private static SpriteShader? _spriteShader;
-    private static PostProcessShader? _bloomShader;
+    private static BloomExtractShader? _bloomExtractShader;
+    private static GaussianBlurShader? _bloomBlurShader;
     private static BlitShader? _blitShader;
     private static SpriteBatch? _batch;
     private static TextureLibrary? _textures;
@@ -40,7 +43,7 @@ internal sealed class Program
         Console.WriteLine("=== Dynamic Render Effects Demo ===");
         Console.WriteLine("  4 个 OrbitingSprite 做圆周运动");
         Console.WriteLine("  鼠标位置 = Spotlight 中心 (Stencil ShowInside)");
-        Console.WriteLine("  Spotlight 由实例事件动态装配，并附加 Bloom");
+        Console.WriteLine("  Spotlight 与全场景 Bloom 由独立实例事件动态装配");
         Console.WriteLine("  ESC: 退出");
 
         _window = new EngineWindow(EngineWindowOptions.Default);
@@ -59,7 +62,8 @@ internal sealed class Program
         var (width, height) = (_window.Width, _window.Height);
 
         _spriteShader = new SpriteShader(gl);
-        _bloomShader = new PostProcessShader(gl);
+        _bloomExtractShader = new BloomExtractShader(gl);
+        _bloomBlurShader = new GaussianBlurShader(gl);
         _blitShader = new BlitShader(gl);
         _batch = new SpriteBatch(gl) { DefaultShader = _spriteShader };
         _textures = new TextureLibrary(gl);
@@ -93,11 +97,6 @@ internal sealed class Program
         _pipeline.AddPass(scenePass);
         _pipeline.AddPass(_compositorPass);
 
-        _bloomShader.Use();
-        _bloomShader.SetBrightnessThreshold(0.3f);
-        _bloomShader.SetIntensity(1.5f);
-        _bloomShader.SetTextureSize(width, height);
-
         _pipelineBuilder = new ScenePipelineBuilder(
             _pipeline,
             _compositorPass,
@@ -111,8 +110,12 @@ internal sealed class Program
             _spriteShader,
             whiteTexture,
             _textures,
-            _sprites,
-            _bloomShader));
+            _sprites));
+        _pipelineBuilder.RegisterFactory(new BloomEffectFactory(
+            gl,
+            _rtScene,
+            _bloomExtractShader,
+            _bloomBlurShader));
 
         var center = new Vector2D(width * 0.5f, height * 0.5f);
         var colors = new[]
@@ -131,6 +134,10 @@ internal sealed class Program
                 colors[i],
                 orbitingSprite));
         }
+
+        _scene.Add(new SceneBloomController(
+            _scene.RaiseEvent,
+            new BloomSettings(0.3f, 1.5f, 1f, 2, BloomResolution.Half)));
 
         _scene.Add(new SpotlightController(
             _scene.RaiseEvent,
@@ -194,7 +201,8 @@ internal sealed class Program
         _textures?.Dispose();
         _batch?.Dispose();
         _blitShader?.Dispose();
-        _bloomShader?.Dispose();
+        _bloomBlurShader?.Dispose();
+        _bloomExtractShader?.Dispose();
         _spriteShader?.Dispose();
     }
 }
