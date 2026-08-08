@@ -18,7 +18,6 @@ public sealed class OrbitingSprite : GameInstance
     private readonly Vector2D _center;
     private readonly float _radius;
     private readonly float _phase;
-    private readonly Vector4 _color;
     private float _animTime;
 
     /// <summary>
@@ -28,15 +27,13 @@ public sealed class OrbitingSprite : GameInstance
     /// <param name="radius">圆周半径</param>
     /// <param name="phase">初相（决定起始角度）</param>
     /// <param name="color">叠加颜色</param>
-    /// <param name="textureHandle">精灵纹理句柄</param>
-    /// <param name="size">精灵尺寸</param>
+    /// <param name="sprite">逻辑 Sprite 引用（原点由 SpriteLibrary 定义）</param>
     public OrbitingSprite(
         Vector2D center,
         float radius,
         float phase,
         Vector4 color,
-        uint textureHandle,
-        float size = 80f)
+        SpriteRef sprite)
         : base(
             objectTypeName: nameof(OrbitingSprite),
             position: center,
@@ -45,8 +42,8 @@ public sealed class OrbitingSprite : GameInstance
         _center = center;
         _radius = radius;
         _phase = phase;
-        _color = color;
-        Sprite = SpriteRef.FromTexture(textureHandle, size, size);
+        Color = color;
+        Sprite = sprite;
     }
 
     /// <summary>GMS Step event: 圆周运动</summary>
@@ -59,17 +56,7 @@ public sealed class OrbitingSprite : GameInstance
         Transform = Transform with { Position = pos };
     }
 
-    /// <summary>GMS Draw event: 画 Sprite + 叠加颜色</summary>
-    public override void OnDraw(ISpriteBatch batch)
-    {
-        batch.Draw(
-            textureHandle: Sprite.TextureHandle,
-            position: new Vector2(Transform.Position.X - Sprite.Width * 0.5f,
-                                  Transform.Position.Y - Sprite.Height * 0.5f),
-            size: new Vector2(Sprite.Width, Sprite.Height),
-            color: _color,
-            uvBounds: Sprite.UvBounds);
-    }
+    // Draw 使用 GameInstance 默认 DrawSelf：原点、缩放、旋转、颜色均由统一 Sprite API 处理。
 }
 
 /// <summary>

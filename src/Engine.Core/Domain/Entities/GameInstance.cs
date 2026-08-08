@@ -51,6 +51,12 @@ public class GameInstance
     /// <summary>精灵引用（对应 GMS 的 sprite_index）</summary>
     public SpriteRef Sprite { get; set; } = SpriteRef.Empty;
 
+    /// <summary>当前动画帧（对应 GMS image_index，可为小数）。</summary>
+    public float ImageIndex { get; set; }
+
+    /// <summary>Sprite 基础 FPS 的播放倍率；0=暂停，负数=反向。</summary>
+    public float ImageSpeed { get; set; } = 1f;
+
     /// <summary>自定义属性包（给 AI Agent / 脚本动态写入临时状态用）</summary>
     public Dictionary<string, object> Properties { get; } = new();
 
@@ -74,6 +80,9 @@ public class GameInstance
     /// 由 SceneAggregate.Add/SetInput 自动注入；OnStep 中轮询查询。
     /// </summary>
     public IInputProvider? Input { get; set; }
+
+    /// <summary>Sprite 元数据/帧解析器，由 SceneAggregate 注入。</summary>
+    public ISpriteResolver? SpriteResolver { get; set; }
 
     protected GameInstance()
     {
@@ -113,16 +122,19 @@ public class GameInstance
     /// </summary>
     public virtual void OnBeginDraw(ISpriteBatch batch) { }
 
-    public virtual void OnDraw(ISpriteBatch batch)
+    public void DrawSelf(ISpriteBatch batch)
     {
         if (Sprite.IsEmpty) return;
-        batch.Draw(
-            textureHandle: Sprite.TextureHandle,
-            position: new Vector2(Transform.Position.X, Transform.Position.Y),
-            size: new Vector2(Sprite.Width, Sprite.Height),
-            color: Color,
-            uvBounds: Sprite.UvBounds);
+        batch.DrawSpriteExt(
+            Sprite,
+            ImageIndex,
+            new Vector2(Transform.Position.X, Transform.Position.Y),
+            new Vector2(Transform.Scale.X, Transform.Scale.Y),
+            Transform.Rotation,
+            Color);
     }
+
+    public virtual void OnDraw(ISpriteBatch batch) => DrawSelf(batch);
 
     /// <summary>
     /// Draw End 事件：OnDraw 之后调用（GMS Draw End）。
@@ -144,6 +156,19 @@ public class GameInstance
 
     /// <summary>Destroy 事件：实例被销毁时调用</summary>
     public virtual void OnDestroy() { }
+
+    internal void AdvanceSpriteAnimation(double deltaTime)
+    {
+        if (Sprite.IsEmpty || SpriteResolver is null || ImageSpeed == 0f) return;
+        if (!SpriteResolver.TryGetMetadata(Sprite, out var metadata)) return;
+        if (metadata.FrameCount <= 1 || metadata.FramesPerSecond <= 0f) return;
+
+        float frameCount = metadata.FrameCount;
+        float next = ImageIndex + metadata.FramesPerSecond * ImageSpeed * (float)deltaTime;
+        next %= frameCount;
+        if (next < 0f) next += frameCount;
+        ImageIndex = next;
+    }
 
     // ============ DDD 战术行为（状态变更 → 领域事件） ============
 

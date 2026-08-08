@@ -1,6 +1,7 @@
 namespace GameEngine.Core.Domain.Graphics;
 
 using System.Numerics;
+using GameEngine.Core.Domain.ValueObjects;
 
 /// <summary>
 /// SpriteBatch 的领域抽象接口。
@@ -15,6 +16,8 @@ public interface ISpriteBatch
     void Begin();
     void End();
     void Draw(uint textureHandle, Vector2 position, Vector2 size, Vector4 color, Vector4 uvBounds);
+    void DrawSpriteCommand(in SpriteDrawCommand command);
+    bool TryGetSpriteMetadata(SpriteRef sprite, out SpriteMetadata metadata);
     void Flush();
 
     /// <summary>

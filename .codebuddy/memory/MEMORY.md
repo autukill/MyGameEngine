@@ -41,6 +41,9 @@ src/
 │   ├── SceneSystem/       SceneSystem.csproj        (依赖 Camera + RenderPipeline)
 │   ├── SceneSystem.Tests/
 │   ├── SceneSystem.VisualTests/
+│   ├── Sprites/         Sprites.csproj              (逻辑 Sprite 资源库)
+│   ├── Sprites.Tests/   Sprites.Tests.csproj        (帧/动画/几何测试)
+│   ├── Sprites.VisualTests/ Sprites.VisualTests.csproj
 │   ├── StencilMasking/    StencilMasking.csproj     (依赖 Camera + RenderPipeline + Silk.NET.OpenGL)
 │   ├── StencilMasking.Tests/
 │   └── StencilMasking.VisualTests/
@@ -61,10 +64,10 @@ src/
 - `SpriteBatch` 支持状态打断自动 Flush（纹理变更 / BlendMode 变更 / 缓冲满）。
 
 ## 当前代码进度（2026-08-08）
-- `src/Engine.Core`：Domain（含新增 BlendMode/ShaderRef/RenderStyle/IShaderResolver + InputKey/MouseButton/IInputProvider）、Infrastructure（含新增 ShaderProgram/ShaderLibrary/InputSystem + SpriteBatch 状态机 + EngineWindow.Input）、Application 已落地。
-- `src/Engine.Features`：4 个独立 module project + 8 个测试项目（4 冒烟 + 4 VisualTests）。全部 VisualTests 已重构为 GameInstance 事件驱动（CameraRig/LayerToggleController/LightSource/SpotlightSource 等），Program 只做装配。
+- `src/Engine.Core`：Domain 含逻辑 SpriteRef、SpriteDrawCommand/Metadata/Resolver、Blend/Shader/Input 抽象；Infrastructure 含 SpriteBatch 状态机、Shader 与 Input 实现。
+- `src/Engine.Features`：5 个独立 module project + 10 个测试项目（5 Feature 冒烟 + 5 VisualTests）。Sprites 支持手动单帧/UV/Grid 注册、帧循环、原点与旋转缩放。
 - `src/MyGame.Runner`：OrbitingSprite 与 SpotlightController 均为 GameInstance；统一使用 EngineWindow.Input，Program 只做装配，并已接入 DrawGUI、resize 与关闭释放链路。
-- 解决方案 `MyGameEngine.slnx` 共 15 个项目，编译通过（0 错误）；5 个无窗口冒烟项目全部通过。
+- 解决方案 `MyGameEngine.slnx` 共 18 个项目，编译通过（0 错误）；6 个无窗口冒烟项目（含 Engine.DddTests）全部通过。
 - **待办**：第二阶段事件装配（RenderEffectRequested + RenderTargetPool + kind/owner 聚合回收）；自定义 ShaderRef 示例与动态 uniform API；自动 GPU 回归测试。
 
 ## 设计方向（2026-08-07 推演，第一阶段已实施）

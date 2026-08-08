@@ -3,6 +3,7 @@ namespace GameEngine.Features.RenderPipeline.Infrastructure;
 using System.Numerics;
 using Silk.NET.OpenGL;
 using GameEngine.Core.Domain.Aggregates;
+using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.Camera.Domain;
@@ -71,27 +72,26 @@ public sealed class SceneRenderPass : RenderPass
     {
         if (bg.TileMode == BackgroundTileMode.Stretch)
         {
-            ctx.Batch.Draw(
-                textureHandle: bg.BackgroundSprite.TextureHandle,
+            ctx.Batch.DrawSpriteStretched(
+                bg.BackgroundSprite,
+                subImage: 0,
                 position: Vector2.Zero,
-                size: new Vector2(_scene.ViewportWidth, _scene.ViewportHeight),
-                color: Vector4.One,
-                uvBounds: bg.BackgroundSprite.UvBounds);
+                size: new Vector2(_scene.ViewportWidth, _scene.ViewportHeight));
         }
         else if (bg.TileMode == BackgroundTileMode.Tile)
         {
-            float w = bg.BackgroundSprite.Width;
-            float h = bg.BackgroundSprite.Height;
+            if (!ctx.Batch.TryGetSpriteMetadata(bg.BackgroundSprite, out var metadata)) return;
+            float w = metadata.Size.X;
+            float h = metadata.Size.Y;
+            if (w <= 0f || h <= 0f) return;
             for (float y = 0; y < _scene.ViewportHeight; y += h)
             {
                 for (float x = 0; x < _scene.ViewportWidth; x += w)
                 {
-                    ctx.Batch.Draw(
-                        textureHandle: bg.BackgroundSprite.TextureHandle,
-                        position: new Vector2(x, y),
-                        size: new Vector2(w, h),
-                        color: Vector4.One,
-                        uvBounds: bg.BackgroundSprite.UvBounds);
+                    ctx.Batch.DrawSprite(
+                        bg.BackgroundSprite,
+                        subImage: 0,
+                        position: new Vector2(x, y) + metadata.Origin);
                 }
             }
         }

@@ -8,6 +8,7 @@ using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
+using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.StencilMasking.Infrastructure;
 
 /// <summary>
@@ -34,6 +35,7 @@ internal sealed class Program
     private static BlitShader? _blitShader;
     private static SpriteBatch? _batch;
     private static WhiteTexture? _white;
+    private static SpriteLibrary? _sprites;
 
     private static SceneAggregate? _scene;
     private static Camera2D? _mainCamera;
@@ -78,6 +80,10 @@ internal sealed class Program
         _batch = new SpriteBatch(gl);
         _batch.DefaultShader = _spriteShader;
         _white = new WhiteTexture(gl);
+        _sprites = new SpriteLibrary();
+        var orbitingSprite = _sprites.RegisterSingle(
+            "runner.orbiting", _white.Handle, new Vector2(80, 80), new Vector2(40, 40));
+        _batch.SpriteResolver = _sprites;
 
         // 2. 场景（DDD 聚合根，完整 GMS Room 等价物：Layer/Background/Viewport/Hook）
         _scene = new SceneAggregate(sceneName: "MainScene");
@@ -86,6 +92,7 @@ internal sealed class Program
         _scene.Background = BackgroundConfig.FromColor(
             new Vector4(0.08f, 0.10f, 0.13f, 1.0f));
         _scene.SetInput(_window.Input);
+        _scene.SetSprites(_sprites);
 
         // Scene 级 Hook 示例
         _scene.OnStart = () => Console.WriteLine($"[Scene] '{_scene.SceneName}' started.");
@@ -105,7 +112,7 @@ internal sealed class Program
         // 5. 渲染管道（DAG）—— SceneRenderPass 现需 GL 参数（用于 Background clear）
         _scenePass = new SceneRenderPass("ScenePass", gl, _scene, _mainCamera, _rtScene);
         _stencilPass = new StencilMaskPass("StencilMaskPass", gl, _scene, _mainCamera,
-            _rtMasked, _spriteShader, _white);
+            _rtMasked, _spriteShader, _white, _sprites);
         _bloomPass = new PostProcessPass("BloomPass", gl, _bloomShader, _rtMasked, _rtBloom);
         _compositorPass = new ViewportCompositorPass("CompositorPass", gl, _blitShader, _batch);
 
@@ -143,7 +150,7 @@ internal sealed class Program
                 radius: 200f,
                 phase: i * MathF.PI / 2,
                 color: colors[i],
-                textureHandle: _white.Handle));
+                sprite: orbitingSprite));
         }
 
         // 9. 聚光灯控制器：鼠标跟随与 ESC 退出都属于实例事件，Program 只负责装配。

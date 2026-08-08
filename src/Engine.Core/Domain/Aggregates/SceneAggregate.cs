@@ -63,6 +63,7 @@ public class SceneAggregate
     private readonly Dictionary<InstanceId, GameInstance> _instances = new();
     private readonly List<IDomainEvent> _uncommittedEvents = new();
     private IInputProvider? _input;
+    private ISpriteResolver? _sprites;
 
     public IReadOnlyCollection<IDomainEvent> UncommittedEvents => _uncommittedEvents.AsReadOnly();
     public IReadOnlyCollection<GameInstance> AllInstances => _instances.Values.ToList();
@@ -170,6 +171,7 @@ public class SceneAggregate
 
         _instances[instance.Id] = instance;
         instance.Input ??= _input;
+        instance.SpriteResolver ??= _sprites;
         instance.OnCreate();
         RaiseEvent(new InstanceSpawnedEvent(
             instance.Id, instance.ObjectTypeName,
@@ -258,6 +260,13 @@ public class SceneAggregate
                 instance.OnEndStep(deltaTime);
         }
 
+        // Sprite 动画在所有 End Step 完成后统一推进，Draw 阶段读取新帧。
+        foreach (var instance in _instances.Values.ToList())
+        {
+            if (instance.IsActive)
+                instance.AdvanceSpriteAnimation(deltaTime);
+        }
+
         OnAfterStep?.Invoke(deltaTime);
     }
 
@@ -294,6 +303,14 @@ public class SceneAggregate
         _input = input;
         foreach (var instance in _instances.Values)
             instance.Input ??= input;
+    }
+
+    /// <summary>设置场景共享 Sprite 解析器（对已有实例补注入；之后 Add 自动注入）。</summary>
+    public void SetSprites(ISpriteResolver? sprites)
+    {
+        _sprites = sprites;
+        foreach (var instance in _instances.Values)
+            instance.SpriteResolver ??= sprites;
     }
 
     /// <summary>

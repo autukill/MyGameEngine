@@ -3,6 +3,7 @@ namespace GameEngine.Features.StencilMasking.Infrastructure;
 using Silk.NET.OpenGL;
 using System.Numerics;
 using GameEngine.Core.Domain.Aggregates;
+using GameEngine.Core.Domain.Graphics;
 using GameEngine.Features.StencilMasking.Domain;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.RenderPipeline.Domain;
@@ -37,12 +38,15 @@ public sealed class StencilMaskPass : RenderPass
 
     public StencilMaskPass(
         string name, GL gl, SceneAggregate scene, Camera2D camera,
-        RenderTarget2D output, IShader shader, WhiteTexture white) : base(name)
+        RenderTarget2D output, IShader shader, WhiteTexture white,
+        ISpriteResolver? spriteResolver = null) : base(name)
     {
         _scene = scene;
         _camera = camera;
         _output = output;
         _batch = new SpriteBatch(gl);
+        _batch.DefaultShader = shader;
+        _batch.SpriteResolver = spriteResolver;
         _shader = shader;
         _white = white;
     }

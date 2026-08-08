@@ -146,12 +146,15 @@ internal sealed class Program
     {
         var scene = new SceneAggregate("LifecycleRoom");
         var input = new FakeInputProvider();
+        var sprites = new FakeSpriteResolver();
         scene.SetInput(input);
+        scene.SetSprites(sprites);
 
         var instance = new LifecycleProbe
         {
             RenderStyle = new RenderStyle(BlendMode.Additive, DepthTest: true, DepthWrite: true),
-            Shader = new ShaderRef("probe-shader")
+            Shader = new ShaderRef("probe-shader"),
+            Sprite = new SpriteRef("probe-sprite")
         };
         scene.Add(instance);
 
@@ -166,6 +169,14 @@ internal sealed class Program
         Assert(batch.BlendMode == BlendMode.Additive, "RenderStyle blend mode is applied");
         Assert(batch.DepthState == (true, true), "RenderStyle depth state is applied");
         Assert(batch.Shader == new ShaderRef("probe-shader"), "ShaderRef is applied");
+        Assert(batch.SpriteCommand is { Sprite.Name: "probe-sprite" }, "DrawSelf submits logical Sprite");
+        Assert(batch.SpriteCommand is { } draw &&
+               draw.Position == new Vector2(3, 4) &&
+               draw.Scale == new Vector2(2, -1) &&
+               draw.RotationRadians == .5f &&
+               draw.Color == new Vector4(.2f, .4f, .6f, .8f),
+            "DrawSelf inherits Transform and Color");
+        Assert(instance.ImageIndex > 0f, "Sprite animation advances after End Step");
 
         const string expected =
             "Create,KeyDown:W,KeyUp:Escape,BeginStep,Step,EndStep,BeginDraw,Draw,EndDraw,DrawGUI";
@@ -175,7 +186,7 @@ internal sealed class Program
         Console.WriteLine("\n10. GameInstance lifecycle / input / render state");
         Console.WriteLine("   [PASS] unified input injection + edge events");
         Console.WriteLine("   [PASS] Begin/Step/End and Draw lifecycle order");
-        Console.WriteLine("   [PASS] Blend/Depth/Shader render state dispatch");
+        Console.WriteLine("   [PASS] Blend/Depth/Shader/Sprite render state dispatch");
     }
 
     private static void Assert(bool condition, string message)
@@ -187,6 +198,12 @@ internal sealed class Program
     {
         public List<string> Events { get; } = new();
 
+        public LifecycleProbe()
+        {
+            Transform = new Transform2D(new Vector2D(3, 4), .5f, new Vector2D(2, -1));
+            Color = new Vector4(.2f, .4f, .6f, .8f);
+        }
+
         public override void OnCreate() => Events.Add("Create");
         public override void OnKeyDown(InputKey key) => Events.Add($"KeyDown:{key}");
         public override void OnKeyUp(InputKey key) => Events.Add($"KeyUp:{key}");
@@ -194,7 +211,11 @@ internal sealed class Program
         public override void OnStep(double deltaTime) => Events.Add("Step");
         public override void OnEndStep(double deltaTime) => Events.Add("EndStep");
         public override void OnBeginDraw(ISpriteBatch batch) => Events.Add("BeginDraw");
-        public override void OnDraw(ISpriteBatch batch) => Events.Add("Draw");
+        public override void OnDraw(ISpriteBatch batch)
+        {
+            DrawSelf(batch);
+            Events.Add("Draw");
+        }
         public override void OnEndDraw(ISpriteBatch batch) => Events.Add("EndDraw");
         public override void OnDrawGUI(ISpriteBatch batch) => Events.Add("DrawGUI");
     }
@@ -212,15 +233,38 @@ internal sealed class Program
         public BlendMode BlendMode { get; private set; }
         public (bool Test, bool Write) DepthState { get; private set; }
         public ShaderRef? Shader { get; private set; }
+        public SpriteDrawCommand? SpriteCommand { get; private set; }
 
         public void Begin() { }
         public void End() { }
         public void Flush() { }
         public void Draw(uint textureHandle, Vector2 position, Vector2 size, Vector4 color,
             Vector4 uvBounds = default) { }
+        public void DrawSpriteCommand(in SpriteDrawCommand command) => SpriteCommand = command;
+        public bool TryGetSpriteMetadata(SpriteRef sprite, out SpriteMetadata metadata)
+        {
+            metadata = new SpriteMetadata(new Vector2(16), new Vector2(8), 4, 4f);
+            return !sprite.IsEmpty;
+        }
         public void SetBlendMode(BlendMode mode) => BlendMode = mode;
         public void SetDepthState(bool depthTest, bool depthWrite) =>
             DepthState = (depthTest, depthWrite);
         public void SetShader(ShaderRef? shader) => Shader = shader;
+    }
+
+    private sealed class FakeSpriteResolver : ISpriteResolver
+    {
+        public bool TryGetMetadata(SpriteRef sprite, out SpriteMetadata metadata)
+        {
+            metadata = new SpriteMetadata(new Vector2(16), new Vector2(8), 4, 4f);
+            return !sprite.IsEmpty;
+        }
+
+        public bool TryResolve(SpriteRef sprite, int subImage, out ResolvedSpriteFrame frame)
+        {
+            frame = new ResolvedSpriteFrame(1u, new Vector2(16), new Vector2(8),
+                new Vector4(0, 0, 1, 1));
+            return !sprite.IsEmpty;
+        }
     }
 }

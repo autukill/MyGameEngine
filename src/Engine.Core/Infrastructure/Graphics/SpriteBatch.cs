@@ -4,6 +4,7 @@ using Silk.NET.OpenGL;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.ValueObjects;
 
 /// <summary>
 /// 高性能 2D Sprite Batch：零 GC、动态 VBO、静态 EBO、自动状态打断。
@@ -38,6 +39,9 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
 
     /// <summary>ShaderRef → program handle 解析器（由组合根注入 ShaderLibrary）</summary>
     public IShaderResolver? ShaderResolver { get; set; }
+
+    /// <summary>SpriteRef → 元数据/GPU 帧解析器（由组合根注入 SpriteLibrary）</summary>
+    public ISpriteResolver? SpriteResolver { get; set; }
 
     public SpriteBatch(GL gl)
     {
@@ -129,6 +133,45 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
             new Vector2(x2, y2), new Vector2(uvBounds.Z, uvBounds.W), color);
         _vertexBuffer[vIndex + 3] = new Vertex2D(
             new Vector2(x1, y2), new Vector2(uvBounds.X, uvBounds.W), color);
+
+        _quadCount++;
+    }
+
+    public bool TryGetSpriteMetadata(SpriteRef sprite, out SpriteMetadata metadata)
+    {
+        if (SpriteResolver is not null)
+            return SpriteResolver.TryGetMetadata(sprite, out metadata);
+        metadata = default;
+        return false;
+    }
+
+    public void DrawSpriteCommand(in SpriteDrawCommand command)
+    {
+        if (!_isBegin) throw new InvalidOperationException("Call SpriteBatch.Begin() first.");
+        if (command.Sprite.IsEmpty || SpriteResolver is null) return;
+
+        int subImage = (int)MathF.Floor(command.SubImage);
+        if (!SpriteResolver.TryResolve(command.Sprite, subImage, out var frame)) return;
+
+        if (_currentTextureHandle != 0 && _currentTextureHandle != frame.TextureHandle)
+            Flush();
+        if (_quadCount >= MaxQuads)
+            Flush();
+
+        _currentTextureHandle = frame.TextureHandle;
+        int vIndex = _quadCount * 4;
+        Span<Vector2> corners = stackalloc Vector2[4];
+        SpriteGeometry.CalculateCorners(command, frame, corners);
+        Vector4 uv = frame.UvBounds;
+
+        _vertexBuffer[vIndex + 0] = new Vertex2D(
+            corners[0], new Vector2(uv.X, uv.Y), command.Color);
+        _vertexBuffer[vIndex + 1] = new Vertex2D(
+            corners[1], new Vector2(uv.Z, uv.Y), command.Color);
+        _vertexBuffer[vIndex + 2] = new Vertex2D(
+            corners[2], new Vector2(uv.Z, uv.W), command.Color);
+        _vertexBuffer[vIndex + 3] = new Vertex2D(
+            corners[3], new Vector2(uv.X, uv.W), command.Color);
 
         _quadCount++;
     }
