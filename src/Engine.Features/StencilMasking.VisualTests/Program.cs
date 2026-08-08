@@ -2,10 +2,10 @@ namespace StencilMasking.VisualTests;
 
 using System.Numerics;
 using Silk.NET.OpenGL;
-using Silk.NET.Input;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
@@ -16,14 +16,14 @@ using GameEngine.Features.StencilMasking.Domain;
 using GameEngine.Features.StencilMasking.Infrastructure;
 
 /// <summary>
-/// StencilMasking 切片 · 可运行看效果 Demo。
+/// StencilMasking 切片 · 可运行看效果 Demo（GameInstance 事件驱动版）。
 ///
 /// 展示内容：圆形聚光灯 Stencil 遮罩（ShowInside 模式）
 ///   - 整个场景先渲染到 RT_Scene
 ///   - StencilMaskPass：画圆形遮罩 → 只重绘遮罩内部的内容到 RT_Masked
 ///   - 合成到屏幕：RT_Scene + RT_Masked 叠加
 ///
-/// 操作：
+/// 操作（全部由 SpotlightSource 实例处理）：
 ///   - 移动鼠标：聚光灯圆心跟随
 ///   - 滚轮：调整遮罩半径
 ///   - M：切换 ShowInside / ShowOutside（聚光灯 ↔ 透视洞）
@@ -40,10 +40,6 @@ internal static class Program
     private static SceneAggregate? _scene;
     private static RenderPipeline? _pipeline;
     private static StencilMaskPass? _stencilPass;
-
-    private static Vector2 _mouse = new(640, 360);
-    private static float _maskRadius = 120f;
-    private static bool _showOutside;
 
     private static void Main()
     {
@@ -65,11 +61,13 @@ internal static class Program
         _spriteShader = new SpriteShader(gl);
         _blitShader = new BlitShader(gl);
         _batch = new SpriteBatch(gl);
+        _batch.DefaultShader = _spriteShader;
         _white = new WhiteTexture(gl);
         _camera = new Camera2D(new Vector2(vw, vh));
 
         // 场景：填充背景方块 + 若干彩色方块
         _scene = new SceneAggregate("StencilDemo");
+        _scene.SetInput(_window.Input);
         _scene.ViewportWidth = vw;
         _scene.ViewportHeight = vh;
         _scene.Background = BackgroundConfig.FromColor(new Vector4(0.1f, 0.1f, 0.14f, 1f));
@@ -95,50 +93,75 @@ internal static class Program
         _pipeline.AddPass(_stencilPass);
         _pipeline.AddPass(compositor);
 
-        try
-        {
-            var input = _window.NativeWindow.CreateInput();
-            foreach (var mouse in input.Mice)
-            {
-                mouse.MouseMove += (_, pos) => _mouse = new Vector2(pos.X, pos.Y);
-                mouse.Scroll += (_, scroll) =>
-                {
-                    _maskRadius = Math.Clamp(_maskRadius + scroll.Y * 15f, 20f, 400f);
-                };
-            }
-            foreach (var keyboard in input.Keyboards)
-            {
-                keyboard.KeyDown += (_, key, _) =>
-                {
-                    switch (key)
-                    {
-                        case Key.Escape: _window.NativeWindow.Close(); break;
-                        case Key.M:
-                            _showOutside = !_showOutside;
-                            _stencilPass!.State = _showOutside
-                                ? StencilMaskState.FogOfWarHole
-                                : StencilMaskState.Spotlight;
-                            Console.WriteLine($"[Stencil] Mode={( _showOutside ? "ShowOutside" : "ShowInside" )}");
-                            break;
-                    }
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Input] WARN: {ex.Message}");
-        }
+        // 聚光灯控制器：输入 + 状态全部进 GameInstance
+        _scene.Add(new SpotlightSource(_stencilPass, _window));
     }
 
-    private static void HandleStep(double dt) => _scene!.PerformStep(dt);
+    private static void HandleStep(double dt)
+    {
+        _scene!.PerformInput(_window!.Input.KeysPressed, _window.Input.KeysReleased);
+        _scene.PerformStep(dt);
+    }
 
     private static void HandleDraw()
     {
-        _stencilPass!.SetMaskCircle(_mouse, _maskRadius);
         var ctx = new RenderPassContext(
             _window!.Graphics.Gl, _spriteShader!, _batch!,
             _window.Width, _window.Height);
         _pipeline!.Execute(ctx);
+    }
+
+    /// <summary>
+    /// 聚光灯控制器：OnStep 读鼠标/滚轮并每帧应用遮罩位置半径；
+    /// OnKeyDown 切换 ShowInside/ShowOutside。
+    /// 注：直接持 StencilMaskPass 引用是演示捷径；通用化路径为实例发
+    /// RenderEffectRequested 事件由 PipelineBuilder 装配（第二阶段）。
+    /// </summary>
+    private sealed class SpotlightSource : GameInstance
+    {
+        private readonly StencilMaskPass _stencilPass;
+        private readonly EngineWindow _window;
+        private float _maskRadius = 120f;
+        private bool _showOutside;
+
+        public SpotlightSource(StencilMaskPass stencilPass, EngineWindow window)
+            : base(nameof(SpotlightSource), Vector2D.Zero, LayerDepth.Instances)
+        {
+            _stencilPass = stencilPass;
+            _window = window;
+            LayerName = SceneAggregate.LayerNameInstances;
+        }
+
+        public override void OnStep(double dt)
+        {
+            if (Input is null) return;
+
+            // 滚轮调整遮罩半径
+            var scroll = Input.MouseScrollDelta;
+            if (scroll != 0f)
+                _maskRadius = Math.Clamp(_maskRadius + scroll * 15f, 20f, 400f);
+
+            // 聚光灯圆心跟随鼠标（默认单位相机：屏幕坐标 == 世界坐标）
+            var mouse = Input.MousePosition;
+            _stencilPass.SetMaskCircle(new Vector2(mouse.X, mouse.Y), _maskRadius);
+        }
+
+        public override void OnKeyDown(InputKey key)
+        {
+            switch (key)
+            {
+                case InputKey.Escape:
+                    _window.NativeWindow.Close();
+                    break;
+                case InputKey.M:
+                    _showOutside = !_showOutside;
+                    _stencilPass.State = _showOutside
+                        ? StencilMaskState.FogOfWarHole
+                        : StencilMaskState.Spotlight;
+                    Console.WriteLine($"[Stencil] Mode={( _showOutside ? "ShowOutside" : "ShowInside" )}");
+                    break;
+            }
+        }
     }
 
     /// <summary>彩色方块实例（Instances 层）</summary>

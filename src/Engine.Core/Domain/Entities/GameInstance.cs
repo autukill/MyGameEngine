@@ -3,6 +3,7 @@ namespace GameEngine.Core.Domain.Entities;
 using System.Numerics;
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
 /// <summary>
@@ -56,6 +57,24 @@ public class GameInstance
     /// <summary>可选：实例的颜色着色（GMS 的 image_blend）</summary>
     public Vector4 Color { get; set; } = Vector4.One;
 
+    /// <summary>
+    /// 实例级渲染状态（GMS gpu_set_blendmode + depth 的升级版）。
+    /// 由 SceneAggregate.DrawActive 在 OnDraw 前应用，变更自动 Flush。
+    /// </summary>
+    public RenderStyle RenderStyle { get; set; } = RenderStyle.Default;
+
+    /// <summary>
+    /// 实例使用的 Shader（GMS shader_index）。仅持名字，由渲染层 ShaderLibrary 解析。
+    /// null = 使用 Pass 默认 shader。
+    /// </summary>
+    public ShaderRef? Shader { get; set; }
+
+    /// <summary>
+    /// 输入提供者（GMS keyboard_check / mouse_x 等价物）。
+    /// 由 SceneAggregate.Add/SetInput 自动注入；OnStep 中轮询查询。
+    /// </summary>
+    public IInputProvider? Input { get; set; }
+
     protected GameInstance()
     {
         ObjectTypeName = GetType().Name;
@@ -74,14 +93,26 @@ public class GameInstance
     /// <summary>Create 事件：实例被加入场景时调用一次</summary>
     public virtual void OnCreate() { }
 
+    /// <summary>Begin Step 事件：所有实例先执行——输入预处理/状态缓存（GMS Begin Step）</summary>
+    public virtual void OnBeginStep(double deltaTime) { }
+
     /// <summary>Step 事件：每个逻辑帧调用——主游戏逻辑写这里</summary>
     public virtual void OnStep(double deltaTime) { }
+
+    /// <summary>End Step 事件：所有实例后执行——校验/后处理（GMS End Step）</summary>
+    public virtual void OnEndStep(double deltaTime) { }
 
     /// <summary>
     /// Draw 事件：每个渲染帧调用。
     /// 默认实现：在 Transform.Position 处画 Sprite，使用 Color 着色。
     /// 子类可 override 画自定义几何。
     /// </summary>
+    /// <summary>
+    /// Draw Begin 事件：OnDraw 之前调用（GMS Draw Begin）。
+    /// 用于设置该实例的 shader/blend 等渲染状态（命令式次路径，主路径用 RenderStyle）。
+    /// </summary>
+    public virtual void OnBeginDraw(ISpriteBatch batch) { }
+
     public virtual void OnDraw(ISpriteBatch batch)
     {
         if (Sprite.IsEmpty) return;
@@ -92,6 +123,24 @@ public class GameInstance
             color: Color,
             uvBounds: Sprite.UvBounds);
     }
+
+    /// <summary>
+    /// Draw End 事件：OnDraw 之后调用（GMS Draw End）。
+    /// 若在 OnBeginDraw/OnDraw 中手动改了状态，应在此复位；主路径由 Pass.End() 兜底复位。
+    /// </summary>
+    public virtual void OnEndDraw(ISpriteBatch batch) { }
+
+    /// <summary>
+    /// Draw GUI 事件：屏幕空间 UI 绘制，不受相机影响（GMS Draw GUI）。
+    /// 在 EngineWindow.DrawGUI 阶段由 SceneAggregate.DrawGUI 调度。
+    /// </summary>
+    public virtual void OnDrawGUI(ISpriteBatch batch) { }
+
+    /// <summary>Key Down 事件（GMS Key Down 事件）：由场景 PerformInput 分发</summary>
+    public virtual void OnKeyDown(InputKey key) { }
+
+    /// <summary>Key Up 事件（GMS Key Up 事件）：由场景 PerformInput 分发</summary>
+    public virtual void OnKeyUp(InputKey key) { }
 
     /// <summary>Destroy 事件：实例被销毁时调用</summary>
     public virtual void OnDestroy() { }

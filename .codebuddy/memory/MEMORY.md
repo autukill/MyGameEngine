@@ -60,13 +60,20 @@ src/
 - 追求**极低 DrawCall**：Texture Atlas 让数千精灵共享同一纹理实现单次 DrawCall。
 - `SpriteBatch` 支持状态打断自动 Flush（纹理变更 / BlendMode 变更 / 缓冲满）。
 
-## 当前代码进度（2026-08-06）
-- `src/Engine.Core`：Domain（10 个 cs）、Infrastructure（10 个 cs）、Application 已落地。
-- `src/Engine.Features`：已拆分为 4 个独立 module project + 8 个测试项目（4 冒烟 + 4 VisualTests），共 12 个 csproj。原单一 `Engine.Features.csproj` 已删除。
-- `src/MyGame.Runner`：Program.cs、OrbitingSprite.cs。
-- `src/Engine.DddTests`：DDD 测试工程。
-- 解决方案 `MyGameEngine.slnx` 共 16 个项目，全部编译通过（0 警告 0 错误）。
+## 当前代码进度（2026-08-08）
+- `src/Engine.Core`：Domain（含新增 BlendMode/ShaderRef/RenderStyle/IShaderResolver + InputKey/MouseButton/IInputProvider）、Infrastructure（含新增 ShaderProgram/ShaderLibrary/InputSystem + SpriteBatch 状态机 + EngineWindow.Input）、Application 已落地。
+- `src/Engine.Features`：4 个独立 module project + 8 个测试项目（4 冒烟 + 4 VisualTests）。全部 VisualTests 已重构为 GameInstance 事件驱动（CameraRig/LayerToggleController/LightSource/SpotlightSource 等），Program 只做装配。
+- `src/MyGame.Runner`：OrbitingSprite 与 SpotlightController 均为 GameInstance；统一使用 EngineWindow.Input，Program 只做装配，并已接入 DrawGUI、resize 与关闭释放链路。
+- 解决方案 `MyGameEngine.slnx` 共 15 个项目，编译通过（0 错误）；5 个无窗口冒烟项目全部通过。
+- **待办**：第二阶段事件装配（RenderEffectRequested + RenderTargetPool + kind/owner 聚合回收）；自定义 ShaderRef 示例与动态 uniform API；自动 GPU 回归测试。
+
+## 设计方向（2026-08-07 推演，第一阶段已实施）
+- **用户明确偏好**：游戏/测试业务逻辑必须放入 GameInstance 子类，像 GMS 一样通过实例事件（Create/BeginStep/Step/EndStep/BeginDraw/Draw/EndDraw/DrawGUI/输入事件）控制业务逻辑与 shader/blend mode；Program 只做装配（组合根）。当前 VisualTests 逻辑堆在 Program 静态方法是"缺事件模型"导致的临时形态。
+- **渲染管理三层模型**：拓扑（Pass 图，组合根装配）／状态（实例 RenderStyle 值对象声明 blend/depth，SceneRenderPass 做 diff→Flush→Apply→复位状态机）／特需（实例发 RenderEffectRequested 事件，PipelineBuilder 消费装配，泛化 RequestStencilMask 范式）。
+- **Shader 引用**：ShaderRef 值对象 + ShaderLibrary 解析，实例绝不持有 GL 对象（保 VSA 依赖方向）。
+- **BlendState 归属**：Feature 层 BlendState 依赖 Silk 不能提升 Core；Core 需自建 BlendMode 枚举供 ISpriteBatch 用。
 
 ## 开发工作流偏好
 - 偏好使用 DDD 头脑风暴 -> 战略设计 -> 战术设计 -> 垂直切片实施的渐进式流程。
 - 使用 AI Agent 辅助开发，切片化便于 Agent 局部工作。
+- 用户偏好"先思考推演最佳实践再动手"，重大设计先给推演再确认实施。

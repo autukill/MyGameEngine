@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\Camera\Camera.csproj" />
+    <ProjectReference Include="..\RenderPipeline\RenderPipeline.csproj" />
   </ItemGroup>
 
 </Project>

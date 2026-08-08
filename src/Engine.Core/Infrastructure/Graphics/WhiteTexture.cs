@@ -8,10 +8,13 @@ using System.Numerics;
 /// </summary>
 public sealed class WhiteTexture : IDisposable
 {
+    private readonly GL _gl;
+    private bool _disposed;
     public uint Handle { get; }
 
     public WhiteTexture(GL gl)
     {
+        _gl = gl;
         Handle = gl.GenTexture();
         gl.BindTexture(TextureTarget.Texture2D, Handle);
 
@@ -26,18 +29,22 @@ public sealed class WhiteTexture : IDisposable
                     PixelFormat.Rgba, PixelType.UnsignedByte, p);
             }
         }
+        uint linear = (uint)GLEnum.Linear;
+        uint clampToEdge = (uint)GLEnum.ClampToEdge;
         gl.TexParameterI(TextureTarget.Texture2D,
-            TextureParameterName.TextureMinFilter, (uint)GLEnum.Linear);
+            TextureParameterName.TextureMinFilter, in linear);
         gl.TexParameterI(TextureTarget.Texture2D,
-            TextureParameterName.TextureMagFilter, (uint)GLEnum.Linear);
+            TextureParameterName.TextureMagFilter, in linear);
         gl.TexParameterI(TextureTarget.Texture2D,
-            TextureParameterName.TextureWrapS, (uint)GLEnum.ClampToEdge);
+            TextureParameterName.TextureWrapS, in clampToEdge);
         gl.TexParameterI(TextureTarget.Texture2D,
-            TextureParameterName.TextureWrapT, (uint)GLEnum.ClampToEdge);
+            TextureParameterName.TextureWrapT, in clampToEdge);
     }
 
     public void Dispose()
     {
-        // GL handle cleanup 在引擎退出时由 GL.Dispose 统一处理
+        if (_disposed) return;
+        _disposed = true;
+        _gl.DeleteTexture(Handle);
     }
 }

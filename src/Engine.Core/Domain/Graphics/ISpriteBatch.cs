@@ -16,4 +16,21 @@ public interface ISpriteBatch
     void End();
     void Draw(uint textureHandle, Vector2 position, Vector2 size, Vector4 color, Vector4 uvBounds);
     void Flush();
+
+    /// <summary>
+    /// 切换混合模式（GMS gpu_set_blendmode）。
+    /// 状态未变化时零开销；变化时自动 Flush 并 Apply 到 GL。
+    /// </summary>
+    void SetBlendMode(BlendMode mode);
+
+    /// <summary>
+    /// 设置深度测试/写入状态。状态变化前自动 Flush，避免影响已入批顶点。
+    /// </summary>
+    void SetDepthState(bool depthTest, bool depthWrite);
+
+    /// <summary>
+    /// 切换 Shader（GMS shader_set）。null = 默认 shader。
+    /// 状态未变化时零开销；变化时自动 Flush 并 UseProgram。
+    /// </summary>
+    void SetShader(ShaderRef? shader);
 }

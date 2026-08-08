@@ -1,10 +1,13 @@
 namespace Engine.DddTests;
 
+using System.Numerics;
 using GameEngine.Core.Application.Commands;
 using GameEngine.Core.Application.Handlers;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Events;
+using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
 /// <summary>
@@ -134,6 +137,90 @@ internal sealed class Program
         scene.End();
         Console.WriteLine($"   After End(), non-persistent count: {scene.ActiveInstances.Count()}");
 
+        VerifyInstanceLifecycleAndRenderState();
+
         Console.WriteLine("\n=== All Phase 1.4 DDD tactical design smoke tests passed ===");
+    }
+
+    private static void VerifyInstanceLifecycleAndRenderState()
+    {
+        var scene = new SceneAggregate("LifecycleRoom");
+        var input = new FakeInputProvider();
+        scene.SetInput(input);
+
+        var instance = new LifecycleProbe
+        {
+            RenderStyle = new RenderStyle(BlendMode.Additive, DepthTest: true, DepthWrite: true),
+            Shader = new ShaderRef("probe-shader")
+        };
+        scene.Add(instance);
+
+        scene.PerformInput(new[] { InputKey.W }, new[] { InputKey.Escape });
+        scene.PerformStep(0.016);
+
+        var batch = new RecordingSpriteBatch();
+        scene.DrawActive(batch);
+        scene.DrawGUI(batch);
+
+        Assert(ReferenceEquals(instance.Input, input), "Scene input is injected into instances");
+        Assert(batch.BlendMode == BlendMode.Additive, "RenderStyle blend mode is applied");
+        Assert(batch.DepthState == (true, true), "RenderStyle depth state is applied");
+        Assert(batch.Shader == new ShaderRef("probe-shader"), "ShaderRef is applied");
+
+        const string expected =
+            "Create,KeyDown:W,KeyUp:Escape,BeginStep,Step,EndStep,BeginDraw,Draw,EndDraw,DrawGUI";
+        Assert(string.Join(',', instance.Events) == expected,
+            "GameInstance lifecycle and input events are dispatched in order");
+
+        Console.WriteLine("\n10. GameInstance lifecycle / input / render state");
+        Console.WriteLine("   [PASS] unified input injection + edge events");
+        Console.WriteLine("   [PASS] Begin/Step/End and Draw lifecycle order");
+        Console.WriteLine("   [PASS] Blend/Depth/Shader render state dispatch");
+    }
+
+    private static void Assert(bool condition, string message)
+    {
+        if (!condition) throw new InvalidOperationException($"[FAIL] {message}");
+    }
+
+    private sealed class LifecycleProbe : GameInstance
+    {
+        public List<string> Events { get; } = new();
+
+        public override void OnCreate() => Events.Add("Create");
+        public override void OnKeyDown(InputKey key) => Events.Add($"KeyDown:{key}");
+        public override void OnKeyUp(InputKey key) => Events.Add($"KeyUp:{key}");
+        public override void OnBeginStep(double deltaTime) => Events.Add("BeginStep");
+        public override void OnStep(double deltaTime) => Events.Add("Step");
+        public override void OnEndStep(double deltaTime) => Events.Add("EndStep");
+        public override void OnBeginDraw(ISpriteBatch batch) => Events.Add("BeginDraw");
+        public override void OnDraw(ISpriteBatch batch) => Events.Add("Draw");
+        public override void OnEndDraw(ISpriteBatch batch) => Events.Add("EndDraw");
+        public override void OnDrawGUI(ISpriteBatch batch) => Events.Add("DrawGUI");
+    }
+
+    private sealed class FakeInputProvider : IInputProvider
+    {
+        public bool IsKeyDown(InputKey key) => false;
+        public Vector2D MousePosition => Vector2D.Zero;
+        public float MouseScrollDelta => 0;
+        public bool IsMouseButtonDown(GameEngine.Core.Domain.Input.MouseButton button) => false;
+    }
+
+    private sealed class RecordingSpriteBatch : ISpriteBatch
+    {
+        public BlendMode BlendMode { get; private set; }
+        public (bool Test, bool Write) DepthState { get; private set; }
+        public ShaderRef? Shader { get; private set; }
+
+        public void Begin() { }
+        public void End() { }
+        public void Flush() { }
+        public void Draw(uint textureHandle, Vector2 position, Vector2 size, Vector4 color,
+            Vector4 uvBounds = default) { }
+        public void SetBlendMode(BlendMode mode) => BlendMode = mode;
+        public void SetDepthState(bool depthTest, bool depthWrite) =>
+            DepthState = (depthTest, depthWrite);
+        public void SetShader(ShaderRef? shader) => Shader = shader;
     }
 }

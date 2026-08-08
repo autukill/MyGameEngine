@@ -131,4 +131,6 @@ public sealed class StencilMaskPass : RenderPass
 
     public override string ToString() =>
         $"StencilMaskPass[Mode={State.Mode} Ref={State.StencilRef} Mask=0x{State.MaskBits:X}]";
+
+    public override void Dispose() => _batch.Dispose();
 }

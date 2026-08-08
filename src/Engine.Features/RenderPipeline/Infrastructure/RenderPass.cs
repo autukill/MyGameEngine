@@ -13,7 +13,7 @@ public readonly record struct RenderPassContext(
     int ScreenHeight);
 
 /// <summary>抽象管道节点</summary>
-public abstract class RenderPass
+public abstract class RenderPass : IDisposable
 {
     public string Name { get; init; }
     public bool IsEnabled { get; set; } = true;
@@ -27,4 +27,7 @@ public abstract class RenderPass
     protected RenderPass(string name) => Name = name;
 
     public abstract void Execute(in RenderPassContext ctx);
+
+    /// <summary>释放 Pass 自身拥有的 GPU 资源；外部注入的 Shader/RenderTarget 不在此释放。</summary>
+    public virtual void Dispose() { }
 }

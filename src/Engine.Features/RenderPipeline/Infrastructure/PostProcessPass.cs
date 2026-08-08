@@ -16,6 +16,7 @@ public sealed class PostProcessPass : RenderPass
     private readonly RenderTarget2D _input;
     private readonly RenderTarget2D? _output;
     private readonly uint _fullscreenVao;
+    private readonly uint _fullscreenVbo;
 
     public override RenderTarget2D? Output => _output;
     public override IEnumerable<RenderTarget2D> Inputs => new[] { _input };
@@ -27,7 +28,7 @@ public sealed class PostProcessPass : RenderPass
         _postShader = postShader;
         _input = input;
         _output = output;
-        _fullscreenVao = CreateFullscreenQuad(gl);
+        (_fullscreenVao, _fullscreenVbo) = CreateFullscreenQuad(gl);
     }
 
     public override void Execute(in RenderPassContext ctx)
@@ -46,7 +47,7 @@ public sealed class PostProcessPass : RenderPass
         _gl.BindVertexArray(0);
     }
 
-    private static unsafe uint CreateFullscreenQuad(GL gl)
+    private static unsafe (uint Vao, uint Vbo) CreateFullscreenQuad(GL gl)
     {
         // 顶点：position(xy) + uv(uv) —— 两个三角形拼成全屏矩形
         float[] vertices = {
@@ -73,6 +74,12 @@ public sealed class PostProcessPass : RenderPass
         gl.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false,
             4 * sizeof(float), (void*)(2 * sizeof(float)));
         gl.BindVertexArray(0);
-        return vao;
+        return (vao, vbo);
+    }
+
+    public override void Dispose()
+    {
+        _gl.DeleteVertexArray(_fullscreenVao);
+        _gl.DeleteBuffer(_fullscreenVbo);
     }
 }

@@ -1,8 +1,6 @@
 namespace MyGame.Runner;
 
 using System.Numerics;
-using Silk.NET.OpenGL;
-using Silk.NET.Input;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
@@ -50,11 +48,9 @@ internal sealed class Program
     private static PostProcessPass? _bloomPass;
     private static ViewportCompositorPass? _compositorPass;
 
-    private static Vector2 _mouseScreen = new(640, 360);
-
     private static void Main(string[] args)
     {
-        Console.WriteLine("=== Phase 1.3 GMS-style Demo ===");
+        Console.WriteLine("=== Phase 1.4 GMS-style Demo ===");
         Console.WriteLine("  4 个 OrbitingSprite 做圆周运动");
         Console.WriteLine("  鼠标位置 = 聚光灯圆心 (Stencil ShowInside)");
         Console.WriteLine("  Bloom: 圆圈内高亮区域发光");
@@ -64,6 +60,9 @@ internal sealed class Program
         _window.OnLoad += HandleLoad;
         _window.OnStep += HandleStep;
         _window.OnDraw += HandleDraw;
+        _window.OnDrawGUI += HandleDrawGUI;
+        _window.OnResize += HandleResize;
+        _window.OnClosing += HandleClosing;
         _window.Run();
     }
 
@@ -77,6 +76,7 @@ internal sealed class Program
         _bloomShader = new PostProcessShader(gl);
         _blitShader = new BlitShader(gl);
         _batch = new SpriteBatch(gl);
+        _batch.DefaultShader = _spriteShader;
         _white = new WhiteTexture(gl);
 
         // 2. 场景（DDD 聚合根，完整 GMS Room 等价物：Layer/Background/Viewport/Hook）
@@ -85,6 +85,7 @@ internal sealed class Program
         _scene.ViewportHeight = vh;
         _scene.Background = BackgroundConfig.FromColor(
             new Vector4(0.08f, 0.10f, 0.13f, 1.0f));
+        _scene.SetInput(_window.Input);
 
         // Scene 级 Hook 示例
         _scene.OnStart = () => Console.WriteLine($"[Scene] '{_scene.SceneName}' started.");
@@ -145,51 +146,68 @@ internal sealed class Program
                 textureHandle: _white.Handle));
         }
 
-        // 9. 输入
-        SetupInput(gl);
-    }
-
-    private static void SetupInput(GL gl)
-    {
-        try
-        {
-            var input = _window!.NativeWindow.CreateInput();
-            foreach (var mouse in input.Mice)
-            {
-                mouse.MouseMove += (m, pos) =>
-                {
-                    _mouseScreen = new Vector2(pos.X, pos.Y);
-                };
-            }
-            foreach (var keyboard in input.Keyboards)
-            {
-                keyboard.KeyDown += (kb, key, scancode) =>
-                {
-                    if (key == Key.Escape)
-                        _window.NativeWindow.Close();
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Input] WARN: {ex.Message}");
-        }
+        // 9. 聚光灯控制器：鼠标跟随与 ESC 退出都属于实例事件，Program 只负责装配。
+        _scene.Add(new SpotlightController(
+            _stencilPass,
+            initialCenter: center,
+            radius: 120f,
+            closeWindow: () => _window.NativeWindow.Close()));
     }
 
     private static void HandleStep(double dt)
     {
-        // GMS-style: 只调用场景的 Step 调度器，由聚合根遍历实例调用 OnStep
+        _scene!.PerformInput(_window!.Input.KeysPressed, _window.Input.KeysReleased);
         _scene!.PerformStep(dt);
     }
 
     private static void HandleDraw()
     {
-        // 闪光灯圆心 = 鼠标位置，每帧更新 StencilMaskPass 的遮罩圆
-        _stencilPass!.SetMaskCircle(_mouseScreen, 120f);
-
         var ctx = new RenderPassContext(
             _window!.Graphics.Gl, _spriteShader!, _batch!, _window.Width, _window.Height);
 
         _pipeline!.Execute(ctx);
+    }
+
+    private static void HandleDrawGUI()
+    {
+        if (_scene is null || _spriteShader is null || _batch is null || _window is null) return;
+
+        _spriteShader.Use();
+        _spriteShader.SetProjection(Matrix4x4.CreateOrthographicOffCenter(
+            0, _window.Width, _window.Height, 0, -1, 1));
+        _batch.Begin();
+        _scene.DrawGUI(_batch);
+        _batch.End();
+    }
+
+    private static void HandleResize(int width, int height)
+    {
+        if (width <= 0 || height <= 0) return;
+
+        if (_scene is not null)
+        {
+            _scene.ViewportWidth = width;
+            _scene.ViewportHeight = height;
+        }
+        _mainCamera?.ResizeViewport(width, height);
+        _rtScene?.Resize(width, height);
+        _rtMasked?.Resize(width, height);
+        _rtBloom?.Resize(width, height);
+        _pipeline?.Resize(width, height);
+        _bloomShader?.SetTextureSize(width, height);
+    }
+
+    private static void HandleClosing()
+    {
+        _scene?.End();
+        _pipeline?.Dispose();
+        _rtBloom?.Dispose();
+        _rtMasked?.Dispose();
+        _rtScene?.Dispose();
+        _white?.Dispose();
+        _batch?.Dispose();
+        _blitShader?.Dispose();
+        _bloomShader?.Dispose();
+        _spriteShader?.Dispose();
     }
 }

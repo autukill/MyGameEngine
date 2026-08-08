@@ -2,6 +2,7 @@ namespace GameEngine.Core.Domain.Aggregates;
 
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Domain.Entities;
 
@@ -61,6 +62,7 @@ public class SceneAggregate
 
     private readonly Dictionary<InstanceId, GameInstance> _instances = new();
     private readonly List<IDomainEvent> _uncommittedEvents = new();
+    private IInputProvider? _input;
 
     public IReadOnlyCollection<IDomainEvent> UncommittedEvents => _uncommittedEvents.AsReadOnly();
     public IReadOnlyCollection<GameInstance> AllInstances => _instances.Values.ToList();
@@ -167,6 +169,7 @@ public class SceneAggregate
             instance.LayerName = LayerNameInstances;
 
         _instances[instance.Id] = instance;
+        instance.Input ??= _input;
         instance.OnCreate();
         RaiseEvent(new InstanceSpawnedEvent(
             instance.Id, instance.ObjectTypeName,
@@ -234,13 +237,63 @@ public class SceneAggregate
 
         OnBeforeStep?.Invoke(deltaTime);
 
+        // GMS Begin Step：所有活跃实例先执行（输入预处理/状态缓存）
+        foreach (var instance in _instances.Values.ToList())
+        {
+            if (instance.IsActive)
+                instance.OnBeginStep(deltaTime);
+        }
+
+        // GMS Step：主游戏逻辑
         foreach (var instance in _instances.Values.ToList())
         {
             if (instance.IsActive)
                 instance.OnStep(deltaTime);
         }
 
+        // GMS End Step：校验/后处理
+        foreach (var instance in _instances.Values.ToList())
+        {
+            if (instance.IsActive)
+                instance.OnEndStep(deltaTime);
+        }
+
         OnAfterStep?.Invoke(deltaTime);
+    }
+
+    /// <summary>
+    /// 输入沿事件分发（GMS Key Down / Key Up 事件）。
+    /// 在 PerformStep 之前调用；keysPressed / keysReleased 为本帧按下/释放的键集合。
+    /// </summary>
+    public void PerformInput(IReadOnlyList<InputKey> keysPressed, IReadOnlyList<InputKey> keysReleased)
+    {
+        if (keysPressed.Count > 0)
+        {
+            foreach (var instance in _instances.Values.ToList())
+            {
+                if (!instance.IsActive) continue;
+                for (int i = 0; i < keysPressed.Count; i++)
+                    instance.OnKeyDown(keysPressed[i]);
+            }
+        }
+
+        if (keysReleased.Count > 0)
+        {
+            foreach (var instance in _instances.Values.ToList())
+            {
+                if (!instance.IsActive) continue;
+                for (int i = 0; i < keysReleased.Count; i++)
+                    instance.OnKeyUp(keysReleased[i]);
+            }
+        }
+    }
+
+    /// <summary>设置场景共享输入提供者（对已有实例补注入；之后 Add 的实例自动注入）</summary>
+    public void SetInput(IInputProvider? input)
+    {
+        _input = input;
+        foreach (var instance in _instances.Values)
+            instance.Input ??= input;
     }
 
     /// <summary>
@@ -268,9 +321,23 @@ public class SceneAggregate
 
             foreach (var instance in sorted)
             {
+                ApplyRenderState(batch, instance);
+                instance.OnBeginDraw(batch);
                 instance.OnDraw(batch);
+                instance.OnEndDraw(batch);
             }
         }
+    }
+
+    /// <summary>
+    /// 应用实例级渲染状态（RenderStyle/Shader）。
+    /// SpriteBatch 内部对未变化的状态零开销，变化时自动 Flush + Apply。
+    /// </summary>
+    private static void ApplyRenderState(ISpriteBatch batch, GameInstance instance)
+    {
+        batch.SetBlendMode(instance.RenderStyle.BlendMode);
+        batch.SetDepthState(instance.RenderStyle.DepthTest, instance.RenderStyle.DepthWrite);
+        batch.SetShader(instance.Shader);
     }
 
     /// <summary>
@@ -291,9 +358,25 @@ public class SceneAggregate
 
             foreach (var instance in sorted)
             {
+                ApplyRenderState(batch, instance);
+                instance.OnBeginDraw(batch);
                 instance.OnDraw(batch);
+                instance.OnEndDraw(batch);
             }
             return; // 只绘制匹配的第一个 Layer
+        }
+    }
+
+    /// <summary>
+    /// GMS Draw GUI 事件调度：所有活跃实例的屏幕空间 UI 绘制（不受相机影响）。
+    /// 调用方需自行 Begin/End SpriteBatch。
+    /// </summary>
+    public void DrawGUI(ISpriteBatch batch)
+    {
+        foreach (var instance in _instances.Values)
+        {
+            if (!instance.IsActive) continue;
+            instance.OnDrawGUI(batch);
         }
     }
 

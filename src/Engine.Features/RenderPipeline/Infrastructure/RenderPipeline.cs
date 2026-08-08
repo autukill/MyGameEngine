@@ -6,12 +6,13 @@ using GameEngine.Features.RenderPipeline.Domain;
 /// <summary>
 /// Pass 调度器：拓扑排序后依次执行。
 /// </summary>
-public sealed class RenderPipeline
+public sealed class RenderPipeline : IDisposable
 {
     private readonly List<RenderPass> _passes = new();
     private readonly GL _gl;
-    private readonly int _screenWidth;
-    private readonly int _screenHeight;
+    private int _screenWidth;
+    private int _screenHeight;
+    private bool _disposed;
 
     public RenderPipeline(GL gl, int screenWidth, int screenHeight)
     {
@@ -23,6 +24,14 @@ public sealed class RenderPipeline
     public void AddPass(RenderPass pass) => _passes.Add(pass);
     public void RemovePass(string name) => _passes.RemoveAll(p => p.Name == name);
     public IReadOnlyList<RenderPass> Passes => _passes;
+
+    /// <summary>窗口 resize 后更新默认 framebuffer 的 Viewport 尺寸。</summary>
+    public void Resize(int screenWidth, int screenHeight)
+    {
+        if (screenWidth <= 0 || screenHeight <= 0) return;
+        _screenWidth = screenWidth;
+        _screenHeight = screenHeight;
+    }
 
     public void Execute(in RenderPassContext ctx)
     {
@@ -80,5 +89,14 @@ public sealed class RenderPipeline
                     "[RenderPipeline] cyclic dependency detected between RenderPasses");
         }
         return sorted;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        foreach (var pass in _passes)
+            pass.Dispose();
+        _passes.Clear();
     }
 }

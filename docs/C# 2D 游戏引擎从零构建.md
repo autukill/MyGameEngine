@@ -1,5 +1,7 @@
 # C# 2D 游戏引擎从零构建
 
+> 本文是项目早期设计推演与阶段性代码示例的历史记录，不等同于当前实现。最新可运行结构、命令和能力边界请以根目录 `README.md` 与 `docs/PROJECT_STATUS.md` 为准。
+
 ## Prompt:
 Gamemaker Studio 2 是闭源 的 2d 游戏引擎. 单开源了 html5 Runtime: (https://github.com/YoYoGames/GameMaker-HTML5), 有些 图形API 都没提供, 且难以扩展集成, 比如 opengl 中的 GL_STENCIL_TEST 来实现遮罩功能, Gamemaker  就没有提供相关 function.   GameMaker-Manual : `https://github.com/YoYoGames/GameMaker-Manual`  A rewrite of the GameMaker Classic engine runners with additional tooling: https://github.com/OpenGMK/OpenGMK`  `https://github.com/misternebula/OpenGM`  我喜好 C# (dotnet 10, asp.net core), vue3, 独立游戏, 现在还有了 LLM AI agent Gemini, deepseek..., coding copliot, DDD  Vertical Slice Architecture   我想自行 ( AI Agents )采用 C# 实现一套自己的 2d 游戏引擎, 需要你分析 Gamemaker, 给出一个从 0 -> 1 , 再 从 1 -> 100 的 渐进式的 实施计划  下面, 或许你可以 DDD 头脑风暴开始, 再到 战略设计... 战术设计... 等
 

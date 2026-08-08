@@ -27,6 +27,18 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
     private uint _currentTextureHandle = 0;
     private bool _isBegin = false;
 
+    // ---- 实例级渲染状态机（变更即 Flush + Apply，与纹理打断同构） ----
+    private BlendMode _currentBlendMode = BlendMode.AlphaBlend;
+    private bool _currentDepthTest;
+    private bool _currentDepthWrite;
+    private uint _currentShaderHandle = 0;
+
+    /// <summary>默认 shader（SetShader(null) 时切回；由组合根/Pass 注入）</summary>
+    public IShader? DefaultShader { get; set; }
+
+    /// <summary>ShaderRef → program handle 解析器（由组合根注入 ShaderLibrary）</summary>
+    public IShaderResolver? ShaderResolver { get; set; }
+
     public SpriteBatch(GL gl)
     {
         _gl = gl;
@@ -121,6 +133,71 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
         _quadCount++;
     }
 
+    /// <summary>
+    /// 切换混合模式（GMS gpu_set_blendmode）。状态未变化时零开销；变化时 Flush + Apply。
+    /// </summary>
+    public void SetBlendMode(BlendMode mode)
+    {
+        if (mode == _currentBlendMode) return;
+        Flush();
+        _currentBlendMode = mode;
+        ApplyBlendMode(mode);
+    }
+
+    /// <summary>
+    /// 切换深度测试/写入状态。状态未变化时零开销；变化时 Flush + Apply。
+    /// </summary>
+    public void SetDepthState(bool depthTest, bool depthWrite)
+    {
+        if (depthTest == _currentDepthTest && depthWrite == _currentDepthWrite) return;
+        Flush();
+        _currentDepthTest = depthTest;
+        _currentDepthWrite = depthWrite;
+        ApplyDepthState(depthTest, depthWrite);
+    }
+
+    /// <summary>
+    /// 切换 Shader（GMS shader_set）。null = 默认 shader。
+    /// 状态未变化时零开销；变化时 Flush + UseProgram。
+    /// </summary>
+    public void SetShader(ShaderRef? shader)
+    {
+        uint handle = 0;
+        if (shader is { IsEmpty: false } s && ShaderResolver is not null)
+            handle = ShaderResolver.Resolve(s);
+
+        if (handle == _currentShaderHandle) return;
+        Flush();
+        _currentShaderHandle = handle;
+        if (handle != 0) _gl.UseProgram(handle);
+        else DefaultShader?.Use();
+    }
+
+    private void ApplyBlendMode(BlendMode mode)
+    {
+        switch (mode)
+        {
+            case BlendMode.Opaque:
+                _gl.Disable(EnableCap.Blend);
+                break;
+            case BlendMode.Additive:
+                _gl.Enable(EnableCap.Blend);
+                _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
+                break;
+            default: // AlphaBlend
+                _gl.Enable(EnableCap.Blend);
+                _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+                break;
+        }
+    }
+
+    private void ApplyDepthState(bool depthTest, bool depthWrite)
+    {
+        if (depthTest) _gl.Enable(EnableCap.DepthTest);
+        else _gl.Disable(EnableCap.DepthTest);
+        _gl.DepthMask(depthWrite);
+    }
+
     public void Flush()
     {
         if (_quadCount == 0 || _currentTextureHandle == 0) return;
@@ -149,6 +226,24 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
         Flush();
         _isBegin = false;
         _currentTextureHandle = 0;
+
+        // 统一复位默认状态：防止实例间/Pass 间状态泄漏（推演：复位点在 End() 而非每实例）
+        if (_currentBlendMode != BlendMode.AlphaBlend)
+        {
+            _currentBlendMode = BlendMode.AlphaBlend;
+            ApplyBlendMode(BlendMode.AlphaBlend);
+        }
+        if (_currentDepthTest || _currentDepthWrite)
+        {
+            _currentDepthTest = false;
+            _currentDepthWrite = false;
+            ApplyDepthState(false, false);
+        }
+        if (_currentShaderHandle != 0)
+        {
+            _currentShaderHandle = 0;
+            DefaultShader?.Use();
+        }
     }
 
     public void Dispose()

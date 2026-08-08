@@ -2,7 +2,9 @@ namespace GameEngine.Core.Infrastructure.Windowing;
 
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
+using Silk.NET.Input;
 using GameEngine.Core.Infrastructure.Graphics;
+using GameEngine.Core.Infrastructure.Input;
 
 /// <summary>
 /// 引擎主窗口：把 Silk.NET 的 Update/Render 事件拆解为
@@ -13,6 +15,12 @@ public class EngineWindow
     private readonly IWindow _nativeWindow;
     public GraphicsDevice Graphics { get; private set; } = null!;
 
+    /// <summary>
+    /// 输入系统（缓存键盘/鼠标设备 + 每帧沿事件缓冲）。
+    /// 在 OnLoad 之前初始化，组合根可在 OnLoad 中 scene.SetInput(window.Input)。
+    /// </summary>
+    public InputSystem Input { get; private set; } = null!;
+
     public event Action<double>? OnPreStep;
     public event Action<double>? OnStep;
     public event Action<double>? OnPostStep;
@@ -21,6 +29,8 @@ public class EngineWindow
     public event Action? OnDrawBegin;
     public event Action? OnDraw;
     public event Action? OnDrawGUI;
+    public event Action<int, int>? OnResize;
+    public event Action? OnClosing;
 
     public EngineWindow(EngineWindowOptions options)
     {
@@ -44,11 +54,13 @@ public class EngineWindow
     {
         Graphics = new GraphicsDevice(_nativeWindow);
         // 注: Silk.NET 2.22 中 StringName 枚举可见性因平台而异，这里跳过版本字符串输出
+        Input = new InputSystem(_nativeWindow.CreateInput());
         OnLoad?.Invoke();
     }
 
     private void HandleUpdate(double deltaTime)
     {
+        Input?.BeginFrame();
         OnPreStep?.Invoke(deltaTime);
         OnStep?.Invoke(deltaTime);
         OnPostStep?.Invoke(deltaTime);
@@ -65,10 +77,19 @@ public class EngineWindow
     private void HandleResize(Vector2D<int> size)
     {
         Graphics?.OnResize(size.X, size.Y);
+        OnResize?.Invoke(size.X, size.Y);
     }
 
     private void HandleClosing()
     {
-        Graphics?.Dispose();
+        try
+        {
+            OnClosing?.Invoke();
+        }
+        finally
+        {
+            Input?.Dispose();
+            Graphics?.Dispose();
+        }
     }
 }

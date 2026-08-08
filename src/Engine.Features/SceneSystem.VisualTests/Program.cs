@@ -1,11 +1,10 @@
 namespace SceneSystem.VisualTests;
 
 using System.Numerics;
-using Silk.NET.OpenGL;
-using Silk.NET.Input;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
@@ -13,19 +12,17 @@ using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 
 /// <summary>
-/// SceneSystem 切片 · 可运行看效果 Demo。
+/// SceneSystem 切片 · 可运行看效果 Demo（GameInstance 事件驱动版）。
 ///
 /// 展示内容：SceneAggregate 多 Layer 分层渲染（GMS Room 等价物）
 ///   - Background Layer（最底）：装饰色块
 ///   - Instances Layer（中间）：圆周运动的精灵
 ///   - UI Layer（最顶）：半透明 UI 面板 + 标题文字（用方块代替）
 ///
-/// 操作：
+/// 操作（全部由 LayerToggleController 实例处理）：
 ///   - 空格：切换 Instances 图层可见性
 ///   - B   ：切换 Background 图层可见性
 ///   - ESC ：退出
-///
-/// 验证：图层可见性切换时，对应层实例立即显示/消失，其他层不受影响。
 /// </summary>
 internal static class Program
 {
@@ -56,11 +53,13 @@ internal static class Program
 
         _spriteShader = new SpriteShader(gl);
         _batch = new SpriteBatch(gl);
+        _batch.DefaultShader = _spriteShader;
         _white = new WhiteTexture(gl);
         _camera = new Camera2D(new Vector2(vw, vh));
 
-        // 场景：背景色 + 三个 Layer 的实例
+        // 装配场景：实例 + 输入
         _scene = new SceneAggregate("LayerDemo");
+        _scene.SetInput(_window.Input);
         _scene.ViewportWidth = vw;
         _scene.ViewportHeight = vh;
         _scene.Background = BackgroundConfig.FromColor(new Vector4(0.08f, 0.09f, 0.12f, 1f));
@@ -75,10 +74,10 @@ internal static class Program
         // Instances Layer 实例（圆周运动）
         _scene.Add(new OrbitSprite(_white.Handle,
             new Vector2D(vw * 0.5f, vh * 0.5f), 160f, 0f,
-            new Vector4(1f, 0.4f, 0.4f, 1f), "Instances"));
+            new Vector4(1f, 0.4f, 0.4f, 1f), SceneAggregate.LayerNameInstances));
         _scene.Add(new OrbitSprite(_white.Handle,
             new Vector2D(vw * 0.5f, vh * 0.5f), 100f, MathF.PI,
-            new Vector4(0.4f, 1f, 0.5f, 1f), "Instances"));
+            new Vector4(0.4f, 1f, 0.5f, 1f), SceneAggregate.LayerNameInstances));
 
         // UI Layer 实例（顶部标题 + 底部状态条）
         _scene.Add(new UIBar(new Vector2(vw * 0.5f, 40f), new Vector2(240, 24),
@@ -86,43 +85,17 @@ internal static class Program
         _scene.Add(new UIBar(new Vector2(vw * 0.5f, vh - 30f), new Vector2(vw - 40, 20),
             new Vector4(0.2f, 0.2f, 0.25f, 0.7f), _white.Handle));
 
+        // 输入控制器（空格/B 切层、ESC 退出）
+        _scene.Add(new LayerToggleController(_scene, _window));
+
         _scenePass = new SceneRenderPass("ScenePass", gl, _scene, _camera);
-
-        try
-        {
-            var input = _window.NativeWindow.CreateInput();
-            foreach (var keyboard in input.Keyboards)
-            {
-                keyboard.KeyDown += (_, key, _) =>
-                {
-                    switch (key)
-                    {
-                        case Key.Escape: _window.NativeWindow.Close(); break;
-                        case Key.Space:
-                            ToggleLayer(SceneAggregate.LayerNameInstances);
-                            break;
-                        case Key.B:
-                            ToggleLayer(SceneAggregate.LayerNameBackground);
-                            break;
-                    }
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Input] WARN: {ex.Message}");
-        }
     }
 
-    private static void ToggleLayer(string layerName)
+    private static void HandleStep(double dt)
     {
-        var cfg = _scene!.FindLayerConfig(layerName);
-        if (cfg is null) return;
-        _scene.SetLayerVisible(layerName, !cfg.Value.IsVisible);
-        Console.WriteLine($"[Layer] '{layerName}' visible={!cfg.Value.IsVisible}");
+        _scene!.PerformInput(_window!.Input.KeysPressed, _window.Input.KeysReleased);
+        _scene.PerformStep(dt);
     }
-
-    private static void HandleStep(double dt) => _scene!.PerformStep(dt);
 
     private static void HandleDraw()
     {
@@ -130,6 +103,45 @@ internal static class Program
             _window!.Graphics.Gl, _spriteShader!, _batch!,
             _window.Width, _window.Height);
         _scenePass!.Execute(ctx);
+    }
+
+    /// <summary>图层可见性切换控制器：输入事件进 GameInstance（GMS 键盘事件等价物）</summary>
+    private sealed class LayerToggleController : GameInstance
+    {
+        private readonly SceneAggregate _scene;
+        private readonly EngineWindow _window;
+
+        public LayerToggleController(SceneAggregate scene, EngineWindow window)
+            : base(nameof(LayerToggleController), Vector2D.Zero, LayerDepth.Instances)
+        {
+            _scene = scene;
+            _window = window;
+            LayerName = SceneAggregate.LayerNameInstances;
+        }
+
+        public override void OnKeyDown(InputKey key)
+        {
+            switch (key)
+            {
+                case InputKey.Escape:
+                    _window.NativeWindow.Close();
+                    break;
+                case InputKey.Space:
+                    ToggleLayer(SceneAggregate.LayerNameInstances);
+                    break;
+                case InputKey.B:
+                    ToggleLayer(SceneAggregate.LayerNameBackground);
+                    break;
+            }
+        }
+
+        private void ToggleLayer(string layerName)
+        {
+            var cfg = _scene.FindLayerConfig(layerName);
+            if (cfg is null) return;
+            _scene.SetLayerVisible(layerName, !cfg.Value.IsVisible);
+            Console.WriteLine($"[Layer] '{layerName}' visible={!cfg.Value.IsVisible}");
+        }
     }
 
     /// <summary>Background 层实例：静态装饰色块</summary>

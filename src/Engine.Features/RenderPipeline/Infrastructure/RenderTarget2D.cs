@@ -39,14 +39,16 @@ public sealed class RenderTarget2D : IDisposable
                 (uint)width, (uint)height, 0,
                 PixelFormat.Rgba, PixelType.UnsignedByte, null);
         }
+        uint linear = (uint)GLEnum.Linear;
+        uint clampToEdge = (uint)GLEnum.ClampToEdge;
         gl.TexParameterI(TextureTarget.Texture2D,
-            TextureParameterName.TextureMinFilter, (uint)GLEnum.Linear);
+            TextureParameterName.TextureMinFilter, in linear);
         gl.TexParameterI(TextureTarget.Texture2D,
-            TextureParameterName.TextureMagFilter, (uint)GLEnum.Linear);
+            TextureParameterName.TextureMagFilter, in linear);
         gl.TexParameterI(TextureTarget.Texture2D,
-            TextureParameterName.TextureWrapS, (uint)GLEnum.ClampToEdge);
+            TextureParameterName.TextureWrapS, in clampToEdge);
         gl.TexParameterI(TextureTarget.Texture2D,
-            TextureParameterName.TextureWrapT, (uint)GLEnum.ClampToEdge);
+            TextureParameterName.TextureWrapT, in clampToEdge);
 
         gl.FramebufferTexture2D(FramebufferTarget.Framebuffer,
             FramebufferAttachment.ColorAttachment0,
