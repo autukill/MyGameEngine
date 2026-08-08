@@ -18,6 +18,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - RenderPass DAG：场景渲染、Stencil 遮罩、后处理和 Viewport 合成。
 - 动态效果装配：实例领域事件、共享 owner 集合、`ScenePipelineBuilder` 与 `RenderTargetPool`。
 - 自动 GPU 像素回归：固定时间步、PNG 基线、容差比较以及 expected/actual/diff 诊断产物。
+- 可分发内容工具链：`gameengine-assets` .NET Tool 与内置编译器的 `buildTransitive` NuGet 包。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
 文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
@@ -40,6 +41,8 @@ src/
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
+├── Engine.Build.ContentPipeline/        # 可跨仓库引用的 NuGet buildTransitive 包
+├── Engine.Build.ContentPipeline.Tests/  # 本地 Feed、Tool 安装与外部消费项目集成验证
 ├── build/GameEngine.Content.targets     # Build/Run/Publish 增量资产集成
 ├── Engine.DddTests/                     # 聚合、生命周期、输入与状态调度验证
 └── MyGame.Runner/                       # Stencil + Bloom 综合 Demo
@@ -59,7 +62,7 @@ Engine.Core
             └─ StencilMasking
 ```
 
-解决方案当前共 28 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 30 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -96,6 +99,7 @@ dotnet run --project src/Engine.Features/TextureAssets.Tests/TextureAssets.Tests
 dotnet run --project src/Engine.Features/ContentAssets.Tests/ContentAssets.Tests.csproj
 dotnet run --project src/Engine.Features/TextureAtlas.Tests/TextureAtlas.Tests.csproj
 dotnet run --project src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj
+dotnet run --project src/Engine.Build.ContentPipeline.Tests/Engine.Build.ContentPipeline.Tests.csproj
 ```
 
 图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 的源包包含双帧 WebP 图集和两张独立 WebP 帧，Build 自动在 `obj` 生成单页 Atlas 并复制到 `AssetsCompiled`；这些项目需要本地图形窗口人工确认。
@@ -154,6 +158,8 @@ dotnet run --project src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.c
 
 编译器按包维护内容指纹和输出 SHA-256，只重建受影响包及上游；构建使用临时目录原子替换，失败保留旧产物。Runner 与 Sprites.VisualTests 已通过共享 MSBuild Target 自动接入 Build、Run 和 Publish。完整说明见 [离线 Texture Atlas 使用指南](docs/TEXTURE_ATLAS.md)和 [`GameEngine.Content.targets` 解读](docs/GAMEENGINE_CONTENT_TARGETS.md)。
 
+外部项目可以安装 `MyGameEngine.AssetCompiler` Tool，或通过 `MyGameEngine.ContentPipeline` PackageReference 自动接入同一套 targets。包不依赖仓库绝对路径，Debug/Release 缓存相互隔离，Publish 只携带运行时资产。完整说明见 [可分发内容工具链](docs/CONTENT_PIPELINE_PACKAGES.md)。
+
 ## 渲染流程
 
 ```text
@@ -167,8 +173,8 @@ Pass 通过输入/输出 RenderTarget 声明依赖，Pipeline 在每帧执行前
 
 ## 下一阶段
 
-1. 将 AssetCompiler 发布为可复用 dotnet tool/NuGet 构建包，并增加跨仓库缓存。
-2. 增加独立 Bloom 描述符与水平/垂直 ping-pong 后处理链，并建立专属 GPU 基线。
+1. 增加独立 Bloom 描述符与水平/垂直 ping-pong 后处理链，并建立专属 GPU 基线。
+2. 为内容工具包增加签名、远程 Feed 发布与跨仓库缓存。
 3. 为无显示器 CI 固化软件 OpenGL 执行环境。
 4. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。
 

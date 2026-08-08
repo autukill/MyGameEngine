@@ -8,7 +8,26 @@
 
 内容是否需要重建由 AssetCompiler 的包级 SHA-256 指纹判断，而不是由 MSBuild 的文件时间戳判断。
 
-## 最小接入方式
+## 推荐接入方式：NuGet 包
+
+外部游戏项目应引用构建包，不需要知道 AssetCompiler 的物理位置：
+
+```xml
+<PropertyGroup>
+  <GameEngineContentPackagesRoot>$(MSBuildProjectDirectory)\Assets</GameEngineContentPackagesRoot>
+  <GameEngineContentManifest>assets.json</GameEngineContentManifest>
+</PropertyGroup>
+
+<ItemGroup>
+  <PackageReference Include="MyGameEngine.ContentPipeline"
+                    Version="0.1.0-alpha.1"
+                    PrivateAssets="all" />
+</ItemGroup>
+```
+
+包通过 `buildTransitive` 导入本文件，并从包内 `tools/net10.0/any` 解析编译器。`PrivateAssets="all"` 保证构建工具不会成为游戏运行时的传递依赖。
+
+## 源码仓库接入方式
 
 项目文件需要声明源包根目录、保证编译器项目先构建，然后导入 Target：
 
@@ -36,9 +55,11 @@
 | --- | --- | --- |
 | `GameEngineContentPackagesRoot` | 无 | 源内容包根目录；也是启用 Target 的开关。 |
 | `GameEngineContentManifest` | `assets.json` | 相对 Packages Root 的根包清单路径。可以指向子目录，例如 `characters/boss/assets.json`。 |
+| `GameEngineContentBuildMode` | `incremental` | 编译模式：`incremental`、`rebuild` 或 `check`。非法值会在调用编译器前失败。 |
 | `GameEngineContentOutput` | `obj/<Configuration>/<TargetFramework>/CompiledAssets` | 编译缓存与标准运行时包的生成目录。 |
 | `GameEngineContentOutputSubdirectory` | `AssetsCompiled` | `bin` 和 Publish 目录中的运行时资产子目录。 |
-| `GameEngineAssetCompilerDll` | 仓库内 AssetCompiler 的 `bin/<Configuration>/net10.0` 输出 | 要执行的编译器 DLL。工具独立打包后可以覆盖该属性。 |
+| `GameEngineAssetCompilerDll` | NuGet 包内编译器；源码模式为仓库 `bin` 输出 | 要执行的编译器 DLL，可显式覆盖。 |
+| `GameEngineDotNetHost` | `$(DotNetHostPath)` 或 `dotnet` | 启动框架依赖编译器的 dotnet host。 |
 
 默认中间输出显式包含 `Configuration` 和 `TargetFramework`，因此 Debug/Release 或不同目标框架不会共享错误的资产缓存。
 
@@ -73,7 +94,7 @@ BeforeTargets="CoreCompile"
 实际执行命令等价于：
 
 ```powershell
-dotnet <GameEngineAssetCompilerDll> --incremental `
+dotnet <GameEngineAssetCompilerDll> --<GameEngineContentBuildMode> `
   <GameEngineContentPackagesRoot> `
   <GameEngineContentManifest> `
   <GameEngineContentOutput>
@@ -144,7 +165,7 @@ publish/
 
 ### `GameEngine AssetCompiler was not built`
 
-确认项目包含指向 AssetCompiler 的 `ProjectReference`，并且其 `ReferenceOutputAssembly` 为 `false`。如果使用独立工具包，则显式设置 `GameEngineAssetCompilerDll`。
+源码模式下确认项目包含指向 AssetCompiler 的 `ProjectReference`，并且其 `ReferenceOutputAssembly` 为 `false`。NuGet 模式下确认包内存在 `tools/net10.0/any/GameEngineAssetCompiler.dll`，并检查是否错误覆盖了 `GameEngineAssetCompilerDll`。
 
 ### 修改资产后使用 `dotnet run --no-build` 没有变化
 
@@ -167,7 +188,8 @@ dotnet <GameEngineAssetCompilerDll> --check `
 
 ## 当前边界
 
-- Target 当前依赖仓库内、目标框架为 `net10.0` 的 AssetCompiler 输出。
-- 还没有封装为可跨仓库引用的 NuGet build package 或 .NET Tool。
+- Target 同时支持仓库源码输出和 `MyGameEngine.ContentPipeline` 包内编译器。
+- `MyGameEngine.AssetCompiler` 提供独立 `gameengine-assets` .NET Tool 命令。
+- 两个包当前均要求 .NET 10，尚未发布到远程 Feed 或签名。
 - Target 负责项目级接入，不负责跨项目共享缓存或远程构建缓存。
 - 源资产和 manifest 应提交版本控制；`obj/CompiledAssets`、`bin/AssetsCompiled` 和 Publish 产物不应提交。

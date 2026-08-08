@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <PackageId>MyGameEngine.ContentPipeline</PackageId>
+    <Version>$(GameEnginePackageVersion)</Version>
+    <Authors>MyGameEngine</Authors>
+    <Description>Hermetic MSBuild integration for the MyGameEngine content compiler.</Description>
+    <PackageTags>game-engine;msbuild;content-pipeline;texture-atlas;sprite</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectAssetCompilerPayload</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Engine.Tools.AssetCompiler\Engine.Tools.AssetCompiler.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+    <None Include="GameEngine.Content.props"
+          Pack="true"
+          PackagePath="buildTransitive\MyGameEngine.ContentPipeline.props" />
+    <None Include="..\..\build\GameEngine.Content.targets"
+          Pack="true"
+          PackagePath="buildTransitive\MyGameEngine.ContentPipeline.targets" />
+    <None Include="..\..\docs\CONTENT_PIPELINE_PACKAGES.md"
+          Pack="true"
+          PackagePath="README.md" />
+  </ItemGroup>
+
+  <Target Name="CollectAssetCompilerPayload">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="..\Engine.Tools.AssetCompiler\bin\$(Configuration)\net10.0\**\*"
+                              Exclude="..\Engine.Tools.AssetCompiler\bin\$(Configuration)\net10.0\**\*.pdb;..\Engine.Tools.AssetCompiler\bin\$(Configuration)\net10.0\GameEngineAssetCompiler.exe;..\Engine.Tools.AssetCompiler\bin\$(Configuration)\net10.0\publish\**\*">
+        <PackagePath>tools\net10.0\any\%(RecursiveDir)%(Filename)%(Extension)</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
+</Project>

@@ -1,0 +1,5 @@
+<Project>
+  <PropertyGroup>
+    <GameEngineContentPackageRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</GameEngineContentPackageRoot>
+  </PropertyGroup>
+</Project>

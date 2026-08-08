@@ -46,6 +46,10 @@
     <Project Path="src/Engine.Testing.Visual/Engine.Testing.Visual.csproj" />
     <Project Path="src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj" />
   </Folder>
+  <Folder Name="/Engine.Build/">
+    <Project Path="src/Engine.Build.ContentPipeline/Engine.Build.ContentPipeline.csproj" />
+    <Project Path="src/Engine.Build.ContentPipeline.Tests/Engine.Build.ContentPipeline.Tests.csproj" />
+  </Folder>
   <Folder Name="/Engine.Tools/AssetCompiler/">
     <Project Path="src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj" />
     <Project Path="src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.csproj" />

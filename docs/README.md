@@ -9,6 +9,7 @@
 - [GPU 像素回归测试](VISUAL_REGRESSION.md)：固定时间步截图、PNG 基线、容差、差异产物和场景扩展方式。
 - [Content Assets 使用指南](CONTENT_ASSETS.md)：声明式 Texture/Sprite 包、依赖、多图片动画和资源生命周期。
 - [离线 Texture Atlas 使用指南](TEXTURE_ATLAS.md)：Atlas 构建配置、AssetCompiler、多页、大帧旁路与编译产物。
+- [可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)：AssetCompiler .NET Tool、ContentPipeline NuGet 包、本地 Feed 和外部项目接入。
 - [C# 2D 游戏引擎从零构建](C%23%202D%20游戏引擎从零构建.md)：长期架构与路线推演原稿；其中示例不保证都已实现。
 
 ## 更新约定

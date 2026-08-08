@@ -6,9 +6,24 @@
     <Nullable>enable</Nullable>
     <RootNamespace>GameEngine.Tools.AssetCompiler</RootNamespace>
     <AssemblyName>GameEngineAssetCompiler</AssemblyName>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>gameengine-assets</ToolCommandName>
+    <PackageId>MyGameEngine.AssetCompiler</PackageId>
+    <Version>$(GameEnginePackageVersion)</Version>
+    <Authors>MyGameEngine</Authors>
+    <Description>Offline compiler for MyGameEngine texture and sprite content packages.</Description>
+    <PackageTags>game-engine;content-pipeline;texture-atlas;sprite</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SkiaSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\docs\CONTENT_PIPELINE_PACKAGES.md"
+          Pack="true"
+          PackagePath="README.md" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
@@ -16,4 +31,11 @@
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\TextureAtlas\TextureAtlas.csproj" />
   </ItemGroup>
+
+  <Target Name="RemovePublishedToolSymbols" AfterTargets="Publish">
+    <ItemGroup>
+      <_PublishedToolSymbol Include="$(PublishDir)**\*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_PublishedToolSymbol)" />
+  </Target>
 </Project>
