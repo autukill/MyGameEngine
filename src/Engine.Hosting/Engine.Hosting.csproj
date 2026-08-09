@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GameEngine.Hosting</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.OpenGL" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\Engine.Features\Bloom\Bloom.csproj" />
+    <ProjectReference Include="..\Engine.Features\Camera\Camera.csproj" />
+    <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" />
+    <ProjectReference Include="..\Engine.Features\Presentation\Presentation.csproj" />
+    <ProjectReference Include="..\Engine.Features\RenderPipeline\RenderPipeline.csproj" />
+    <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" />
+    <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" />
+    <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
+    <ProjectReference Include="..\Engine.Features\ToneMapping\ToneMapping.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="HostingTests" />
+  </ItemGroup>
+</Project>

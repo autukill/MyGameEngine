@@ -2,6 +2,8 @@
 
 动态效果切片把“实例需要什么效果”和“如何创建 OpenGL Pass/RenderTarget”分开。GameInstance 只发出领域事件，`ScenePipelineBuilder` 在 Step 与 Draw 之间把持久 owner 状态差量映射为 RenderPass 图。
 
+普通游戏推荐使用 [Engine Hosting](ENGINE_HOSTING.md) 的默认 2D 预设完成下述装配；本指南保留手工组合方式，供自定义渲染器和高级扩展使用。
+
 ## 数据流
 
 ```text

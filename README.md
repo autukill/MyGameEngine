@@ -22,6 +22,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Stencil 几何：专用 Shader 的真实 Circle 与 Sprite Alpha 遮罩，支持帧、原点、旋转和正负缩放。
 - 自动 GPU 像素回归：固定时间步、PNG 基线、容差比较以及 expected/actual/diff 诊断产物。
 - 可分发内容工具链：`gameengine-assets` .NET Tool 与内置编译器的 `buildTransitive` NuGet 包。
+- Engine Hosting：声明式启动、默认 2D 渲染预设、强类型 Scene Context、帧循环与资源清理。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
 文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
@@ -31,6 +32,8 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 ```text
 src/
 ├── Engine.Core/                         # 共享 Domain 与底层窗口/输入/图形基础设施
+├── Engine.Hosting/                      # GameApplication、默认 2D Runtime 与开发者入口
+├── Engine.Hosting.Tests/                # 配置、默认 owner 和资源所有权验证
 ├── Engine.Features/
 │   ├── Camera/                          # Camera2D
 │   ├── Bloom/                           # 独立阈值提取与水平/垂直 ping-pong 效果链
@@ -69,9 +72,11 @@ Engine.Core
             ├─ SceneSystem
             ├─ StencilMasking
             └─ ToneMapping
+
+Engine.Hosting -> Core + Camera/Content/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 36 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 38 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -99,6 +104,7 @@ Runner 内容：4 个彩色方块绕场景中心运动，鼠标控制圆形 Sten
 
 ```bash
 dotnet run --project src/Engine.DddTests/Engine.DddTests.csproj
+dotnet run --project src/Engine.Hosting.Tests/Engine.Hosting.Tests.csproj
 dotnet run --project src/Engine.Features/Bloom.Tests/Bloom.Tests.csproj
 dotnet run --project src/Engine.Features/Camera.Tests/Camera.Tests.csproj
 dotnet run --project src/Engine.Features/Presentation.Tests/Presentation.Tests.csproj
@@ -112,6 +118,9 @@ dotnet run --project src/Engine.Features/TextureAtlas.Tests/TextureAtlas.Tests.c
 dotnet run --project src/Engine.Features/ToneMapping.Tests/ToneMapping.Tests.csproj
 dotnet run --project src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj
 dotnet run --project src/Engine.Build.ContentPipeline.Tests/Engine.Build.ContentPipeline.Tests.csproj
+
+# 隐藏窗口运行三帧，验证 Hosting + Runner 的真实 GL 启动与安全关闭
+dotnet run --project src/MyGame.Runner/MyGame.Runner.csproj -- --smoke
 ```
 
 图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 的源包包含双帧 WebP 图集和两张独立 WebP 帧，Build 自动在 `obj` 生成单页 Atlas 并复制到 `AssetsCompiled`；这些项目需要本地图形窗口人工确认。
@@ -123,6 +132,26 @@ dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTes
 ```
 
 基线更新、单场景过滤、退出码和差异产物说明见 [GPU 像素回归测试](docs/VISUAL_REGRESSION.md)。
+
+## Engine Hosting 快速开始
+
+```csharp
+using var game = GameApplication
+    .Create(EngineWindowOptions.Default)
+    .UseDefault2DRenderer(renderer => renderer
+        .UseContent("AssetsCompiled", "assets.json")
+        .UseHdr(ToneMappingSettings.Default, BloomSettings.Default)
+        .EnableStencilMasking())
+    .ConfigureScene("MainScene", context =>
+    {
+        context.Scene.Add(new Player(context.GetSprite("player.idle")));
+    })
+    .Build();
+
+game.Run();
+```
+
+Host 统一接管 Load、Step、Draw、resize、内容包和 GPU 资源释放；高级用户仍可通过 Context 添加自定义 Factory 与 RenderPass。完整说明见 [Engine Hosting 与默认 2D 启动套件](docs/ENGINE_HOSTING.md)。
 
 ## Sprite 便利 API
 
@@ -187,9 +216,9 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 按已记录边界实现 Circle/Ring/RoundedRectangle/Arc 的 Cooldown LDR UI 批处理切片。
-2. 为无显示器 CI 固化软件 OpenGL 执行环境。
-3. 为内容工具包增加签名、远程 Feed 发布与跨仓库缓存。
-4. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。
+1. 从资产清单生成强类型 Sprite、Texture 和 Package 标识。
+2. 提供默认接入 Hosting 与内容管线的 `dotnet new` 项目模板。
+3. 为无显示器 CI 固化软件 OpenGL 执行环境。
+4. 增加 Render Graph、Effect owner 和 RenderTarget 租约诊断快照。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

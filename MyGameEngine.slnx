@@ -1,5 +1,9 @@
 <Solution>
   <Folder Name="/Engine.Features/" />
+  <Folder Name="/Engine.Hosting/">
+    <Project Path="src/Engine.Hosting.Tests/Engine.Hosting.Tests.csproj" />
+    <Project Path="src/Engine.Hosting/Engine.Hosting.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/Camera/">
     <Project Path="src/Engine.Features/Camera.Tests/Camera.Tests.csproj" />
     <Project Path="src/Engine.Features/Camera.VisualTests/Camera.VisualTests.csproj" />
