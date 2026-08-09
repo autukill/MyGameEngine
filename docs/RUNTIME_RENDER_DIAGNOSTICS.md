@@ -24,7 +24,7 @@ if (snapshot.FrameStatistics is { } frame)
 
 高级组合根也可分别调用 `RenderPipeline.CaptureDiagnostics()`、`ScenePipelineBuilder.CaptureDiagnostics()` 与 `RenderTargetPool.CaptureDiagnostics()`。
 
-`Viewports` 保存当前单 Camera 呈现槽位的标准化布局、实际像素矩形、Fit 与 Layer；也可单独调用 `context.CaptureViewportDiagnostics()`。Contain 的像素矩形只包含真实画面，不包含 letterbox 黑边。
+`Viewports` 保存 Render View、标准化布局、实际呈现像素矩形、内部 RenderWidth/RenderHeight、Fit 与 Layer；也可单独调用 `context.CaptureViewportDiagnostics()`。Contain 的像素矩形只包含真实画面，不包含 letterbox 黑边。RenderScale 只改变内部渲染尺寸，不改变呈现槽位。
 
 ## Pipeline 快照
 

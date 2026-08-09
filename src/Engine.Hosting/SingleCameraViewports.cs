@@ -96,7 +96,7 @@ public sealed class SingleCameraViewportLayoutBuilder
                 0)
         });
 
-    private static void ValidateViewport(ViewportRect viewport)
+    internal static void ValidateViewport(ViewportRect viewport)
     {
         if (!float.IsFinite(viewport.X) || !float.IsFinite(viewport.Y) ||
             !float.IsFinite(viewport.Width) || !float.IsFinite(viewport.Height) ||
@@ -113,12 +113,14 @@ public sealed class SingleCameraViewportLayoutBuilder
 
 /// <summary>Resolved pointer coordinates for the topmost matching presentation slot.</summary>
 public readonly record struct ViewportHit(
+    RenderViewRef View,
     ViewportSlotRef Slot,
     Vector2D ScreenPosition,
     Vector2D ViewPosition,
     Vector2D WorldPosition);
 
 public readonly record struct ViewportSlotDiagnostics(
+    RenderViewRef View,
     ViewportSlotRef Slot,
     ViewportRect NormalizedRect,
     ViewportFitMode Fit,
@@ -126,4 +128,6 @@ public readonly record struct ViewportSlotDiagnostics(
     int X,
     int Y,
     int Width,
-    int Height);
+    int Height,
+    int RenderWidth,
+    int RenderHeight);

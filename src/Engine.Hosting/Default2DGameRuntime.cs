@@ -47,6 +47,7 @@ internal sealed class Default2DGameRuntime : IDisposable
     private ContentHotReloadCoordinator? _contentHotReload;
     private ShaderHotReloadCoordinator? _shaderHotReload;
     private SceneNavigator _scenes = null!;
+    private readonly List<RenderView> _renderViews = [];
     private bool _disposed;
 
     public Default2DGameContext Context { get; private set; } = null!;
@@ -85,7 +86,8 @@ internal sealed class Default2DGameRuntime : IDisposable
     {
         _scene!.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
         _scene.PerformStep(deltaTime);
-        _camera.Update(deltaTime);
+        for (int i = 0; i < _renderViews.Count; i++)
+            _renderViews[i].Camera.Update(deltaTime);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
         ApplyPendingSceneSwitch();
         _contentHotReload?.Tick();
@@ -107,8 +109,17 @@ internal sealed class Default2DGameRuntime : IDisposable
         if (width <= 0 || height <= 0) return;
         _scene!.ViewportWidth = width;
         _scene.ViewportHeight = height;
-        _camera.ResizeViewport(width, height);
-        _sceneTarget.Resize(width, height);
+        for (int i = 0; i < _renderViews.Count; i++)
+        {
+            RenderView view = _renderViews[i];
+            var (renderWidth, renderHeight) = RenderViewLayoutBuilder.ResolveRenderSize(
+                view.Viewport,
+                view.RenderScale,
+                width,
+                height);
+            view.Camera.ResizeViewport(renderWidth, renderHeight);
+            view.Target.Resize(renderWidth, renderHeight);
+        }
         _guiTarget?.Resize(width, height);
         _pipeline.Resize(width, height);
         _builder.Resize(width, height);
@@ -216,14 +227,37 @@ internal sealed class Default2DGameRuntime : IDisposable
         _scene.SetGameplayQueryStatisticsEnabled(renderer.PerformanceTelemetry is not null);
         _scenes = new SceneNavigator(_plan.Scenes, _plan.InitialSceneActivation);
         _scene.SetSceneSwitchRequester(_scenes);
-        _camera = new Camera2D(new Vector2(width, height));
-        _sceneTarget = _resources.Add(new RenderTarget2D(gl, new RenderTargetDescriptor(
-            width,
-            height,
-            renderer.HdrEnabled
-                ? RenderTargetColorFormat.Rgba16Float
-                : RenderTargetColorFormat.Rgba8,
-            RenderTargetDepthStencilFormat.Depth24Stencil8)));
+        IReadOnlyList<RenderViewDefinition> viewDefinitions = renderer.RenderViews ??
+            Array.AsReadOnly(new[]
+            {
+                new RenderViewDefinition(
+                    RenderViewRef.Main,
+                    ViewportRect.FullScreen,
+                    ViewportFitMode.Stretch,
+                    1f,
+                    0,
+                    0)
+            });
+        for (int i = 0; i < viewDefinitions.Count; i++)
+        {
+            RenderViewDefinition definition = viewDefinitions[i];
+            var (renderWidth, renderHeight) = RenderViewLayoutBuilder.ResolveRenderSize(
+                definition.Viewport,
+                definition.RenderScale,
+                width,
+                height);
+            var camera = new Camera2D(new Vector2(renderWidth, renderHeight));
+            var target = _resources.Add(new RenderTarget2D(gl, new RenderTargetDescriptor(
+                renderWidth,
+                renderHeight,
+                definition.Ref == RenderViewRef.Main && renderer.HdrEnabled
+                    ? RenderTargetColorFormat.Rgba16Float
+                    : RenderTargetColorFormat.Rgba8,
+                RenderTargetDepthStencilFormat.Depth24Stencil8)));
+            _renderViews.Add(new RenderView(definition, camera, target));
+        }
+        _camera = _renderViews[0].Camera;
+        _sceneTarget = _renderViews[0].Target;
         if (renderer.SceneGuiEnabled)
         {
             _guiTarget = _resources.Add(new RenderTarget2D(gl, new RenderTargetDescriptor(
@@ -234,12 +268,16 @@ internal sealed class Default2DGameRuntime : IDisposable
         }
         _targetPool = _resources.Add(new RenderTargetPool(gl));
         _pipeline = _resources.Add(new RenderPipeline(gl, width, height));
-        _pipeline.AddPass(new SceneRenderPass(
-            "Hosting.Scene",
-            gl,
-            _scene,
-            _camera,
-            _sceneTarget));
+        for (int i = 0; i < _renderViews.Count; i++)
+        {
+            RenderView view = _renderViews[i];
+            _pipeline.AddPass(new SceneRenderPass(
+                $"Hosting.Scene:{view.Ref}",
+                gl,
+                _scene,
+                view.Camera,
+                view.Target));
+        }
         if (_guiTarget is not null)
         {
             _pipeline.AddPass(new SceneGuiRenderPass(
@@ -254,12 +292,16 @@ internal sealed class Default2DGameRuntime : IDisposable
             _targetPool,
             width,
             height));
-        _builder.RegisterRootSurface(
-            RenderSurfaceKey.SceneColor,
-            _sceneTarget,
-            renderer.HdrEnabled
-                ? RenderSurfaceEncoding.Linear
-                : RenderSurfaceEncoding.Display);
+        for (int i = 0; i < _renderViews.Count; i++)
+        {
+            RenderView view = _renderViews[i];
+            _builder.RegisterRootSurface(
+                view.SceneColor,
+                view.Target,
+                view.Ref == RenderViewRef.Main && renderer.HdrEnabled
+                    ? RenderSurfaceEncoding.Linear
+                    : RenderSurfaceEncoding.Display);
+        }
         if (_guiTarget is not null)
             _builder.RegisterRootSurface(RenderSurfaceKey.SceneGui, _guiTarget);
         if (renderer.StencilMaskingEnabled)
@@ -298,6 +340,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _sceneTarget,
             _guiTarget,
             renderer.ResolvedViewports,
+            _renderViews,
             _scenes,
             _plan.Instances,
             _close);
@@ -348,6 +391,21 @@ internal sealed class Default2DGameRuntime : IDisposable
         _scenes.GetDefinition(activation.Scene).Configure(Context, activation);
         var renderer = _plan.Renderer;
         SceneAggregate scene = _scene!;
+        if (renderer.MultipleRenderViewsEnabled)
+        {
+            for (int i = 0; i < Context.RenderViews.Count; i++)
+            {
+                RenderView view = Context.RenderViews[i];
+                Context.PresentViewSurface(
+                    view.Ref,
+                    view.SceneColor,
+                    layer: 0,
+                    blend: PresentationBlendMode.Opaque);
+            }
+            if (renderer.SceneGuiEnabled)
+                scene.Add(new DefaultGuiPresentationController(scene.RaiseEvent));
+            return;
+        }
         if (renderer.HdrEnabled)
             scene.Add(new DefaultWorldEffectsController(scene.RaiseEvent, renderer));
         RenderSurfaceKey worldSource = renderer.HdrEnabled
@@ -392,4 +450,5 @@ internal sealed class Default2DGameRuntime : IDisposable
             }
         }
     }
+
 }

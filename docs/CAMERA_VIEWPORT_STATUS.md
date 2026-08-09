@@ -57,19 +57,37 @@ Scene + Stencil + Bloom + Tone Mapping  （一次）
 
 不会增加 Scene Draw Call、根 RenderTarget、Bloom 租约或效果 Pass。Runner 可用 `--mirrored-viewports` 在真实 HDR 链上验证双槽位；隐藏 smoke 当前仍为 6 个活跃 Pass。
 
-## 后续阶段
+## 当前能力：逻辑 RenderView 与真正多 Camera
 
-### 阶段 2：逻辑 RenderView 与真正多 Camera
+第二阶段已经完成。需要不同视角时改用 `UseRenderViews`：
 
-引入稳定 `RenderViewRef` 和声明式 View 注册。每个 View 明确 Camera、输出 Surface、RenderScale 与目标 Viewport，由 Hosting 为其拥有独立 Scene RenderTarget/Pass。Presentation 继续作为唯一屏幕终端，并复用本阶段的槽位、Fit 和坐标映射。
+```csharp
+.UseDefault2DRenderer(renderer => renderer
+    .UseRenderViews(views => views
+        .ConfigureMain(ViewportRect.LeftHalf)
+        .Add("player.two", ViewportRect.RightHalf, renderScale: 0.75f)))
+```
+
+`main` 保持为 `context.Camera`；额外 View 通过 `context.GetRenderView(new RenderViewRef("player.two"))` 取得。每个 `RenderView` 拥有独立 Camera、SceneColor 根 Surface、SceneRenderPass、RenderScale 和 Viewport，但不公开其 RenderTarget。resize 会按槽位像素尺寸与 RenderScale 同步 Camera 和目标。
+
+```csharp
+RenderView second = context.GetRenderView(new RenderViewRef("player.two"));
+second.Camera.Position = new Vector2(800, 0);
+second.Camera.Zoom = 0.75f;
+```
+
+`ViewportHit.View` 会标识命中的 Render View，坐标通过该 View 自己的 Camera 与源分辨率反算。诊断同时报告呈现像素矩形和 `RenderWidth/RenderHeight`。
 
 第一版真正多 Camera 先限定：
 
 - 每个 View 重绘同一 Scene，但使用独立 Camera。
-- 每个 View 独立 SceneColor；默认不复制 Bloom/Tone Mapping 等后处理。
+- 每个 View 独立 RGBA8/Display SceneColor；不复制 Bloom/Tone Mapping/Stencil。
 - resize 按 Viewport 与 RenderScale 重建目标。
 - 诊断明确列出每个 View 的 Pass、RT 显存和 Draw Call 成本。
-- 用双人分屏和小地图验证，不先引入通用可见性剔除。
+- `UseRenderViews` 与 `UseSingleCameraViewports` 互斥，避免“重绘”和“镜像呈现”语义混淆。
+- Runner `--split-cameras` 验证两台独立 Camera；当前为 4 Pass、3 个根目标、0 个动态 RT 租约。
+
+## 后续阶段
 
 ### 阶段 3：每 View 渲染策略
 
@@ -81,9 +99,7 @@ Scene + Stencil + Bloom + Tone Mapping  （一次）
 
 ## 当前明确不支持
 
-- Hosting 中的第二台 Camera、双人分屏和真正小地图。
-- 每槽位独立后处理或 Layer 过滤。
+- 多 Camera 模式下的 HDR、Bloom、Stencil 和每 View 后处理；配置时会明确拒绝，而不是静默退化。
+- 每 View Layer 过滤；当前所有 View 都重绘同一组活跃 Scene 实例。
 - 多窗口与多个默认 framebuffer 终端。
 - Viewport 动画、鼠标捕获策略和编辑器 Dock。
-
-高级用户仍可手工创建多个 `Camera2D + SceneRenderPass + RenderTarget2D`，但需要自行管理 resize、效果依赖和释放；这不是当前推荐的开发者路径。

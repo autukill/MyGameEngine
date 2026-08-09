@@ -65,11 +65,26 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 
 自定义的世界空间 LDR Surface（例如 Stencil 输出）应在 Scene 配置期使用 `context.PresentWorldSurface(surface, layer, blend)`；Host 会为每个槽位建立对应 owner。直接调用单个 GameInstance 的 `RequestPresentSurface` 仍只声明一个显式 Viewport，适合 GUI、调试覆盖层或完全自定义布局。
 
+## 多 Camera Render View
+
+真正需要不同视角时使用独立 Render View：
+
+```csharp
+.UseDefault2DRenderer(renderer => renderer
+    .UseRenderViews(views => views
+        .ConfigureMain(ViewportRect.LeftHalf)
+        .Add("observer", ViewportRect.RightHalf, renderScale: 0.75f)))
+```
+
+每个 View 重绘 Scene 并拥有独立 Camera 与 SceneColor。`context.Camera` 仍是 `RenderViewRef.Main`；其他 Camera 通过 `context.GetRenderView(...)` 获取。`PresentViewSurface` 只把自定义 Surface 送入指定 View 的槽位。
+
+当前多 Render View 模式固定为 LDR，并明确拒绝 HDR、Bloom 和 Stencil；下一切片会增加每 View 效果策略。`UseRenderViews` 与 `UseSingleCameraViewports` 互斥，前者表示重绘，后者表示复用同一次渲染。
+
 ## Default2DGameContext
 
 Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后执行。Context 提供：
 
-- `Scene`、`Camera` 和当前 `Window`。
+- `Scene`、主 `Camera`、`RenderViews/GetRenderView` 和当前 `Window`。
 - `Viewports`、`TryScreenToView/TryScreenToWorld` 与 `CaptureViewportDiagnostics()`，用于布局感知的输入和诊断。
 - `Textures`、`Sprites` 与可选 `Content` 包租约。
 - `GetTexture/GetSprite` 便利方法；未配置 Content 时给出明确异常。

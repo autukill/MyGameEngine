@@ -21,6 +21,9 @@ internal static class Program {
         bool contentHotReload = args.Contains( "--content-hot-reload", StringComparer.Ordinal );
         bool shaderHotReload = args.Contains( "--shader-hot-reload", StringComparer.Ordinal );
         bool mirroredViewports = args.Contains( "--mirrored-viewports", StringComparer.Ordinal );
+        bool splitCameras = args.Contains( "--split-cameras", StringComparer.Ordinal );
+        if ( mirroredViewports && splitCameras )
+            throw new ArgumentException( "Choose either --mirrored-viewports or --split-cameras." );
         string? diagnosticsJson = GetOptionValue( args, "--diagnostics-json" );
         using var telemetrySink = consoleDiagnostics || diagnosticsJson is not null ||
                                   contentHotReload || shaderHotReload
@@ -30,10 +33,13 @@ internal static class Program {
             : null;
         Console.WriteLine( "=== Engine Hosting Demo ===" );
         Console.WriteLine( "  4 个 OrbitingSprite 做圆周运动" );
-        Console.WriteLine( "  鼠标位置 = Spotlight 中心 (Stencil ShowInside)" );
-        Console.WriteLine( "  HDR Scene → Bloom → ACES Tone Mapping 由 Hosting 默认预设装配" );
+        if ( !splitCameras ) {
+            Console.WriteLine( "  鼠标位置 = Spotlight 中心 (Stencil ShowInside)" );
+            Console.WriteLine( "  HDR Scene → Bloom → ACES Tone Mapping 由 Hosting 默认预设装配" );
+        }
         Console.WriteLine( "  ESC: 退出" );
         if ( mirroredViewports ) Console.WriteLine( "  Single Camera → two Cover Viewports" );
+        if ( splitCameras ) Console.WriteLine( "  Two Cameras → independent left/right Scene Views" );
 
         var windowOptions = smoke
             ? EngineWindowOptions.Default
@@ -52,8 +58,9 @@ internal static class Program {
                 consoleDiagnostics || diagnosticsJson is not null,
                 contentHotReload,
                 shaderHotReload,
-                mirroredViewports ) )
-            .ConfigureScene( "MainScene", context => ConfigureScene( context, smoke ) )
+                mirroredViewports,
+                splitCameras ) )
+            .ConfigureScene( "MainScene", context => ConfigureScene( context, smoke, splitCameras ) )
             .Build();
 
         game.Run();
@@ -65,11 +72,18 @@ internal static class Program {
         bool performanceTelemetry,
         bool contentHotReload,
         bool shaderHotReload,
-        bool mirroredViewports ) {
+        bool mirroredViewports,
+        bool splitCameras ) {
         renderer
             .UseContent( GameAssets.Packages.Root )
-            .UseShaderAssets( GameShaders.ManifestPath )
-            .UseHdr(
+            .UseShaderAssets( GameShaders.ManifestPath );
+        if ( splitCameras ) {
+            renderer.UseRenderViews( views => views
+                .ConfigureMain( ViewportRect.LeftHalf )
+                .Add( "observer", ViewportRect.RightHalf, renderScale: 0.75f ) );
+        }
+        else {
+            renderer.UseHdr(
                 ToneMappingSettings.Default,
                 new BloomSettings(
                     0.3f,
@@ -77,7 +91,8 @@ internal static class Program {
                     1f,
                     2,
                     BloomResolution.Half ) )
-            .EnableStencilMasking();
+                .EnableStencilMasking();
+        }
         if ( mirroredViewports ) {
             renderer.UseSingleCameraViewports( views => views
                 .Add( "left", ViewportRect.LeftHalf, ViewportFitMode.Cover )
@@ -108,7 +123,10 @@ internal static class Program {
         }
     }
 
-    private static void ConfigureScene( Default2DGameContext context, bool smoke ) {
+    private static void ConfigureScene(
+        Default2DGameContext context,
+        bool smoke,
+        bool splitCameras ) {
         var scene = context.Scene;
         scene.Background = BackgroundConfig.FromColor(
             new Vector4( 0.08f, 0.10f, 0.13f, 1f ) );
@@ -120,6 +138,13 @@ internal static class Program {
         var center = new Vector2D(
             context.Window.Width * 0.5f,
             context.Window.Height * 0.5f );
+        if ( splitCameras ) {
+            ConfigureCameraAround( context.GetRenderView( RenderViewRef.Main ), center, 1f );
+            ConfigureCameraAround(
+                context.GetRenderView( new RenderViewRef( "observer" ) ),
+                center,
+                0.65f );
+        }
         var colors = new[] {
             new Vector4( 1.0f, 0.3f, 0.3f, 1.0f ), new Vector4( 0.3f, 1.0f, 0.3f, 1.0f ), new Vector4( 0.3f, 0.5f, 1.0f, 1.0f ),
             new Vector4( 1.0f, 1.0f, 0.3f, 1.0f )
@@ -134,19 +159,40 @@ internal static class Program {
                 orbitMaterial ) );
         }
 
-        var spotlightGroup = new StencilMaskGroupRef( "spotlight" );
-        scene.Add( new SpotlightController(
-            spotlightGroup,
-            scene.RaiseEvent,
-            context,
-            center,
-            120f,
-            context.Close ) );
-        context.PresentWorldSurface(
-            spotlightGroup.Output,
-            layer: 100,
-            blend: GameEngine.Features.Presentation.Domain.PresentationBlendMode.AlphaBlend );
+        if ( !splitCameras ) {
+            var spotlightGroup = new StencilMaskGroupRef( "spotlight" );
+            scene.Add( new SpotlightController(
+                spotlightGroup,
+                scene.RaiseEvent,
+                context,
+                center,
+                120f,
+                context.Close ) );
+            context.PresentWorldSurface(
+                spotlightGroup.Output,
+                layer: 100,
+                blend: GameEngine.Features.Presentation.Domain.PresentationBlendMode.AlphaBlend );
+        }
+        else {
+            scene.Add( new EscapeCloseController( context.Close ) );
+        }
         if ( smoke ) scene.Add( new SmokeExitController( context, context.Close ) );
+    }
+
+    private static void ConfigureCameraAround(
+        RenderView view,
+        Vector2D center,
+        float zoom ) {
+        view.Camera.Zoom = zoom;
+        view.Camera.Position = new Vector2(
+            (float)center.X - (float)view.RenderSize.X / (2f * zoom),
+            (float)center.Y - (float)view.RenderSize.Y / (2f * zoom) );
+    }
+
+    private sealed class EscapeCloseController( Action close ) : GameInstance {
+        public override void OnKeyDown( GameEngine.Core.Domain.Input.InputKey key ) {
+            if ( key == GameEngine.Core.Domain.Input.InputKey.Escape ) close();
+        }
     }
 
     private sealed class SmokeExitController(
@@ -157,12 +203,31 @@ internal static class Program {
         public override void OnStep( double deltaTime ) {
             if ( _steps == 1 ) {
                 var diagnostics = context.CaptureRenderDiagnostics();
+                if ( context.RenderViews.Count > 1 ) {
+                    var leftPoint = new Vector2D(
+                        context.Window.Width * 0.25f,
+                        context.Window.Height * 0.5f );
+                    var rightPoint = new Vector2D(
+                        context.Window.Width * 0.75f,
+                        context.Window.Height * 0.5f );
+                    if ( !context.TryScreenToView( leftPoint, out ViewportHit left ) ||
+                         left.View != RenderViewRef.Main ||
+                         !context.TryScreenToView( rightPoint, out ViewportHit right ) ||
+                         right.View != new RenderViewRef( "observer" ) ||
+                         diagnostics.Viewports[1].RenderWidth >= diagnostics.Viewports[0].RenderWidth ) {
+                        throw new InvalidOperationException(
+                            "Multi-Camera Viewport mapping or RenderScale diagnostics are invalid." );
+                    }
+                }
                 if ( diagnostics.Pipeline.DependencyError is not null ||
                      diagnostics.Pipeline.Passes.Count == 0 ||
                      diagnostics.Effects.Effects.Count == 0 ||
                      diagnostics.Effects.Surfaces.Count == 0 ||
-                     diagnostics.RenderTargets.ActiveLeases.Count == 0 ||
+                     ( context.RenderViews.Count == 1 &&
+                       diagnostics.RenderTargets.ActiveLeases.Count == 0 ) ||
                      diagnostics.Viewports.Count == 0 ||
+                     ( diagnostics.Viewports.Count != context.RenderViews.Count &&
+                       context.RenderViews.Count > 1 ) ||
                      diagnostics.FrameStatistics is not { DrawCalls: > 0, BatchFlushes: > 0, ActivePasses: > 0 } ) {
                     throw new InvalidOperationException(
                         "Hosting render diagnostics did not capture the active runtime graph." );
@@ -170,6 +235,7 @@ internal static class Program {
                 Console.WriteLine(
                     $"[Diagnostics] passes={diagnostics.Pipeline.Passes.Count}, " +
                     $"effects={diagnostics.Effects.Effects.Count}, " +
+                    $"views={context.RenderViews.Count}, " +
                     $"surfaces={diagnostics.Effects.Surfaces.Count}, " +
                     $"leases={diagnostics.RenderTargets.ActiveLeases.Count}, " +
                     $"drawCalls={diagnostics.FrameStatistics.Value.DrawCalls}, " +
@@ -178,8 +244,9 @@ internal static class Program {
                     $"activePasses={diagnostics.FrameStatistics.Value.ActivePasses}" );
                 var performance = context.CapturePerformanceSnapshot();
                 if ( performance.GpuMemory.TextureCount == 0 ||
-                     performance.GpuMemory.RootRenderTargetCount != 2 ||
-                     performance.GpuMemory.LeasedRenderTargetCount == 0 ||
+                     performance.GpuMemory.RootRenderTargetCount != context.RenderViews.Count + 1 ||
+                     ( context.RenderViews.Count == 1 &&
+                       performance.GpuMemory.LeasedRenderTargetCount == 0 ) ||
                      performance.GpuMemory.TotalBytes <= 0 ) {
                     throw new InvalidOperationException(
                         "Hosting performance diagnostics did not capture GPU resource estimates." );

@@ -88,6 +88,22 @@ internal static class Program
               multiViewport.Renderer.ResolvedViewports[1].Layer == 1 &&
               multiViewport.Renderer.ResolvedViewports[1].Fit == ViewportFitMode.Contain,
             "Declarative Viewports preserve order and receive stable default layers");
+
+        var renderViews = GameApplication.Create()
+            .UseDefault2DRenderer(renderer => renderer.UseRenderViews(views => views
+                .ConfigureMain(ViewportRect.LeftHalf)
+                .Add("player.two", ViewportRect.RightHalf, renderScale: 0.5f)))
+            .ConfigureScene("Split", _ => { })
+            .BuildPlan();
+        Check(renderViews.Renderer.MultipleRenderViewsEnabled &&
+              renderViews.Renderer.RenderViews is { Count: 2 } definitions &&
+              definitions[0].Ref == RenderViewRef.Main &&
+              definitions[1].Ref == new RenderViewRef("player.two") &&
+              definitions[1].RenderScale == 0.5f,
+            "Render View plans freeze the primary and independently scaled secondary Camera views");
+        Check(RenderViewLayoutBuilder.ResolveRenderSize(
+                  ViewportRect.RightHalf, 0.5f, 801, 601) == (200, 301),
+            "Render View size combines shared-edge Viewport rounding and RenderScale deterministically");
     }
 
     private static void TestBuilderValidation()
@@ -124,6 +140,25 @@ internal static class Program
                 .Add("same", ViewportRect.LeftHalf)
                 .Add("same", ViewportRect.RightHalf)),
             "Duplicate Viewport slot names are rejected");
+        CheckThrows<InvalidOperationException>(
+            () => new Default2DRendererOptions().UseRenderViews(_ => { }),
+            "Multiple Render Views require an explicit secondary View");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new Default2DRendererOptions().UseRenderViews(views => views
+                .Add("small", ViewportRect.RightHalf, renderScale: 0f)),
+            "Render View scale must remain in the supported range");
+        CheckThrows<InvalidOperationException>(
+            () => new Default2DRendererOptions()
+                .UseSingleCameraViewports(views => views.Add("main", ViewportRect.FullScreen))
+                .UseRenderViews(views => views.Add("second", ViewportRect.RightHalf)),
+            "Mirrored Viewports and independent Render Views cannot be combined");
+        CheckThrows<InvalidOperationException>(
+            () => new Default2DRendererOptions()
+                .UseHdr(ToneMappingSettings.Default)
+                .UseRenderViews(views => views.Add("second", ViewportRect.RightHalf))
+                .ToPlan()
+                .Validate(),
+            "The first multi-Camera slice rejects per-View HDR effects explicitly");
     }
 
     private static void TestSceneCatalogAndPrefabs()

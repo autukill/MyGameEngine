@@ -25,6 +25,7 @@ public sealed class Default2DRendererOptions
     private string? _shaderAssetManifestPath;
     private ShaderHotReloadOptions? _shaderHotReload;
     private IReadOnlyList<SingleCameraViewportDefinition>? _viewports;
+    private IReadOnlyList<RenderViewDefinition>? _renderViews;
 
     public Default2DRendererOptions UseContent(
         string packagesRoot,
@@ -84,11 +85,29 @@ public sealed class Default2DRendererOptions
         Action<SingleCameraViewportLayoutBuilder> configure)
     {
         ArgumentNullException.ThrowIfNull(configure);
+        if (_renderViews is not null)
+            throw new InvalidOperationException(
+                "UseSingleCameraViewports and UseRenderViews cannot be combined.");
         if (_viewports is not null)
             throw new InvalidOperationException("Single-camera Viewports are already configured.");
         var builder = new SingleCameraViewportLayoutBuilder();
         configure(builder);
         _viewports = builder.Build();
+        return this;
+    }
+
+    /// <summary>Configures independently rendered Scene views with distinct Cameras.</summary>
+    public Default2DRendererOptions UseRenderViews(Action<RenderViewLayoutBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (_renderViews is not null)
+            throw new InvalidOperationException("Render Views are already configured.");
+        if (_viewports is not null)
+            throw new InvalidOperationException(
+                "UseRenderViews and UseSingleCameraViewports cannot be combined.");
+        var builder = new RenderViewLayoutBuilder();
+        configure(builder);
+        _renderViews = builder.Build();
         return this;
     }
 
@@ -183,7 +202,8 @@ public sealed class Default2DRendererOptions
         _shaderHotReload,
         _shaderAssetManifestPath,
         _shaderMaterials.ToArray(),
-        _viewports ?? SingleCameraViewportLayoutBuilder.Default);
+        _viewports ?? SingleCameraViewportLayoutBuilder.Default,
+        _renderViews);
 }
 
 internal sealed record Default2DRendererPlan(
@@ -202,10 +222,12 @@ internal sealed record Default2DRendererPlan(
     ShaderHotReloadOptions? ShaderHotReload = null,
     string? ShaderAssetManifestPath = null,
     IReadOnlyList<MaterialAssetDefinition>? ShaderMaterials = null,
-    IReadOnlyList<SingleCameraViewportDefinition>? Viewports = null)
+    IReadOnlyList<SingleCameraViewportDefinition>? Viewports = null,
+    IReadOnlyList<RenderViewDefinition>? RenderViews = null)
 {
     public IReadOnlyList<SingleCameraViewportDefinition> ResolvedViewports =>
         Viewports ?? SingleCameraViewportLayoutBuilder.Default;
+    public bool MultipleRenderViewsEnabled => RenderViews is { Count: > 1 };
 
     public void Validate()
     {
@@ -234,5 +256,9 @@ internal sealed record Default2DRendererPlan(
                 "Declarative materials require their Shader file definitions.");
         if (ResolvedViewports.Count == 0)
             throw new InvalidOperationException("At least one Viewport slot is required.");
+        if (MultipleRenderViewsEnabled && (HdrEnabled || Bloom is not null || StencilMaskingEnabled))
+            throw new InvalidOperationException(
+                "Multiple Render Views currently require LDR without Bloom or Stencil. " +
+                "Per-View effects are introduced in the next slice.");
     }
 }
