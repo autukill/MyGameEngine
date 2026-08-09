@@ -13,6 +13,16 @@
     <GameEngineDotNetHost Condition="'$(GameEngineDotNetHost)' == ''">dotnet</GameEngineDotNetHost>
   </PropertyGroup>
 
+  <Target Name="ValidateGameEngineShaderAssets"
+          AfterTargets="ResolveProjectReferences"
+          BeforeTargets="CoreCompile"
+          Condition="'$(GameEngineShaderManifest)' != ''">
+    <Error Condition="!Exists('$(GameEngineAssetCompilerDll)')"
+           Text="GameEngine AssetCompiler was not built: $(GameEngineAssetCompilerDll)" />
+    <Exec Command="&quot;$(GameEngineDotNetHost)&quot; &quot;$(GameEngineAssetCompilerDll)&quot; --validate-shaders &quot;$(GameEngineShaderManifest)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
   <Target Name="CompileGameEngineContent"
           AfterTargets="ResolveProjectReferences"
           BeforeTargets="CoreCompile"

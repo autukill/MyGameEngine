@@ -377,6 +377,25 @@ internal static class Program
         {
             File.WriteAllText(Path.Combine(root, "sprite.vert"), "vertex-v1");
             File.WriteAllText(Path.Combine(root, "sprite.frag"), "fragment-v1");
+            string assetManifest = Path.Combine(root, "shaders.json");
+            File.WriteAllText(assetManifest,
+                """
+                {
+                  "schemaVersion":1,
+                  "shaders":[
+                    {"name":"game.sprite","vertex":"sprite.vert","fragment":"sprite.frag"}
+                  ],
+                  "materials":[
+                    {
+                      "name":"game.sprite.material",
+                      "shader":"game.sprite",
+                      "uniforms":[
+                        {"name":"uGain","type":"float","default":1.5}
+                      ]
+                    }
+                  ]
+                }
+                """);
             var definition = new ShaderFileDefinition(
                 "game.sprite",
                 "sprite.vert",
@@ -416,6 +435,18 @@ internal static class Program
                   plan.Renderer.ShaderHotReload == options,
                 "Shader files and hot reload policy are frozen into the renderer plan");
 
+            var assetPlan = GameApplication.Create()
+                .UseDefault2DRenderer(renderer => renderer.UseShaderAssets(assetManifest))
+                .ConfigureScene("ShaderAssets", _ => { })
+                .BuildPlan();
+            var declaredMaterial = assetPlan.Renderer.ShaderMaterials!.Single();
+            Check(assetPlan.Renderer.ShaderAssetManifestPath == assetManifest &&
+                  assetPlan.Renderer.ShaderRoot == root &&
+                  assetPlan.Renderer.ShaderFiles?.Single().Name == "game.sprite" &&
+                  declaredMaterial.Name == "game.sprite.material" &&
+                  declaredMaterial.Uniforms.Single().DefaultValue.FloatValue == 1.5f,
+                "Declarative Shader assets freeze programs, Material schema, and defaults");
+
             CheckThrows<InvalidOperationException>(
                 () => new Default2DRendererOptions()
                     .EnableShaderHotReload(options)
@@ -428,6 +459,11 @@ internal static class Program
                     definition,
                     definition),
                 "Duplicate logical Shader names are rejected before GL initialization");
+            CheckThrows<InvalidOperationException>(
+                () => new Default2DRendererOptions()
+                    .UseShaders(root, definition)
+                    .UseShaderAssets(assetManifest),
+                "Imperative and declarative Shader registration cannot overlap");
             CheckThrows<InvalidDataException>(
                 () => ShaderFileSetReader.Read(root, new[]
                 {

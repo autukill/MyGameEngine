@@ -46,6 +46,8 @@ game.Run();
 
 游戏自定义 Sprite Shader 可通过 `UseShaders(root, definitions)` 注册，随后由 `ShaderRef` 选择。`EnableShaderHotReload(options)` 会在后台读取稳定源码快照，并在相同 Step/Draw 边界整批编译替换；失败保留旧 Program。Context 暴露 `Shaders` 供高级 uniform 设置。详见 [自定义 Sprite Shader 与开发期热重载](SHADER_HOT_RELOAD.md)。
 
+需要由构建系统统一检查 Shader、Material Schema 与默认值时，推荐改用 `UseShaderAssets("Shaders/shaders.json")`。Host 会按清单装配 Program 和 Material，Scene 配置回调可通过 `context.GetMaterial(name)` 取得逻辑引用；该模式与命令式 `UseShaders` 互斥。格式与构建集成见 [声明式 Shader/Material Assets](SHADER_ASSETS.md)。
+
 SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()`，避免创建对应 RenderTarget 和 Pass。
 
 ## Default2DGameContext
@@ -55,6 +57,7 @@ Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后�
 - `Scene`、`Camera` 和当前 `Window`。
 - `Textures`、`Sprites` 与可选 `Content` 包租约。
 - `GetTexture/GetSprite` 便利方法；未配置 Content 时给出明确异常。
+- `GetMaterial` 取得声明式清单中已装配的逻辑 Material 引用；未声明时给出明确异常。
 - `Pipeline`、`Effects` 和 `RenderTargets` 高级逃生口。
 - `RegisterRenderEffectFactory` 与 `AddRenderPass` 扩展入口。
 - `SetFrameRate()`，运行时统一更新 VSync、渲染 FPS 与更新 UPS 目标。

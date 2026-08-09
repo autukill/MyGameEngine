@@ -6,6 +6,8 @@ internal static class Program
     {
         if (args.Length > 0 && args[0] == "--generate-references")
             return GenerateReferences(args);
+        if (args.Length > 0 && args[0] == "--validate-shaders")
+            return ValidateShaders(args);
 
         if (args.Length is < 3 or > 4)
         {
@@ -35,6 +37,31 @@ internal static class Program
             Console.WriteLine($"Passthrough frames: {result.PassthroughFrameCount}");
             Console.WriteLine($"Fingerprint: {result.InputFingerprint}");
             return result.Status == ContentBuildStatus.Stale ? 3 : 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+    }
+
+    private static int ValidateShaders(string[] args)
+    {
+        if (args.Length != 2)
+        {
+            Console.Error.WriteLine(
+                "Usage: GameEngineAssetCompiler --validate-shaders <shaders.json>");
+            return 2;
+        }
+
+        try
+        {
+            var loaded = GameEngine.Features.ShaderAssets.Infrastructure
+                .ShaderAssetManifestLoader.Load(args[1]);
+            Console.WriteLine($"Validated shader assets: {loaded.ManifestPath}");
+            Console.WriteLine($"Shaders: {loaded.Manifest.Shaders.Count}");
+            Console.WriteLine($"Materials: {loaded.Manifest.Materials.Count}");
+            return 0;
         }
         catch (Exception ex)
         {

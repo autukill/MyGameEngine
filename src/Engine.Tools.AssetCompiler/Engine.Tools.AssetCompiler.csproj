@@ -28,6 +28,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" />
+    <ProjectReference Include="..\Engine.Features\ShaderAssets\ShaderAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\TextureAtlas\TextureAtlas.csproj" />
   </ItemGroup>

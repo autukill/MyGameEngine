@@ -18,6 +18,7 @@ internal static class Program
         "Presentation.dll",
         "RenderPipeline.dll",
         "SceneSystem.dll",
+        "ShaderAssets.dll",
         "Sprites.dll",
         "StencilMasking.dll",
         "TextureAssets.dll",

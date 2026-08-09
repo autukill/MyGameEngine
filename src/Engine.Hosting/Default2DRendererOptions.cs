@@ -2,6 +2,8 @@ namespace GameEngine.Hosting;
 
 using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.ContentAssets.Domain;
+using GameEngine.Features.ShaderAssets.Domain;
+using GameEngine.Features.ShaderAssets.Infrastructure;
 using GameEngine.Features.ToneMapping.Domain;
 
 /// <summary>默认 2D 渲染预设；只有显式启用的可选 Feature 才创建 GPU 资源。</summary>
@@ -19,6 +21,8 @@ public sealed class Default2DRendererOptions
     private ContentHotReloadOptions? _contentHotReload;
     private string? _shaderRoot;
     private readonly List<ShaderFileDefinition> _shaderFiles = [];
+    private readonly List<MaterialAssetDefinition> _shaderMaterials = [];
+    private string? _shaderAssetManifestPath;
     private ShaderHotReloadOptions? _shaderHotReload;
 
     public Default2DRendererOptions UseContent(
@@ -114,6 +118,29 @@ public sealed class Default2DRendererOptions
         return this;
     }
 
+    /// <summary>Load a strict shaders.json and configure its programs and materials together.</summary>
+    public Default2DRendererOptions UseShaderAssets(string manifestPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(manifestPath);
+        if (_shaderRoot is not null)
+            throw new InvalidOperationException("Shader files are already configured.");
+        string fullPath = Path.GetFullPath(Path.IsPathRooted(manifestPath)
+            ? manifestPath
+            : Path.Combine(AppContext.BaseDirectory, manifestPath));
+        LoadedShaderAssetManifest loaded = ShaderAssetManifestLoader.Load(fullPath);
+        foreach (ShaderAssetDefinition shader in loaded.Manifest.Shaders)
+        {
+            _shaderFiles.Add(new ShaderFileDefinition(
+                shader.Name,
+                shader.VertexPath,
+                shader.FragmentPath));
+        }
+        _shaderMaterials.AddRange(loaded.Manifest.Materials);
+        _shaderRoot = loaded.RootDirectory;
+        _shaderAssetManifestPath = loaded.ManifestPath;
+        return this;
+    }
+
     public Default2DRendererOptions EnableShaderHotReload(ShaderHotReloadOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -136,7 +163,9 @@ public sealed class Default2DRendererOptions
         _contentHotReload,
         _shaderRoot,
         _shaderFiles.ToArray(),
-        _shaderHotReload);
+        _shaderHotReload,
+        _shaderAssetManifestPath,
+        _shaderMaterials.ToArray());
 }
 
 internal sealed record Default2DRendererPlan(
@@ -152,7 +181,9 @@ internal sealed record Default2DRendererPlan(
     ContentHotReloadOptions? ContentHotReload = null,
     string? ShaderRoot = null,
     IReadOnlyList<ShaderFileDefinition>? ShaderFiles = null,
-    ShaderHotReloadOptions? ShaderHotReload = null)
+    ShaderHotReloadOptions? ShaderHotReload = null,
+    string? ShaderAssetManifestPath = null,
+    IReadOnlyList<MaterialAssetDefinition>? ShaderMaterials = null)
 {
     public void Validate()
     {
@@ -173,5 +204,11 @@ internal sealed record Default2DRendererPlan(
             throw new InvalidOperationException("Shader root and file definitions must be configured together.");
         if (ShaderHotReload is not null && ShaderFiles is not { Count: > 0 })
             throw new InvalidOperationException("Shader hot reload requires UseShaders.");
+        if (ShaderAssetManifestPath is not null && ShaderMaterials is null)
+            throw new InvalidOperationException(
+                "Shader asset manifest and material definitions must be configured together.");
+        if (ShaderMaterials is { Count: > 0 } && ShaderFiles is not { Count: > 0 })
+            throw new InvalidOperationException(
+                "Declarative materials require their Shader file definitions.");
     }
 }

@@ -1,5 +1,13 @@
 # `GameEngine.Content.targets` 解读
 
+除 Texture/Sprite Content 外，同一 targets 还提供可选的声明式 Shader 静态校验。设置 `GameEngineShaderManifest` 后，`ValidateGameEngineShaderAssets` 会在 `ResolveProjectReferences` 之后、`CoreCompile` 之前调用同一个 AssetCompiler：
+
+~~~xml
+<GameEngineShaderManifest>$(MSBuildProjectDirectory)\Shaders\shaders.json</GameEngineShaderManifest>
+~~~
+
+该 Target 不生成文件，也不创建 GL Context；它验证严格 JSON、Material→Shader 引用、类型化默认值和源码安全路径。真实 GLSL 编译与 Uniform 类型仍在 Hosting 创建 Program 时由驱动校验。完整格式见[声明式 Shader 与 Material Assets](SHADER_ASSETS.md)。
+
 [`build/GameEngine.Content.targets`](../build/GameEngine.Content.targets) 是游戏项目与 `Engine.Tools.AssetCompiler` 之间的 MSBuild 适配层。它不实现图片解码、Atlas 排布或内容指纹，而是负责以下四件事：
 
 1. 在 C# 编译前调用资产编译器。

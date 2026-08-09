@@ -12,6 +12,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
 - 类型化 Shader 材质：逻辑 `MaterialRef`、多材质共享 Program、参数 Revision 批处理与热替换自动重放。
 - Shader 契约诊断：GL 反射校验材质 Uniform 名称/类型/数组，编译错误携带源码路径、行号与原始驱动日志。
+- 声明式 Shader Assets：版本化 `shaders.json`、Material 默认参数、Hosting 自动装配及 MSBuild 构建期静态校验。
 - 动画就绪 Sprite：逻辑资源名、原点、多帧 UV、自动帧推进、旋转/缩放/颜色以及 `batch.DrawSprite*` 便利 API。
 - Texture Assets：逻辑 `TextureRef`、PNG/静态 WebP 解码、采样预设、资产清单与 GPU 句柄统一回收。
 - 声明式 Content Assets：单一版本化 `assets.json`、包依赖、单图/Grid/多图片 Sprite、事务回滚与引用计数卸载。
@@ -47,6 +48,7 @@ src/
 │   ├── Presentation/                    # 显式 RGBA8/Display 屏幕终端与稳定合成层级
 │   ├── RenderPipeline/                  # RenderTarget、RenderPass DAG、后处理与合成
 │   ├── SceneSystem/                     # Layer、RenderCommand（旧 Context 正在退役）
+│   ├── ShaderAssets/                    # shaders.json、Material Schema/default 与安全路径校验
 │   ├── Sprites/                         # SpriteLibrary、帧解析与动画资源元数据
 │   ├── StencilMasking/                  # Stencil 状态、命令、事件与 Pass
 │   ├── TextureAssets/                   # TextureLibrary、Skia 解码与资产清单
@@ -73,6 +75,7 @@ Feature 依赖保持单向：
 ```text
 Engine.Core
   ├─ Sprites
+  ├─ ShaderAssets
   ├─ TextureAssets
   │    └─ ContentAssets（同时依赖 Sprites）
   ├─ TextureAtlas
@@ -84,10 +87,10 @@ Engine.Core
             ├─ StencilMasking
             └─ ToneMapping
 
-Engine.Hosting -> Core + Camera/Content/RenderPipeline/Presentation/Bloom/Stencil/Tone
+Engine.Hosting -> Core + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 43 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 45 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -254,7 +257,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 ## 下一阶段
 
 1. 为无显示器 CI 固化软件 OpenGL 执行环境。
-2. 在已完成装配期/热重载 Shader 契约校验后，评估声明式 Material Asset 与可选离线 GLSL 编译器，把部分错误继续提前到 MSBuild。
+2. 在声明式 Material Asset 与 MSBuild 静态校验基础上，评估强类型 Material 引用、可选离线 GLSL 编译器和 Manifest 变更热重载。
 3. 继续降低 SceneAggregate 每帧 LINQ 与排序分配。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

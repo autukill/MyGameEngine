@@ -29,6 +29,7 @@
     <ProjectReference Include="..\Engine.Features\Presentation\Presentation.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\RenderPipeline\RenderPipeline.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\SceneSystem\SceneSystem.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\Engine.Features\ShaderAssets\ShaderAssets.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" PrivateAssets="all" />
@@ -49,6 +50,7 @@
       <TfmSpecificPackageFile Include="..\Engine.Features\Presentation\bin\$(Configuration)\net10.0\Presentation.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\RenderPipeline\bin\$(Configuration)\net10.0\RenderPipeline.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\SceneSystem\bin\$(Configuration)\net10.0\SceneSystem.dll" />
+      <TfmSpecificPackageFile Include="..\Engine.Features\ShaderAssets\bin\$(Configuration)\net10.0\ShaderAssets.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\Sprites\bin\$(Configuration)\net10.0\Sprites.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\StencilMasking\bin\$(Configuration)\net10.0\StencilMasking.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\TextureAssets\bin\$(Configuration)\net10.0\TextureAssets.dll" />

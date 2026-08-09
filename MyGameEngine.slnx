@@ -31,6 +31,10 @@
     <Project Path="src/Engine.Features/SceneSystem.VisualTests/SceneSystem.VisualTests.csproj" />
     <Project Path="src/Engine.Features/SceneSystem/SceneSystem.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/ShaderAssets/">
+    <Project Path="src/Engine.Features/ShaderAssets.Tests/ShaderAssets.Tests.csproj" />
+    <Project Path="src/Engine.Features/ShaderAssets/ShaderAssets.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/StencilMasking/">
     <Project Path="src/Engine.Features/StencilMasking.Tests/StencilMasking.Tests.csproj" />
     <Project Path="src/Engine.Features/StencilMasking.VisualTests/StencilMasking.VisualTests.csproj" />

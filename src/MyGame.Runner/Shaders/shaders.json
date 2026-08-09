@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "shaders": [
+    {
+      "name": "runner.orbit",
+      "vertex": "sprite.vert.glsl",
+      "fragment": "orbit.frag.glsl"
+    }
+  ],
+  "materials": [
+    {
+      "name": "runner.orbit.material",
+      "shader": "runner.orbit",
+      "uniforms": [
+        {
+          "name": "uGain",
+          "type": "float",
+          "default": 1.0
+        }
+      ]
+    }
+  ]
+}

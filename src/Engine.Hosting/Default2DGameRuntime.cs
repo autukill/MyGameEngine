@@ -10,6 +10,7 @@ using GameEngine.Features.Bloom.Infrastructure;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
+using GameEngine.Features.ShaderAssets.Domain;
 using GameEngine.Features.Presentation.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
@@ -164,6 +165,11 @@ internal sealed class Default2DGameRuntime : IDisposable
             shaderSnapshot = ShaderFileSetReader.Read(shaderRoot, shaderFiles);
             foreach (ShaderProgramSource source in shaderSnapshot.Sources)
                 _shaders.Create(source);
+            if (renderer.ShaderMaterials is { Count: > 0 } materials)
+            {
+                foreach (MaterialAssetDefinition material in materials)
+                    RegisterMaterial(_shaders, material);
+            }
         }
 
         TextureRef stencilWhite = default;
@@ -311,5 +317,37 @@ internal sealed class Default2DGameRuntime : IDisposable
         _scene.Add(new DefaultWorldPresentationController(_scene.RaiseEvent, renderer));
         if (renderer.SceneGuiEnabled)
             _scene.Add(new DefaultGuiPresentationController(_scene.RaiseEvent));
+    }
+
+    private static void RegisterMaterial(
+        ShaderLibrary shaders,
+        MaterialAssetDefinition definition)
+    {
+        var material = shaders.CreateMaterial(
+            definition.Name,
+            new ShaderRef(definition.Shader),
+            definition.Uniforms.Select(item => item.Uniform).ToArray());
+        foreach (MaterialUniformAssetDefinition uniform in definition.Uniforms)
+        {
+            MaterialUniformDefaultValue value = uniform.DefaultValue;
+            switch (uniform.Uniform.Type)
+            {
+                case ShaderUniformType.Float:
+                    material.SetFloat(uniform.Uniform.Name, value.FloatValue);
+                    break;
+                case ShaderUniformType.Int:
+                    material.SetInt(uniform.Uniform.Name, value.IntValue);
+                    break;
+                case ShaderUniformType.Vector2:
+                    material.SetVector2(uniform.Uniform.Name, value.Vector2Value);
+                    break;
+                case ShaderUniformType.Vector4:
+                    material.SetVector4(uniform.Uniform.Name, value.Vector4Value);
+                    break;
+                default:
+                    throw new InvalidOperationException(
+                        $"Unsupported material uniform type '{uniform.Uniform.Type}'.");
+            }
+        }
     }
 }

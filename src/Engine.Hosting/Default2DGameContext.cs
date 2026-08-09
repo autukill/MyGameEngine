@@ -1,6 +1,7 @@
 namespace GameEngine.Hosting;
 
 using GameEngine.Core.Domain.Aggregates;
+using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
@@ -63,6 +64,13 @@ public sealed class Default2DGameContext
     public SpriteRef GetSprite(string name) => RequireContent().GetSprite(name);
 
     public TextureRef GetTexture(string name) => RequireContent().GetTexture(name);
+
+    public MaterialRef GetMaterial(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return Shaders.TryGetMaterial(name)?.Ref ??
+            throw new KeyNotFoundException($"Material '{name}' is not registered.");
+    }
 
     public void RegisterRenderEffectFactory(IRenderEffectFactory factory) =>
         Effects.RegisterFactory(factory);

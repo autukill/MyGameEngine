@@ -1,5 +1,7 @@
 # Shader 材质参数块
 
+常用游戏材质可以通过 [shaders.json](SHADER_ASSETS.md) 声明，让默认参数在构建期接受静态校验并由 Hosting 自动装配；本页的命令式 API 继续作为动态创建与高级逃生口。
+
 材质参数块解决两个常见问题：同一个 Shader 需要多套参数，以及 Shader 热替换后 Uniform 值需要自动恢复。材质只保存逻辑 `ShaderRef` 和 CPU 侧参数，不保存 Program Handle 或 Uniform Location，因此 Program 被替换后 `MaterialRef` 和参数值都保持有效。
 
 ## 创建与使用

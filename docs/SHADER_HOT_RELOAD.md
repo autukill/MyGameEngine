@@ -1,5 +1,7 @@
 # 自定义 Sprite Shader 与开发期热重载
 
+需要多 Shader 和 Material 默认参数时，优先使用[声明式 Shader Assets](SHADER_ASSETS.md)；热重载会复用清单解析出的固定 Program 集合。
+
 Shader 热重载面向通过 `GameInstance.Shader` / `ShaderRef` 使用的游戏自定义 Sprite Shader。Hosting 负责文件装配、Program 所有权、投影同步和安全替换；领域实例仍只保存逻辑名称，不持有 OpenGL Handle。
 
 ## 注册文件 Shader

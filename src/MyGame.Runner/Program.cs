@@ -4,7 +4,6 @@ using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using GameEngine.Core.Domain.Entities;
-using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
@@ -64,12 +63,7 @@ internal static class Program {
         bool shaderHotReload ) {
         renderer
             .UseContent( GameAssets.Packages.Root )
-            .UseShaders(
-                "Shaders",
-                new ShaderFileDefinition(
-                    "runner.orbit",
-                    "sprite.vert.glsl",
-                    "orbit.frag.glsl" ) )
+            .UseShaderAssets( "Shaders/shaders.json" )
             .UseHdr(
                 ToneMappingSettings.Default,
                 new BloomSettings(
@@ -111,11 +105,7 @@ internal static class Program {
         scene.OnStart = () => Console.WriteLine( $"[Scene] '{scene.SceneName}' started." );
 
         var orbitingSprite = GameAssets.Sprites.RunnerOrbiting;
-        var orbitMaterial = context.Shaders.CreateMaterial(
-                "runner.orbit.material",
-                new ShaderRef( "runner.orbit" ),
-                ShaderUniformDefinition.Float( "uGain" ) )
-            .SetFloat( "uGain", 1f );
+        var orbitMaterial = context.GetMaterial( "runner.orbit.material" );
         var center = new Vector2D(
             context.Window.Width * 0.5f,
             context.Window.Height * 0.5f );
@@ -130,7 +120,7 @@ internal static class Program {
                 i * MathF.PI / 2f,
                 colors[i],
                 orbitingSprite,
-                orbitMaterial.Ref ) );
+                orbitMaterial ) );
         }
 
         var spotlightGroup = new StencilMaskGroupRef( "spotlight" );

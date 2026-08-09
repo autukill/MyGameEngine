@@ -13,6 +13,7 @@
 - [Content 包开发期热重载](CONTENT_HOT_RELOAD.md)：编译指纹、后台准备、帧边界原子替换、失败回退与拓扑边界。
 - [自定义 Sprite Shader 与热重载](SHADER_HOT_RELOAD.md)：文件注册、ShaderRef、投影约定、整批 Program 原子替换和编译失败回退。
 - [Shader 材质参数块](SHADER_MATERIALS.md)：MaterialRef、类型化 Uniform Schema、多材质共享 Shader、Revision 批处理与热替换参数重放。
+- [声明式 Shader 与 Material Assets](SHADER_ASSETS.md)：shaders.json、默认参数、Hosting 自动装配、MSBuild 静态校验与热重载边界。
 - [Engine Hosting 与默认 2D 启动套件](ENGINE_HOSTING.md)：GameApplication、渲染预设、强类型 Context、帧循环和资源所有权。
 - [强类型 Content 引用](STRONGLY_TYPED_CONTENT.md)：GameAssets 生成、Atlas 边界、命名冲突和 MSBuild 配置。
 - [动态渲染效果使用指南](DYNAMIC_RENDER_EFFECTS.md)：效果事件、owner 共享、ScenePipelineBuilder、RenderTargetPool 与 Stencil/Bloom 装配。
