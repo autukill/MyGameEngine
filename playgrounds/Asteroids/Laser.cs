@@ -17,6 +17,7 @@ public sealed class Laser : GameInstance
         Rotation = MathF.Atan2(_velocity.X, -_velocity.Y);
         Color = new(0.35f, 1f, 0.85f, 1f);
         Collider = CollisionShape2D.Circle(5f);
+        AddTag(GameTags.PlayerProjectile);
     }
 
     public override void OnCreate() => SetAlarm(Lifetime, 1.1d);
@@ -24,8 +25,8 @@ public sealed class Laser : GameInstance
     public override void OnStep(double deltaTime)
     {
         MoveBy(_velocity * (float)deltaTime);
-        if (FirstCollision<Asteroid>() is not { } asteroid) return;
-        Destroy(asteroid);
+        if (FirstCollision(GameTags.Enemy) is not { } enemy) return;
+        Destroy(enemy);
         DestroySelf();
     }
 

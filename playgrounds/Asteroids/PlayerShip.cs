@@ -30,6 +30,8 @@ public sealed class PlayerShip : GameInstance
         _worldWidth = worldWidth;
         _worldHeight = worldHeight;
         Collider = CollisionShape2D.Circle(24f);
+        AddTag(GameTags.Player);
+        AddTag(GameTags.Damageable);
     }
 
     public override void OnStep(double deltaTime)
@@ -60,7 +62,7 @@ public sealed class PlayerShip : GameInstance
             _fireBuffer.TryConsume();
         }
 
-        if (FirstCollision<Asteroid>() is not null)
+        if (FirstCollision(GameTags.Enemy) is not null)
             SwitchScene(GameScenes.GameOver, new GameOverArgs(_survivalSeconds, _shotsFired));
     }
 

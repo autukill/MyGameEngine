@@ -5,6 +5,7 @@
 - 方向键或 `A/D` 旋转，方向键上或 `W` 推进。
 - `GameInputs` 与 `ConfigureInput` 集中装配旋转、推进、射击、暂停和重开，不让玩法类依赖具体键位。
 - 射击使用 `InputActionBuffer` 保留冷却结束前的短按，同时继续支持按住连续发射。
+- `GameTags` 集中定义 Player、Enemy、Damageable 和 PlayerProjectile；Laser 与 PlayerShip 按 Enemy 标签碰撞，不依赖具体 `Asteroid` 类。
 - 按住空格连续发射带方向和速度参数的 Laser。
 - Alarm 周期生成带半径、位置和速度参数的 Asteroid。
 - Circle Collider 驱动 Laser/Asteroid 与 Ship/Asteroid 碰撞。

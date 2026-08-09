@@ -142,6 +142,8 @@ foreach (Enemy enemy in nearby)
 
 Scene 也公开 `FirstCollision`、`Collisions`、`QueryArea` 和 `QueryRadius`。查询只考虑活跃且带 Collider 的已提交实例；自身碰撞查询会排除自身。
 
+以上 Find 和空间查询均支持额外的 `GameplayTag` 必需条件；泛型类型与 Tag 同时满足才命中。纯标签碰撞可在 `GameInstance` 中写成 `FirstCollision(GameTags.Enemy)`。设计与边界见 [Gameplay Tags](GAMEPLAY_TAGS.md)。
+
 v1 规则：
 
 - 支持 Box/Box、Circle/Circle 和 Circle/Box 精确相交。

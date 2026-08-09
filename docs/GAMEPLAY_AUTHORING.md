@@ -38,8 +38,11 @@ Scene 会为已添加或已排队生成的实例注入窄化 `IGameplayContext`�
 - `FindFirst<T>()` / `FindAll<T>()`
 - `CountInstances<T>()`
 - `FindAll/Collisions/QueryArea/QueryRadius(..., GameplayQueryBuffer<T>)`
+- `Find/Count/Collision/Area/Radius<T>(GameplayTag, ...)` 类型与横切身份组合过滤
 
 Context 只暴露实例生命周期和查询，不暴露 Window、RenderPipeline、ShaderLibrary 或全局服务容器。脱离 Scene 的实例调用这些操作会收到明确异常。
+
+`GameplayTag` 让敌人、可受伤对象、拾取物等身份不再依赖单一继承树；实例用 `AddTag/RemoveTag/HasTag` 管理身份，查询继续复用现有 Buffer 和遥测。完整语义见 [Gameplay Tags](GAMEPLAY_TAGS.md)。
 
 ## 帧边界语义
 

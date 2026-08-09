@@ -22,6 +22,8 @@ public sealed class Asteroid : GameInstance
         Rotation = spawn.Position.X * 0.01f;
         Color = new(0.7f, 0.55f, 0.35f, 1f);
         Collider = CollisionShape2D.Circle(spawn.Radius);
+        AddTag(GameTags.Enemy);
+        AddTag(GameTags.Damageable);
     }
 
     public override void OnStep(double deltaTime)

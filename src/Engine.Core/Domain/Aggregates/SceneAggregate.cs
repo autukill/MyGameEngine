@@ -642,6 +642,22 @@ public class SceneAggregate : IInstanceDrawTracker
         return null;
     }
 
+    public T? FindFirst<T>(GameplayTag tag) where T : GameInstance
+    {
+        ValidateTag(tag);
+        long started = BeginQuery();
+        int candidates = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate is not T typed || !candidate.HasTagUnchecked(tag)) continue;
+            RecordQuery(QueryKind.Find, started, candidates, 1);
+            return typed;
+        }
+        RecordQuery(QueryKind.Find, started, candidates, 0);
+        return null;
+    }
+
     public IReadOnlyList<T> FindAll<T>() where T : GameInstance
     {
         long started = BeginQuery();
@@ -651,6 +667,23 @@ public class SceneAggregate : IInstanceDrawTracker
         {
             candidates++;
             if (candidate is T typed)
+                (matches ??= new List<T>()).Add(typed);
+        }
+        T[] result = matches?.ToArray() ?? Array.Empty<T>();
+        RecordQuery(QueryKind.Find, started, candidates, result.Length);
+        return result;
+    }
+
+    public IReadOnlyList<T> FindAll<T>(GameplayTag tag) where T : GameInstance
+    {
+        ValidateTag(tag);
+        long started = BeginQuery();
+        int candidates = 0;
+        List<T>? matches = null;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate is T typed && candidate.HasTagUnchecked(tag))
                 (matches ??= new List<T>()).Add(typed);
         }
         T[] result = matches?.ToArray() ?? Array.Empty<T>();
@@ -674,6 +707,24 @@ public class SceneAggregate : IInstanceDrawTracker
         return results.Count;
     }
 
+    public int FindAll<T>(GameplayTag tag, GameplayQueryBuffer<T> results)
+        where T : GameInstance
+    {
+        ValidateTag(tag);
+        ArgumentNullException.ThrowIfNull(results);
+        results.Clear();
+        long started = BeginQuery();
+        int candidates = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate is T typed && candidate.HasTagUnchecked(tag))
+                results.Add(typed);
+        }
+        RecordQuery(QueryKind.Find, started, candidates, results.Count);
+        return results.Count;
+    }
+
     public int CountInstances<T>() where T : GameInstance
     {
         long started = BeginQuery();
@@ -683,6 +734,21 @@ public class SceneAggregate : IInstanceDrawTracker
         {
             candidates++;
             if (candidate is T) count++;
+        }
+        RecordQuery(QueryKind.Find, started, candidates, count);
+        return count;
+    }
+
+    public int CountInstances<T>(GameplayTag tag) where T : GameInstance
+    {
+        ValidateTag(tag);
+        long started = BeginQuery();
+        int candidates = 0;
+        int count = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate is T && candidate.HasTagUnchecked(tag)) count++;
         }
         RecordQuery(QueryKind.Find, started, candidates, count);
         return count;
@@ -720,6 +786,40 @@ public class SceneAggregate : IInstanceDrawTracker
         return null;
     }
 
+    public T? FirstCollision<T>(GameInstance source, GameplayTag tag) where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ValidateTag(tag);
+        long started = BeginQuery();
+        int candidates = 0;
+        if (source.Collider is not { } sourceShape)
+        {
+            RecordQuery(QueryKind.Collision, started, candidates, 0);
+            return null;
+        }
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate.Id == source.Id || !candidate.IsActive ||
+                candidate is not T typed || !candidate.HasTagUnchecked(tag) ||
+                candidate.Collider is not { } candidateShape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(
+                    sourceShape,
+                    source.Transform,
+                    candidateShape,
+                    candidate.Transform))
+            {
+                RecordQuery(QueryKind.Collision, started, candidates, 1);
+                return typed;
+            }
+        }
+        RecordQuery(QueryKind.Collision, started, candidates, 0);
+        return null;
+    }
+
     public IReadOnlyList<T> Collisions<T>(GameInstance source) where T : GameInstance
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -736,6 +836,42 @@ public class SceneAggregate : IInstanceDrawTracker
             candidates++;
             if (candidate.Id == source.Id || !candidate.IsActive ||
                 candidate is not T typed || candidate.Collider is not { } candidateShape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(
+                    sourceShape,
+                    source.Transform,
+                    candidateShape,
+                    candidate.Transform))
+            {
+                (matches ??= new List<T>()).Add(typed);
+            }
+        }
+        T[] result = matches?.ToArray() ?? Array.Empty<T>();
+        RecordQuery(QueryKind.Collision, started, candidates, result.Length);
+        return result;
+    }
+
+    public IReadOnlyList<T> Collisions<T>(GameInstance source, GameplayTag tag)
+        where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ValidateTag(tag);
+        long started = BeginQuery();
+        int candidates = 0;
+        if (source.Collider is not { } sourceShape)
+        {
+            RecordQuery(QueryKind.Collision, started, candidates, 0);
+            return Array.Empty<T>();
+        }
+        List<T>? matches = null;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate.Id == source.Id || !candidate.IsActive ||
+                candidate is not T typed || !candidate.HasTagUnchecked(tag) ||
+                candidate.Collider is not { } candidateShape)
             {
                 continue;
             }
@@ -787,6 +923,44 @@ public class SceneAggregate : IInstanceDrawTracker
         return results.Count;
     }
 
+    public int Collisions<T>(
+        GameInstance source,
+        GameplayTag tag,
+        GameplayQueryBuffer<T> results) where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ValidateTag(tag);
+        ArgumentNullException.ThrowIfNull(results);
+        results.Clear();
+        long started = BeginQuery();
+        int candidates = 0;
+        if (source.Collider is not { } sourceShape)
+        {
+            RecordQuery(QueryKind.Collision, started, candidates, 0);
+            return 0;
+        }
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate.Id == source.Id || !candidate.IsActive ||
+                candidate is not T typed || !candidate.HasTagUnchecked(tag) ||
+                candidate.Collider is not { } candidateShape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(
+                    sourceShape,
+                    source.Transform,
+                    candidateShape,
+                    candidate.Transform))
+            {
+                results.Add(typed);
+            }
+        }
+        RecordQuery(QueryKind.Collision, started, candidates, results.Count);
+        return results.Count;
+    }
+
     public IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance
     {
         long started = BeginQuery();
@@ -797,6 +971,29 @@ public class SceneAggregate : IInstanceDrawTracker
             candidates++;
             if (!candidate.IsActive || candidate is not T typed ||
                 candidate.Collider is not { } shape)
+            {
+                continue;
+            }
+            if (bounds.Intersects(CollisionMath2D.GetBounds(shape, candidate.Transform)))
+                (matches ??= new List<T>()).Add(typed);
+        }
+        T[] result = matches?.ToArray() ?? Array.Empty<T>();
+        RecordQuery(QueryKind.Area, started, candidates, result.Length);
+        return result;
+    }
+
+    public IReadOnlyList<T> QueryArea<T>(Bounds2D bounds, GameplayTag tag)
+        where T : GameInstance
+    {
+        ValidateTag(tag);
+        long started = BeginQuery();
+        int candidates = 0;
+        List<T>? matches = null;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (!candidate.IsActive || candidate is not T typed ||
+                !candidate.HasTagUnchecked(tag) || candidate.Collider is not { } shape)
             {
                 continue;
             }
@@ -820,6 +1017,31 @@ public class SceneAggregate : IInstanceDrawTracker
             candidates++;
             if (!candidate.IsActive || candidate is not T typed ||
                 candidate.Collider is not { } shape)
+            {
+                continue;
+            }
+            if (bounds.Intersects(CollisionMath2D.GetBounds(shape, candidate.Transform)))
+                results.Add(typed);
+        }
+        RecordQuery(QueryKind.Area, started, candidates, results.Count);
+        return results.Count;
+    }
+
+    public int QueryArea<T>(
+        Bounds2D bounds,
+        GameplayTag tag,
+        GameplayQueryBuffer<T> results) where T : GameInstance
+    {
+        ValidateTag(tag);
+        ArgumentNullException.ThrowIfNull(results);
+        results.Clear();
+        long started = BeginQuery();
+        int candidates = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (!candidate.IsActive || candidate is not T typed ||
+                !candidate.HasTagUnchecked(tag) || candidate.Collider is not { } shape)
             {
                 continue;
             }
@@ -854,6 +1076,31 @@ public class SceneAggregate : IInstanceDrawTracker
         return result;
     }
 
+    public IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius, GameplayTag tag)
+        where T : GameInstance
+    {
+        ValidateTag(tag);
+        CollisionShape2D query = CollisionShape2D.Circle(radius);
+        Transform2D transform = Transform2D.Default with { Position = center };
+        long started = BeginQuery();
+        int candidates = 0;
+        List<T>? matches = null;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (!candidate.IsActive || candidate is not T typed ||
+                !candidate.HasTagUnchecked(tag) || candidate.Collider is not { } shape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(query, transform, shape, candidate.Transform))
+                (matches ??= new List<T>()).Add(typed);
+        }
+        T[] result = matches?.ToArray() ?? Array.Empty<T>();
+        RecordQuery(QueryKind.Radius, started, candidates, result.Length);
+        return result;
+    }
+
     public int QueryRadius<T>(
         Vector2D center,
         float radius,
@@ -870,6 +1117,34 @@ public class SceneAggregate : IInstanceDrawTracker
             candidates++;
             if (!candidate.IsActive || candidate is not T typed ||
                 candidate.Collider is not { } shape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(query, transform, shape, candidate.Transform))
+                results.Add(typed);
+        }
+        RecordQuery(QueryKind.Radius, started, candidates, results.Count);
+        return results.Count;
+    }
+
+    public int QueryRadius<T>(
+        Vector2D center,
+        float radius,
+        GameplayTag tag,
+        GameplayQueryBuffer<T> results) where T : GameInstance
+    {
+        ValidateTag(tag);
+        ArgumentNullException.ThrowIfNull(results);
+        CollisionShape2D query = CollisionShape2D.Circle(radius);
+        Transform2D transform = Transform2D.Default with { Position = center };
+        results.Clear();
+        long started = BeginQuery();
+        int candidates = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (!candidate.IsActive || candidate is not T typed ||
+                !candidate.HasTagUnchecked(tag) || candidate.Collider is not { } shape)
             {
                 continue;
             }
@@ -922,6 +1197,12 @@ public class SceneAggregate : IInstanceDrawTracker
 
     private bool CanReceiveInput(GameInstance instance) =>
         instance.IsActive && (!Time.IsPaused || instance.TimeMode == InstanceTimeMode.Unscaled);
+
+    private static void ValidateTag(GameplayTag tag)
+    {
+        if (tag.IsEmpty)
+            throw new ArgumentException("Gameplay tag cannot be empty.", nameof(tag));
+    }
 
     private static bool ShouldUpdate(GameInstance instance, GameplayTimeSnapshot time) =>
         instance.IsActive && (!time.IsPaused || instance.TimeMode == InstanceTimeMode.Unscaled);
@@ -1305,36 +1586,82 @@ public class SceneAggregate : IInstanceDrawTracker
 
         public T? FindFirst<T>() where T : GameInstance => owner.FindFirst<T>();
 
+        public T? FindFirst<T>(GameplayTag tag) where T : GameInstance =>
+            owner.FindFirst<T>(tag);
+
         public IReadOnlyList<T> FindAll<T>() where T : GameInstance => owner.FindAll<T>();
+
+        public IReadOnlyList<T> FindAll<T>(GameplayTag tag) where T : GameInstance =>
+            owner.FindAll<T>(tag);
 
         public int FindAll<T>(GameplayQueryBuffer<T> results) where T : GameInstance =>
             owner.FindAll(results);
 
+        public int FindAll<T>(GameplayTag tag, GameplayQueryBuffer<T> results)
+            where T : GameInstance => owner.FindAll(tag, results);
+
         public int CountInstances<T>() where T : GameInstance => owner.CountInstances<T>();
+
+        public int CountInstances<T>(GameplayTag tag) where T : GameInstance =>
+            owner.CountInstances<T>(tag);
 
         public T? FirstCollision<T>(GameInstance source) where T : GameInstance =>
             owner.FirstCollision<T>(source);
 
+        public T? FirstCollision<T>(GameInstance source, GameplayTag tag)
+            where T : GameInstance => owner.FirstCollision<T>(source, tag);
+
         public IReadOnlyList<T> Collisions<T>(GameInstance source) where T : GameInstance =>
             owner.Collisions<T>(source);
+
+        public IReadOnlyList<T> Collisions<T>(GameInstance source, GameplayTag tag)
+            where T : GameInstance => owner.Collisions<T>(source, tag);
 
         public int Collisions<T>(GameInstance source, GameplayQueryBuffer<T> results)
             where T : GameInstance => owner.Collisions(source, results);
 
+        public int Collisions<T>(
+            GameInstance source,
+            GameplayTag tag,
+            GameplayQueryBuffer<T> results) where T : GameInstance =>
+            owner.Collisions(source, tag, results);
+
         public IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance =>
             owner.QueryArea<T>(bounds);
+
+        public IReadOnlyList<T> QueryArea<T>(Bounds2D bounds, GameplayTag tag)
+            where T : GameInstance => owner.QueryArea<T>(bounds, tag);
 
         public int QueryArea<T>(Bounds2D bounds, GameplayQueryBuffer<T> results)
             where T : GameInstance => owner.QueryArea(bounds, results);
 
+        public int QueryArea<T>(
+            Bounds2D bounds,
+            GameplayTag tag,
+            GameplayQueryBuffer<T> results) where T : GameInstance =>
+            owner.QueryArea(bounds, tag, results);
+
         public IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius)
             where T : GameInstance => owner.QueryRadius<T>(center, radius);
+
+        public IReadOnlyList<T> QueryRadius<T>(
+            Vector2D center,
+            float radius,
+            GameplayTag tag) where T : GameInstance =>
+            owner.QueryRadius<T>(center, radius, tag);
 
         public int QueryRadius<T>(
             Vector2D center,
             float radius,
             GameplayQueryBuffer<T> results) where T : GameInstance =>
             owner.QueryRadius(center, radius, results);
+
+        public int QueryRadius<T>(
+            Vector2D center,
+            float radius,
+            GameplayTag tag,
+            GameplayQueryBuffer<T> results) where T : GameInstance =>
+            owner.QueryRadius(center, radius, tag, results);
 
         public void RequestScene(SceneRef scene)
         {

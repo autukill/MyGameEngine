@@ -31,6 +31,7 @@ internal static class Program
         TestBuilderPlans();
         TestBuilderValidation();
         TestLogicalInputMap();
+        TestGameplayTags();
         TestSceneCatalogAndPrefabs();
         TestResourceOwnership();
         TestDefaultPresentationControllers();
@@ -363,6 +364,86 @@ internal static class Program
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         Check(allocated == 0,
             $"Input buffer and grace-period updates remain allocation-free ({allocated:N0} B)");
+    }
+
+    private static void TestGameplayTags()
+    {
+        Console.WriteLine("4. Strongly typed Gameplay Tags");
+        var enemy = new GameplayTag("actor.enemy");
+        var damageable = new GameplayTag("combat.damageable");
+        var player = new GameplayTag("actor.player");
+
+        var source = new TaggedProbe(new Vector2D(0f, 0f), player);
+        var nearEnemy = new TaggedProbe(new Vector2D(1f, 0f), enemy, damageable);
+        var farEnemy = new TaggedProbe(new Vector2D(100f, 0f), enemy);
+        var friendly = new TaggedProbe(new Vector2D(0f, 1f), player);
+        var inactiveEnemy = new TaggedProbe(new Vector2D(0f, -1f), enemy);
+        inactiveEnemy.SetActive(false, _ => { });
+
+        var scene = new SceneAggregate("GameplayTags");
+        scene.Add(source);
+        scene.Add(nearEnemy);
+        scene.Add(farEnemy);
+        scene.Add(friendly);
+        scene.Add(inactiveEnemy);
+
+        Check(nearEnemy.TagCount == 2 && nearEnemy.HasTag(enemy) &&
+              !nearEnemy.AddTag(enemy) && nearEnemy.RemoveTag(damageable) &&
+              !nearEnemy.RemoveTag(damageable) && nearEnemy.AddTag(damageable),
+            "Tag membership is validated, idempotent, and mutable at runtime");
+        Check(enemy != new GameplayTag("Actor.Enemy"),
+            "Gameplay tag names remain case-sensitive");
+
+        Check(ReferenceEquals(scene.FindFirst<TaggedProbe>(enemy), nearEnemy) &&
+              scene.FindAll<TaggedProbe>(enemy).Count == 3 &&
+              scene.CountInstances<TaggedProbe>(enemy) == 3,
+            "Find and count combine runtime type with one required tag");
+        Check(ReferenceEquals(scene.FirstCollision<TaggedProbe>(source, enemy), nearEnemy) &&
+              scene.Collisions<TaggedProbe>(source, enemy).Count == 1,
+            "Tag-filtered collisions exclude inactive and non-matching instances");
+        Check(scene.QueryArea<TaggedProbe>(new Bounds2D(-4f, -4f, 4f, 4f), enemy).Count == 1 &&
+              scene.QueryRadius<TaggedProbe>(Vector2D.Zero, 4f, enemy).Count == 1,
+            "Area and radius queries preserve active Collider filtering with tags");
+
+        friendly.AddTag(enemy);
+        Check(scene.Collisions<TaggedProbe>(source, enemy).Count == 2,
+            "Runtime tag additions affect subsequent queries immediately");
+        friendly.RemoveTag(enemy);
+
+        CheckThrows<ArgumentException>(
+            () => source.AddTag(default),
+            "Instances reject default gameplay tags");
+        CheckThrows<ArgumentException>(
+            () => scene.FindFirst<GameInstance>(default),
+            "Scene queries reject default gameplay tags");
+        CheckThrows<ArgumentException>(
+            () => new GameplayTag(" "),
+            "Gameplay tag names cannot be blank");
+
+        var results = new GameplayQueryBuffer<TaggedProbe>(4);
+        var bounds = new Bounds2D(-4f, -4f, 4f, 4f);
+        for (int i = 0; i < 64; i++)
+        {
+            scene.FindAll(enemy, results);
+            scene.Collisions(source, enemy, results);
+            scene.QueryArea(bounds, enemy, results);
+            scene.QueryRadius(Vector2D.Zero, 4f, enemy, results);
+        }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            scene.FindAll(enemy, results);
+            scene.Collisions(source, enemy, results);
+            scene.QueryArea(bounds, enemy, results);
+            scene.QueryRadius(Vector2D.Zero, 4f, enemy, results);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Buffered tag queries remain allocation-free after warmup ({allocated:N0} B)");
+
+        scene.Destroy(nearEnemy.Id);
+        Check(scene.CountInstances<TaggedProbe>(enemy) == 2,
+            "Destroyed tagged instances disappear from later queries");
     }
 
     private static void TestSceneCatalogAndPrefabs()
@@ -946,6 +1027,17 @@ internal static class Program
     private sealed class HostingPrefabProbe : GameInstance
     {
         public HostingPrefabProbe(Vector2D position) => Position = position;
+    }
+
+    private sealed class TaggedProbe : GameInstance
+    {
+        public TaggedProbe(Vector2D position, params GameplayTag[] tags)
+        {
+            Position = position;
+            Collider = CollisionShape2D.Circle(2f);
+            for (int i = 0; i < tags.Length; i++)
+                AddTag(tags[i]);
+        }
     }
 
     private sealed class LogicalInputProbe(

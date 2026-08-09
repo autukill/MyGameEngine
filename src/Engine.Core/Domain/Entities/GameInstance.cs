@@ -32,6 +32,7 @@ public class GameInstance
     private Dictionary<AlarmId, double>? _alarms;
     private List<AlarmId>? _alarmKeys;
     private List<AlarmId>? _firedAlarms;
+    private HashSet<GameplayTag>? _gameplayTags;
 
     public InstanceId Id { get; } = InstanceId.New();
 
@@ -121,6 +122,9 @@ public class GameInstance
 
     /// <summary>Optional lightweight collider used by Scene gameplay queries.</summary>
     public CollisionShape2D? Collider { get; set; }
+
+    /// <summary>Number of cross-cutting gameplay identities attached to this Instance.</summary>
+    public int TagCount => _gameplayTags?.Count ?? 0;
 
     /// <summary>
     /// Conservative per-View draw culling policy. Automatic uses LocalDrawBounds first, then the
@@ -272,6 +276,29 @@ public class GameInstance
         Scale.X * factor.X,
         Scale.Y * factor.Y);
 
+    public bool AddTag(GameplayTag tag)
+    {
+        ValidateTag(tag);
+        return (_gameplayTags ??= []).Add(tag);
+    }
+
+    public bool RemoveTag(GameplayTag tag)
+    {
+        ValidateTag(tag);
+        return _gameplayTags?.Remove(tag) == true;
+    }
+
+    public bool HasTag(GameplayTag tag)
+    {
+        ValidateTag(tag);
+        return HasTagUnchecked(tag);
+    }
+
+    public void ClearTags() => _gameplayTags?.Clear();
+
+    internal bool HasTagUnchecked(GameplayTag tag) =>
+        _gameplayTags?.Contains(tag) == true;
+
     protected bool KeyDown(InputKey key) => Controls.IsKeyDown(key);
 
     protected bool KeyPressed(InputKey key) => Controls.WasKeyPressed(key);
@@ -327,42 +354,108 @@ public class GameInstance
 
     protected T? FindFirst<T>() where T : GameInstance => RequireGameplay().FindFirst<T>();
 
+    protected GameInstance? FindFirst(GameplayTag tag) =>
+        RequireGameplay().FindFirst<GameInstance>(tag);
+
+    protected T? FindFirst<T>(GameplayTag tag) where T : GameInstance =>
+        RequireGameplay().FindFirst<T>(tag);
+
     protected IReadOnlyList<T> FindAll<T>() where T : GameInstance =>
         RequireGameplay().FindAll<T>();
+
+    protected IReadOnlyList<GameInstance> FindAll(GameplayTag tag) =>
+        RequireGameplay().FindAll<GameInstance>(tag);
+
+    protected IReadOnlyList<T> FindAll<T>(GameplayTag tag) where T : GameInstance =>
+        RequireGameplay().FindAll<T>(tag);
 
     /// <summary>Fills caller-owned reusable storage and returns its resulting count.</summary>
     protected int FindAll<T>(GameplayQueryBuffer<T> results) where T : GameInstance =>
         RequireGameplay().FindAll(results);
 
+    protected int FindAll<T>(GameplayTag tag, GameplayQueryBuffer<T> results)
+        where T : GameInstance => RequireGameplay().FindAll(tag, results);
+
     /// <summary>Counts committed T instances without creating a result collection.</summary>
     protected int CountInstances<T>() where T : GameInstance =>
         RequireGameplay().CountInstances<T>();
+
+    protected int CountInstances(GameplayTag tag) =>
+        RequireGameplay().CountInstances<GameInstance>(tag);
+
+    protected int CountInstances<T>(GameplayTag tag) where T : GameInstance =>
+        RequireGameplay().CountInstances<T>(tag);
 
     /// <summary>Returns the first active T whose collider overlaps this instance.</summary>
     protected T? FirstCollision<T>() where T : GameInstance =>
         RequireGameplay().FirstCollision<T>(this);
 
+    protected GameInstance? FirstCollision(GameplayTag tag) =>
+        RequireGameplay().FirstCollision<GameInstance>(this, tag);
+
+    protected T? FirstCollision<T>(GameplayTag tag) where T : GameInstance =>
+        RequireGameplay().FirstCollision<T>(this, tag);
+
     /// <summary>Returns all active T instances whose colliders overlap this instance.</summary>
     protected IReadOnlyList<T> Collisions<T>() where T : GameInstance =>
         RequireGameplay().Collisions<T>(this);
 
+    protected IReadOnlyList<GameInstance> Collisions(GameplayTag tag) =>
+        RequireGameplay().Collisions<GameInstance>(this, tag);
+
+    protected IReadOnlyList<T> Collisions<T>(GameplayTag tag) where T : GameInstance =>
+        RequireGameplay().Collisions<T>(this, tag);
+
     protected int Collisions<T>(GameplayQueryBuffer<T> results) where T : GameInstance =>
         RequireGameplay().Collisions(this, results);
+
+    protected int Collisions<T>(GameplayTag tag, GameplayQueryBuffer<T> results)
+        where T : GameInstance => RequireGameplay().Collisions(this, tag, results);
 
     protected IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance =>
         RequireGameplay().QueryArea<T>(bounds);
 
+    protected IReadOnlyList<GameInstance> QueryArea(Bounds2D bounds, GameplayTag tag) =>
+        RequireGameplay().QueryArea<GameInstance>(bounds, tag);
+
+    protected IReadOnlyList<T> QueryArea<T>(Bounds2D bounds, GameplayTag tag)
+        where T : GameInstance => RequireGameplay().QueryArea<T>(bounds, tag);
+
     protected int QueryArea<T>(Bounds2D bounds, GameplayQueryBuffer<T> results)
         where T : GameInstance => RequireGameplay().QueryArea(bounds, results);
 
+    protected int QueryArea<T>(
+        Bounds2D bounds,
+        GameplayTag tag,
+        GameplayQueryBuffer<T> results) where T : GameInstance =>
+        RequireGameplay().QueryArea(bounds, tag, results);
+
     protected IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius)
         where T : GameInstance => RequireGameplay().QueryRadius<T>(center, radius);
+
+    protected IReadOnlyList<GameInstance> QueryRadius(
+        Vector2D center,
+        float radius,
+        GameplayTag tag) => RequireGameplay().QueryRadius<GameInstance>(center, radius, tag);
+
+    protected IReadOnlyList<T> QueryRadius<T>(
+        Vector2D center,
+        float radius,
+        GameplayTag tag) where T : GameInstance =>
+        RequireGameplay().QueryRadius<T>(center, radius, tag);
 
     protected int QueryRadius<T>(
         Vector2D center,
         float radius,
         GameplayQueryBuffer<T> results) where T : GameInstance =>
         RequireGameplay().QueryRadius(center, radius, results);
+
+    protected int QueryRadius<T>(
+        Vector2D center,
+        float radius,
+        GameplayTag tag,
+        GameplayQueryBuffer<T> results) where T : GameInstance =>
+        RequireGameplay().QueryRadius(center, radius, tag, results);
 
     /// <summary>Requests a registered Scene switch at the safe boundary after the current Step.</summary>
     protected void SwitchScene(SceneRef scene) => RequireGameplay().RequestScene(scene);
@@ -472,6 +565,12 @@ public class GameInstance
     private IGameplayContext RequireGameplay() => _gameplay ??
         throw new InvalidOperationException(
             "This gameplay operation requires the instance to belong to a Scene.");
+
+    private static void ValidateTag(GameplayTag tag)
+    {
+        if (tag.IsEmpty)
+            throw new ArgumentException("Gameplay tag cannot be empty.", nameof(tag));
+    }
 
     // ============ DDD 战术行为（状态变更 → 领域事件） ============
 

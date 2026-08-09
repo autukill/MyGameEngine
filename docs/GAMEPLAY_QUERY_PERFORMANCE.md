@@ -19,6 +19,8 @@ public override void OnStep(double deltaTime)
 
 每次查询先清空内容但保留容量；具体 `GameplayQueryBuffer<T>` 上的 `foreach` 使用 struct enumerator。只需要数量时使用 `CountInstances<T>()`，不要创建 `FindAll<T>()` 结果。
 
+需要跨类型身份过滤时，使用 `FindAll(GameTags.Enemy, buffer)`、`CountInstances<T>(tag)` 或空间查询的 Tag 重载。Tag 查询仍走同一线性扫描并计入原有分类遥测；实例内部 Tag 集合在首次添加时延迟创建，预热后的 Buffer 查询保持 0 B。
+
 ## 运行
 
 ```powershell

@@ -115,6 +115,24 @@ public override void OnStep(double dt) => states.Update(dt);
 
 ## 碰撞响应
 
+当碰撞只关心玩法身份而非具体实现类型时，集中定义 Tag：
+
+```csharp
+public static readonly GameplayTag Enemy = new("actor.enemy");
+
+// Enemy 构造函数
+AddTag(GameTags.Enemy);
+
+// Projectile Step
+if (FirstCollision(GameTags.Enemy) is { } enemy)
+{
+    Destroy(enemy);
+    DestroySelf();
+}
+```
+
+以后新增 `FlyingEnemy` 或 `Boss` 不需要修改 Projectile。仍需具体类 API 时使用 `FirstCollision<Enemy>(GameTags.Damageable)`，同时保留编译期类型和运行时身份约束。
+
 ```csharp
 Collider = CollisionShape2D.Circle(5f);
 
