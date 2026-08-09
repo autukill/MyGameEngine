@@ -8,6 +8,7 @@
 - 飞机被限制在窗口范围内。
 - 子弹通过类型安全的 `PrefabRef<PlayerBullet>` 创建，并通过 `LifetimeBehavior` 自动销毁，展示可复用的 Owner 局部生命周期组合。
 - 子弹与目标使用轻量 Box Collider；命中后在安全帧边界切换到 Victory Scene。
+- Target 持有三点 `GameplayHealth`；每颗子弹造成一点伤害，只在 `BecameDepleted` 时销毁目标并切换 Victory，避免重复死亡副作用。
 - Victory Scene 中按 `Enter` 返回 Main Scene。
 - Sprite 使用声明式 `assets.json` 和构建时生成的强类型 `GameAssets` 引用。
 

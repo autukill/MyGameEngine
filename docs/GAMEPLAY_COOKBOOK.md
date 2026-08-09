@@ -136,12 +136,16 @@ AddTag(GameTags.Enemy);
 // Projectile Step
 if (FirstCollision(GameTags.Enemy) is { } enemy)
 {
-    Destroy(enemy);
     DestroySelf();
+    if (enemy is IHasGameplayHealth damageable &&
+        damageable.Health.ApplyDamage(1f).BecameDepleted)
+    {
+        Destroy(enemy);
+    }
 }
 ```
 
-以后新增 `FlyingEnemy` 或 `Boss` 不需要修改 Projectile。仍需具体类 API 时使用 `FirstCollision<Enemy>(GameTags.Damageable)`，同时保留编译期类型和运行时身份约束。
+Enemy 通过 `IHasGameplayHealth` 暴露 `GameplayHealth`。Tag 负责横切身份，接口负责可受伤能力，结构体变更结果确保死亡、计分和掉落只在 `BecameDepleted` 转换时执行一次。以后新增 `FlyingEnemy` 或 `Boss` 不需要修改 Projectile。完整边界见 [Gameplay Health 与 Damage](GAMEPLAY_HEALTH.md)。仍需具体类 API 时使用 `FirstCollision<Enemy>(GameTags.Damageable)`，同时保留编译期类型和运行时身份约束。
 
 ```csharp
 Collider = CollisionShape2D.Circle(5f);

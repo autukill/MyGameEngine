@@ -32,6 +32,7 @@ internal static class Program
         TestBuilderValidation();
         TestLogicalInputMap();
         TestGameplayCooldown();
+        TestGameplayHealth();
         TestGameplayTags();
         TestGameplayBehaviors();
         TestSceneCatalogAndPrefabs();
@@ -446,6 +447,76 @@ internal static class Program
         scene.Destroy(nearEnemy.Id);
         Check(scene.CountInstances<TaggedProbe>(enemy) == 2,
             "Destroyed tagged instances disappear from later queries");
+    }
+
+    private static void TestGameplayHealth()
+    {
+        Console.WriteLine("3c. Gameplay health and damage");
+        var health = new GameplayHealth(10f);
+        Check(health.CurrentHealth == 10f && health.MaximumHealth == 10f &&
+              health.Normalized == 1f && health.IsAlive && health.IsFull,
+            "Health starts full by default");
+
+        GameplayHealthChange damage = health.ApplyDamage(3f);
+        Check(damage.PreviousHealth == 10f && damage.CurrentHealth == 7f &&
+              damage.MaximumHealth == 10f && damage.Delta == -3f &&
+              damage.AppliedAmount == 3f && damage.IsDamage && !damage.BecameDepleted &&
+              health.Normalized == 0.7f,
+            "Damage reports the exact clamped value change");
+
+        damage = health.ApplyDamage(20f);
+        Check(damage.AppliedAmount == 7f && damage.BecameDepleted &&
+              health.IsDepleted && health.CurrentHealth == 0f,
+            "Overkill damage clamps at zero and reports one depletion transition");
+        damage = health.ApplyDamage(1f);
+        Check(!damage.Changed && !damage.BecameDepleted && damage.AppliedAmount == 0f,
+            "Repeated damage on depleted health has no duplicate transition");
+
+        GameplayHealthChange healing = health.Heal(4f);
+        Check(healing.IsHealing && healing.BecameAlive && !healing.ReachedFull &&
+              health.CurrentHealth == 4f,
+            "Healing can explicitly revive depleted health");
+        healing = health.Heal(20f);
+        Check(healing.AppliedAmount == 6f && healing.ReachedFull && health.IsFull,
+            "Overhealing clamps at maximum and reports reaching full health");
+
+        health.ApplyDamage(1f);
+        GameplayHealthChange reset = health.Reset();
+        Check(reset.ReachedFull && health.CurrentHealth == health.MaximumHealth,
+            "Reset restores full health and returns its change snapshot");
+
+        var depleted = new GameplayHealth(5f, 0f);
+        Check(depleted.IsDepleted && depleted.Normalized == 0f,
+            "Explicit initial health supports pre-depleted state");
+
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new GameplayHealth(0f),
+            "Health rejects non-positive maximum values");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new GameplayHealth(10f, 11f),
+            "Health rejects initial values above maximum");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => health.ApplyDamage(float.NaN),
+            "Damage rejects non-finite amounts");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => health.Heal(-1f),
+            "Healing rejects negative amounts");
+
+        var allocationHealth = new GameplayHealth(100f);
+        for (int i = 0; i < 64; i++)
+        {
+            allocationHealth.ApplyDamage(1f);
+            allocationHealth.Heal(1f);
+        }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            allocationHealth.ApplyDamage(1f);
+            allocationHealth.Heal(1f);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Health mutations and result snapshots remain allocation-free ({allocated:N0} B)");
     }
 
     private static void TestGameplayCooldown()

@@ -72,6 +72,7 @@ GameAssets.Packages.SharedPrimitives
 - 不可变 `InputMap`、`InputActionRef` 与 `InputAxis2DRef` 已把玩法意图从物理键位解耦；Hosting 集中绑定，Scene 注入现有和后续实例，稳态查询保持 0 B。
 - `InputActionBuffer` 与 `GameplayGracePeriod` 提供显式捕获/消费、暂停感知和零分配的预输入与条件宽限，不把跳跃、冷却等玩法规则塞入输入系统。
 - `GameplayCooldown` 提供 ready/use/progress/restart/reset 的 owner-local 冷却语义；AirplaneShooter 与 Asteroids 已移除重复的手写浮点计时，并继续继承暂停、时间缩放和 inactive 调度。
+- `GameplayHealth`、`GameplayHealthChange` 与 `IHasGameplayHealth` 提供钳制生命值、一次性耗尽/复活转换和 Tag + capability 的伤害调用方式；不把护甲、来源、死亡表现或 RPG 规则固化进 Core。
 - 强类型 `GameplayTag` 与 Find/Collision/Area/Radius 对称重载已让横切玩法身份脱离继承树；类型和单 Tag 可组合，Buffer 路径保持 0 B，不提前维护 Tag 索引。
 - 轻量 `GameplayBehavior<TInstance>` 提供强类型 Owner、冻结装配、确定性生命周期和暂停感知调度；`LifetimeBehavior` 已替代两个 Playground 的重复子弹 Alarm，稳态分发保持 0 B。
 - 技能与 Buff 已完成需求分析：推荐独立 Abilities 切片，以固定 BuffContainer/SkillBook 管理动态 Runtime，先验证 Buff 叠层、来源和安全修改，再实现 Skill 提交与游戏专属 Executor；不提前引入万能 Effect DSL 或通用 RPG 属性系统。详见[技能与 Buff 功能设计思考](SKILLS_AND_BUFFS_DESIGN.md)。
@@ -93,7 +94,7 @@ GameAssets.Packages.SharedPrimitives
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：多 Camera/Viewport 已支持镜像呈现、独立 Render View、声明式跟随策略、每 View 零分配 Layer 过滤，以及显式 Direct/HDR/Bloom/Tone Mapping Profile。独立 100/1,000/10,000 实例基准与双 View resize/release GPU 回归均已完成；10,000 实例双 View 调度低于 `0.5 ms` 且 `0 B/frame`，当前不引入跨 View 缓存，详见[多 View 性能基准](MULTI_VIEW_PERFORMANCE.md)。这条路线现在闭环，后续工作回到直接改善 Gameplay Authoring 的能力。查询 Buffer、真实负载统计、强类型状态机、暂停时间域、Scene 生命周期零稳态分配和 owner-local Cooldown 已经落地；当前 1,000 Collider 线性扫描约 0.0209 ms/查询，不提前引入 Spatial Hash。下一项应优先评估同样高频且边界窄的 Health/Damage 组合，而不是提前展开完整 Skill/Buff、UI、协程或物理系统。逐帧多区域与 Sprite 异形碰撞继续保持需求记录。
+下一步优先级：多 Camera/Viewport 路线已经闭环；Gameplay Authoring 已具备查询 Buffer、强类型状态机、暂停时间域、Scene 生命周期零分配、Cooldown 以及 Health/Damage。下一项优先评估轻量 Gameplay Signals/消息边界，让命中、击杀和生成等对象间通知不依赖全局事件总线；若实际示例不足以证明需求，则改为小型组合式计数器/资源值，而不提前展开完整 Skill/Buff、UI、协程或物理系统。当前 1,000 Collider 线性扫描约 0.0209 ms/查询，不提前引入 Spatial Hash；逐帧多区域与 Sprite 异形碰撞继续保持需求记录。
 
 ## 设计约束
 

@@ -5,7 +5,7 @@ using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.ValueObjects;
 
-public sealed class Target : GameInstance
+public sealed class Target : GameInstance, IHasGameplayHealth
 {
     private const double SpawnDuration = .4d;
     private static readonly Vector2D SpawnScale = new(.35f, .35f);
@@ -14,6 +14,7 @@ public sealed class Target : GameInstance
     private static readonly Vector4 ActiveColor = new(1f, .2f, .25f, 1f);
 
     private readonly GameplayStateMachine<TargetState> _states;
+    public GameplayHealth Health { get; } = new(3f);
 
     public Target(SpriteRef sprite, Vector2D position)
     {

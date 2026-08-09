@@ -21,8 +21,9 @@ public sealed class PlayerBullet : GameInstance
     {
         MoveBy(new Vector2D(0f, -Speed * (float)deltaTime));
         if (FirstCollision<Target>() is not { } target) return;
-        Destroy(target);
         DestroySelf();
+        if (!target.Health.ApplyDamage(1f).BecameDepleted) return;
+        Destroy(target);
         SwitchScene(GameScenes.Victory);
     }
 }

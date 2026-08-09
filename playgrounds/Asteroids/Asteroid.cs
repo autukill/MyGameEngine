@@ -4,11 +4,12 @@ using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.ValueObjects;
 
-public sealed class Asteroid : GameInstance
+public sealed class Asteroid : GameInstance, IHasGameplayHealth
 {
     private readonly Vector2D _velocity;
     private readonly float _worldWidth;
     private readonly float _worldHeight;
+    public GameplayHealth Health { get; } = new(2f);
 
     public Asteroid(SpriteRef sprite, in AsteroidSpawnArgs spawn)
     {

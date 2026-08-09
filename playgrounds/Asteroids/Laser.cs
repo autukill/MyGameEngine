@@ -24,7 +24,11 @@ public sealed class Laser : GameInstance
     {
         MoveBy(_velocity * (float)deltaTime);
         if (FirstCollision(GameTags.Enemy) is not { } enemy) return;
-        Destroy(enemy);
         DestroySelf();
+        if (enemy is IHasGameplayHealth damageable &&
+            damageable.Health.ApplyDamage(1f).BecameDepleted)
+        {
+            Destroy(enemy);
+        }
     }
 }

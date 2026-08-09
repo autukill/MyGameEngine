@@ -44,6 +44,8 @@ Context 只暴露实例生命周期和查询，不暴露 Window、RenderPipeline
 
 `GameplayTag` 让敌人、可受伤对象、拾取物等身份不再依赖单一继承树；实例用 `AddTag/RemoveTag/HasTag` 管理身份，查询继续复用现有 Buffer 和遥测。完整语义见 [Gameplay Tags](GAMEPLAY_TAGS.md)。
 
+需要通用生命值时，让实例实现 `IHasGameplayHealth` 并持有 `GameplayHealth`。Tag 用来筛选敌人或可受伤身份，接口提供实际能力；`ApplyDamage/Heal/Reset` 返回零分配 `GameplayHealthChange`，调用方通过 `BecameDepleted` 决定销毁、切 Scene 或奖励，基础容器不隐藏死亡副作用。完整语义见 [Gameplay Health 与 Damage](GAMEPLAY_HEALTH.md)。
+
 多个对象共享的生命周期或局部能力可通过 `UseBehavior` 构造期组合；Behavior 自动继承 Owner 的暂停、时间域与安全销毁边界。第一版内置 `LifetimeBehavior`，自定义行为可继承 `GameplayBehavior<TInstance>` 获得强类型 Owner。完整边界见 [Gameplay Behavior 组合](GAMEPLAY_BEHAVIORS.md)。
 
 ## 帧边界语义
