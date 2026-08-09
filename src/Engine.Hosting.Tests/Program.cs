@@ -32,6 +32,7 @@ internal static class Program
         TestBuilderValidation();
         TestLogicalInputMap();
         TestGameplayTags();
+        TestGameplayBehaviors();
         TestSceneCatalogAndPrefabs();
         TestResourceOwnership();
         TestDefaultPresentationControllers();
@@ -444,6 +445,110 @@ internal static class Program
         scene.Destroy(nearEnemy.Id);
         Check(scene.CountInstances<TaggedProbe>(enemy) == 2,
             "Destroyed tagged instances disappear from later queries");
+    }
+
+    private static void TestGameplayBehaviors()
+    {
+        Console.WriteLine("5. Lightweight Gameplay Behavior composition");
+        var order = new List<string>();
+        var owner = new BehaviorOwnerProbe(order);
+        var first = owner.UseBehavior(new RecordingBehavior<BehaviorOwnerProbe>("first", order));
+        owner.UseBehavior(new RecordingBehavior<BehaviorOwnerProbe>("second", order));
+        var scene = new SceneAggregate("Behaviors");
+        scene.Add(owner);
+        scene.PerformStep(0.25d);
+
+        string[] expected =
+        [
+            "owner.create", "first.create", "second.create",
+            "owner.begin", "first.begin", "second.begin",
+            "owner.step", "first.step", "second.step",
+            "owner.end", "first.end", "second.end"
+        ];
+        Check(order.SequenceEqual(expected) && owner.BehaviorCount == 2 &&
+              ReferenceEquals(first.Owner, owner) &&
+              ReferenceEquals(owner.FindBehavior<RecordingBehavior<BehaviorOwnerProbe>>(), first),
+            "Owner hooks run first and Behaviors run in declaration order");
+
+        CheckThrows<InvalidOperationException>(
+            () => owner.UseBehavior(new CountingBehavior<BehaviorOwnerProbe>()),
+            "Behavior composition freezes when an Instance enters a Scene");
+        var unattachedOwner = new BehaviorOwnerProbe([]);
+        CheckThrows<InvalidOperationException>(
+            () => unattachedOwner.UseBehavior(first),
+            "One Behavior instance cannot be shared by multiple owners");
+        CheckThrows<ArgumentException>(
+            () => unattachedOwner.UseBehavior(new CountingBehavior<HostingPrefabProbe>()),
+            "Strongly typed Behaviors reject incompatible owners during composition");
+
+        order.Clear();
+        scene.Destroy(owner.Id);
+        Check(order.SequenceEqual(
+            new[] { "owner.destroy", "second.destroy", "first.destroy" }),
+            "Owner destroys first and Behaviors unwind in reverse declaration order");
+
+        var failureOrder = new List<string>();
+        var failingOwner = new BehaviorOwnerProbe(failureOrder);
+        failingOwner.UseBehavior(
+            new RecordingBehavior<BehaviorOwnerProbe>("created", failureOrder));
+        failingOwner.UseBehavior(new FailingCreateBehavior(failureOrder));
+        var failureScene = new SceneAggregate("BehaviorCreateFailure");
+        CheckThrows<InvalidOperationException>(
+            () => failureScene.Add(failingOwner),
+            "Behavior creation failure aborts Scene attachment");
+        Check(failureScene.FindById(failingOwner.Id) is null &&
+              failureOrder.SequenceEqual(new[]
+              {
+                  "owner.create", "created.create", "failing.create",
+                  "created.destroy", "owner.destroy"
+              }),
+            "Creation failure unwinds initialized Behavior state and removes the owner");
+
+        var lifetimeOwner = new CountingOwner();
+        var lifetime = lifetimeOwner.UseBehavior(new LifetimeBehavior(0.05d));
+        var lifetimeScene = new SceneAggregate("LifetimeBehavior");
+        lifetimeScene.Add(lifetimeOwner);
+        lifetimeScene.PerformStep(0.02d);
+        Check(lifetimeScene.FindById(lifetimeOwner.Id) is not null &&
+              lifetime.RemainingSeconds > 0d,
+            "LifetimeBehavior remains active before its owner-time duration");
+        lifetimeScene.PerformStep(0.04d);
+        Check(lifetimeScene.FindById(lifetimeOwner.Id) is null && lifetime.IsCompleted,
+            "LifetimeBehavior requests owner destruction at the safe Step boundary");
+
+        var pauseOwner = new CountingOwner();
+        var pauseBehavior = pauseOwner.UseBehavior(new CountingBehavior<CountingOwner>());
+        var unscaledOwner = new CountingOwner { TimeMode = InstanceTimeMode.Unscaled };
+        var unscaledBehavior = unscaledOwner.UseBehavior(new CountingBehavior<CountingOwner>());
+        var pausedScene = new SceneAggregate("PausedBehaviors");
+        pausedScene.Add(pauseOwner);
+        pausedScene.Add(unscaledOwner);
+        var pauseKey = new GameplayPauseKey("behavior-test");
+        pausedScene.Time.Pause(pauseKey);
+        pausedScene.PerformStep(0.1d);
+        Check(pauseBehavior.StepCount == 0 && unscaledBehavior.StepCount == 1,
+            "Behavior scheduling inherits Gameplay and Unscaled owner time domains");
+        pausedScene.Time.Resume(pauseKey);
+        pauseOwner.SetActive(false, _ => { });
+        pausedScene.PerformStep(0.1d);
+        Check(pauseBehavior.StepCount == 0 && unscaledBehavior.StepCount == 2,
+            "Inactive owners also suppress their Behavior lifecycle");
+
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new LifetimeBehavior(double.NaN),
+            "LifetimeBehavior rejects non-finite durations");
+
+        var allocationOwner = new CountingOwner();
+        allocationOwner.UseBehavior(new CountingBehavior<CountingOwner>());
+        allocationOwner.UseBehavior(new CountingBehavior<CountingOwner>());
+        var allocationScene = new SceneAggregate("BehaviorAllocation");
+        allocationScene.Add(allocationOwner);
+        for (int i = 0; i < 64; i++) allocationScene.PerformStep(1d / 60d);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++) allocationScene.PerformStep(1d / 60d);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Behavior lifecycle dispatch remains allocation-free after warmup ({allocated:N0} B)");
     }
 
     private static void TestSceneCatalogAndPrefabs()
@@ -1038,6 +1143,61 @@ internal static class Program
             for (int i = 0; i < tags.Length; i++)
                 AddTag(tags[i]);
         }
+    }
+
+    private sealed class BehaviorOwnerProbe(List<string> order) : GameInstance
+    {
+        public override void OnCreate() => order.Add("owner.create");
+        public override void OnBeginStep(double deltaTime) => order.Add("owner.begin");
+        public override void OnStep(double deltaTime) => order.Add("owner.step");
+        public override void OnEndStep(double deltaTime) => order.Add("owner.end");
+        public override void OnDestroy() => order.Add("owner.destroy");
+    }
+
+    private sealed class RecordingBehavior<TOwner> : GameplayBehavior<TOwner>
+        where TOwner : GameInstance
+    {
+        private readonly List<string> _order;
+        private readonly string _create;
+        private readonly string _begin;
+        private readonly string _step;
+        private readonly string _end;
+        private readonly string _destroy;
+
+        public RecordingBehavior(string name, List<string> order)
+        {
+            _order = order;
+            _create = $"{name}.create";
+            _begin = $"{name}.begin";
+            _step = $"{name}.step";
+            _end = $"{name}.end";
+            _destroy = $"{name}.destroy";
+        }
+
+        public override void OnCreate() => _order.Add(_create);
+        public override void OnBeginStep(double deltaTime) => _order.Add(_begin);
+        public override void OnStep(double deltaTime) => _order.Add(_step);
+        public override void OnEndStep(double deltaTime) => _order.Add(_end);
+        public override void OnDestroy() => _order.Add(_destroy);
+    }
+
+    private sealed class FailingCreateBehavior(List<string> order)
+        : GameplayBehavior<BehaviorOwnerProbe>
+    {
+        public override void OnCreate()
+        {
+            order.Add("failing.create");
+            throw new InvalidOperationException("Expected Behavior creation failure.");
+        }
+    }
+
+    private sealed class CountingOwner : GameInstance { }
+
+    private sealed class CountingBehavior<TOwner> : GameplayBehavior<TOwner>
+        where TOwner : GameInstance
+    {
+        public int StepCount { get; private set; }
+        public override void OnStep(double deltaTime) => StepCount++;
     }
 
     private sealed class LogicalInputProbe(

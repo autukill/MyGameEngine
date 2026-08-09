@@ -6,7 +6,6 @@ using GameEngine.Core.Domain.ValueObjects;
 
 public sealed class Laser : GameInstance
 {
-    private static readonly AlarmId Lifetime = new("lifetime");
     private readonly Vector2D _velocity;
 
     public Laser(SpriteRef sprite, in LaserSpawnArgs spawn)
@@ -18,9 +17,8 @@ public sealed class Laser : GameInstance
         Color = new(0.35f, 1f, 0.85f, 1f);
         Collider = CollisionShape2D.Circle(5f);
         AddTag(GameTags.PlayerProjectile);
+        UseBehavior(new LifetimeBehavior(1.1d));
     }
-
-    public override void OnCreate() => SetAlarm(Lifetime, 1.1d);
 
     public override void OnStep(double deltaTime)
     {
@@ -28,10 +26,5 @@ public sealed class Laser : GameInstance
         if (FirstCollision(GameTags.Enemy) is not { } enemy) return;
         Destroy(enemy);
         DestroySelf();
-    }
-
-    public override void OnAlarm(AlarmId alarm)
-    {
-        if (alarm == Lifetime) DestroySelf();
     }
 }

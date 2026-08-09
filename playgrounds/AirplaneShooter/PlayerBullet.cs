@@ -6,7 +6,6 @@ using GameEngine.Core.Domain.ValueObjects;
 
 public sealed class PlayerBullet : GameInstance
 {
-    private static readonly AlarmId Lifetime = new("lifetime");
     private const float Speed = 620f;
 
     public PlayerBullet(SpriteRef sprite, Vector2D position)
@@ -15,9 +14,8 @@ public sealed class PlayerBullet : GameInstance
         Position = position;
         Color = new(0.35f, 0.95f, 1f, 1f);
         Collider = CollisionShape2D.Box(8f, 24f);
+        UseBehavior(new LifetimeBehavior(1.5d));
     }
-
-    public override void OnCreate() => SetAlarm(Lifetime, 1.5d);
 
     public override void OnStep(double deltaTime)
     {
@@ -26,11 +24,5 @@ public sealed class PlayerBullet : GameInstance
         Destroy(target);
         DestroySelf();
         SwitchScene(GameScenes.Victory);
-    }
-
-    public override void OnAlarm(AlarmId alarm)
-    {
-        if (alarm == Lifetime)
-            DestroySelf();
     }
 }

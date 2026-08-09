@@ -1,6 +1,7 @@
 namespace GameEngine.Core.Domain.Entities;
 
 using System.Numerics;
+using System.Runtime.ExceptionServices;
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.Gameplay;
@@ -33,6 +34,8 @@ public class GameInstance
     private List<AlarmId>? _alarmKeys;
     private List<AlarmId>? _firedAlarms;
     private HashSet<GameplayTag>? _gameplayTags;
+    private List<GameplayBehavior>? _behaviors;
+    private bool _behaviorsFrozen;
 
     public InstanceId Id { get; } = InstanceId.New();
 
@@ -125,6 +128,9 @@ public class GameInstance
 
     /// <summary>Number of cross-cutting gameplay identities attached to this Instance.</summary>
     public int TagCount => _gameplayTags?.Count ?? 0;
+
+    /// <summary>Number of construction-time gameplay behaviors owned by this Instance.</summary>
+    public int BehaviorCount => _behaviors?.Count ?? 0;
 
     /// <summary>
     /// Conservative per-View draw culling policy. Automatic uses LocalDrawBounds first, then the
@@ -298,6 +304,32 @@ public class GameInstance
 
     internal bool HasTagUnchecked(GameplayTag tag) =>
         _gameplayTags?.Contains(tag) == true;
+
+    /// <summary>
+    /// Attaches one reusable behavior before this Instance enters a Scene. The returned instance
+    /// can be retained by the owner for later configuration or inspection.
+    /// </summary>
+    public TBehavior UseBehavior<TBehavior>(TBehavior behavior)
+        where TBehavior : GameplayBehavior
+    {
+        ArgumentNullException.ThrowIfNull(behavior);
+        if (_behaviorsFrozen)
+            throw new InvalidOperationException(
+                "Gameplay behaviors cannot be added after an Instance enters a Scene.");
+        behavior.Attach(this);
+        (_behaviors ??= []).Add(behavior);
+        return behavior;
+    }
+
+    public TBehavior? FindBehavior<TBehavior>() where TBehavior : GameplayBehavior
+    {
+        if (_behaviors is null) return null;
+        for (int i = 0; i < _behaviors.Count; i++)
+        {
+            if (_behaviors[i] is TBehavior behavior) return behavior;
+        }
+        return null;
+    }
 
     protected bool KeyDown(InputKey key) => Controls.IsKeyDown(key);
 
@@ -490,6 +522,88 @@ public class GameInstance
 
     public bool IsAlarmSet(AlarmId alarm) => _alarms?.ContainsKey(alarm) == true;
 
+    internal void DispatchCreate()
+    {
+        _behaviorsFrozen = true;
+        int createdBehaviors = 0;
+        bool ownerCreated = false;
+        try
+        {
+            OnCreate();
+            ownerCreated = true;
+            if (_behaviors is null) return;
+            for (int i = 0; i < _behaviors.Count; i++)
+            {
+                _behaviors[i].OnCreate();
+                createdBehaviors++;
+            }
+        }
+        catch
+        {
+            if (_behaviors is not null)
+            {
+                for (int i = createdBehaviors - 1; i >= 0; i--)
+                {
+                    try { _behaviors[i].OnDestroy(); }
+                    catch { /* Preserve the creation failure. */ }
+                }
+            }
+            if (ownerCreated)
+            {
+                try { OnDestroy(); }
+                catch { /* Preserve the creation failure. */ }
+            }
+            throw;
+        }
+    }
+
+    internal void DispatchBeginStep(double deltaTime)
+    {
+        OnBeginStep(deltaTime);
+        if (_behaviors is null) return;
+        for (int i = 0; i < _behaviors.Count; i++)
+            _behaviors[i].OnBeginStep(deltaTime);
+    }
+
+    internal void DispatchStep(double deltaTime)
+    {
+        OnStep(deltaTime);
+        if (_behaviors is null) return;
+        for (int i = 0; i < _behaviors.Count; i++)
+            _behaviors[i].OnStep(deltaTime);
+    }
+
+    internal void DispatchEndStep(double deltaTime)
+    {
+        OnEndStep(deltaTime);
+        if (_behaviors is null) return;
+        for (int i = 0; i < _behaviors.Count; i++)
+            _behaviors[i].OnEndStep(deltaTime);
+    }
+
+    internal void DispatchDestroy()
+    {
+        List<Exception>? failures = null;
+        try { OnDestroy(); }
+        catch (Exception exception) { (failures ??= []).Add(exception); }
+
+        if (_behaviors is not null)
+        {
+            for (int i = _behaviors.Count - 1; i >= 0; i--)
+            {
+                try { _behaviors[i].OnDestroy(); }
+                catch (Exception exception) { (failures ??= []).Add(exception); }
+            }
+        }
+
+        if (failures is not { Count: > 0 }) return;
+        if (failures.Count == 1)
+            ExceptionDispatchInfo.Capture(failures[0]).Throw();
+        throw new AggregateException("Gameplay behavior destruction failed.", failures);
+    }
+
+    internal void RequestDestroyFromBehavior() => RequireGameplay().Destroy(Id);
+
     internal void AdvanceSpriteAnimation(double deltaTime)
     {
         if (Sprite.IsEmpty || SpriteResolver is null || ImageSpeed == 0f) return;
@@ -538,6 +652,7 @@ public class GameInstance
         ArgumentNullException.ThrowIfNull(gameplay);
         if (_gameplay is not null && !ReferenceEquals(_gameplay, gameplay))
             throw new InvalidOperationException("Instance already belongs to another Scene.");
+        _behaviorsFrozen = true;
         _gameplay = gameplay;
     }
 

@@ -72,6 +72,7 @@ GameAssets.Packages.SharedPrimitives
 - 不可变 `InputMap`、`InputActionRef` 与 `InputAxis2DRef` 已把玩法意图从物理键位解耦；Hosting 集中绑定，Scene 注入现有和后续实例，稳态查询保持 0 B。
 - `InputActionBuffer` 与 `GameplayGracePeriod` 提供显式捕获/消费、暂停感知和零分配的预输入与条件宽限，不把跳跃、冷却等玩法规则塞入输入系统。
 - 强类型 `GameplayTag` 与 Find/Collision/Area/Radius 对称重载已让横切玩法身份脱离继承树；类型和单 Tag 可组合，Buffer 路径保持 0 B，不提前维护 Tag 索引。
+- 轻量 `GameplayBehavior<TInstance>` 提供强类型 Owner、冻结装配、确定性生命周期和暂停感知调度；`LifetimeBehavior` 已替代两个 Playground 的重复子弹 Alarm，稳态分发保持 0 B。
 - Scene 注入实例级 `IGameplayContext`，提供 `Spawn/DestroySelf/Destroy/Find`，不引入全局 Service Locator。
 - Gameplay Spawn/Destroy 在 End Step 后按请求顺序确定性提交；新实例下一帧 Step，待销毁实例完成当前 End Step。
 - `AlarmId`、`SetAlarm/CancelAlarm/OnAlarm` 提供无协程依赖的轻量计时。

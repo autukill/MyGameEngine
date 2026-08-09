@@ -7,7 +7,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 ## 当前能力
 
 - GMS 风格实例生命周期：Create、Begin/Step/End Step、Begin/Draw/End Draw、Draw GUI、Key Down/Up、Destroy。
-- Gameplay Authoring：直接 Position/Rotation/Scale、逻辑 Input Action/Axis、输入缓冲与条件宽限、实例级 Spawn/Destroy/Find、确定性帧边界提交与轻量 Alarm。
+- Gameplay Authoring：直接 Position/Rotation/Scale、逻辑 Input Action/Axis、输入缓冲与条件宽限、实例级 Spawn/Destroy/Find、轻量 Behavior 组合、确定性帧边界提交与 Alarm。
 - Gameplay Motion：21 种无状态 Easing、标量/位置/颜色/最短角 Tween，以及限速和半衰期平滑追踪。
 - Gameplay Time：Gameplay/Unscaled 时间域、owner/key 暂停、单一 TimeScale；暂停冻结逻辑但继续渲染和安全帧边界。
 - Gameplay Runtime：Scene Input/Step/Draw/DrawGUI 使用可复用快照，实例规模预热后保持零托管分配，并保留确定性阶段边界。
@@ -131,7 +131,7 @@ dotnet run --project playgrounds/AirplaneShooter/AirplaneShooter.csproj
 dotnet run --project playgrounds/Asteroids/Asteroids.csproj
 ```
 
-完整配方见 [Gameplay Cookbook](docs/GAMEPLAY_COOKBOOK.md)，输入装配见 [逻辑 Input Actions](docs/INPUT_ACTIONS.md)，跨类型身份与过滤见 [Gameplay Tags](docs/GAMEPLAY_TAGS.md)，空间查询的实测基线与 Spatial Hash 决策见 [Gameplay 空间查询基准](docs/GAMEPLAY_QUERY_PERFORMANCE.md)。
+完整配方见 [Gameplay Cookbook](docs/GAMEPLAY_COOKBOOK.md)，输入装配见 [逻辑 Input Actions](docs/INPUT_ACTIONS.md)，跨类型身份与过滤见 [Gameplay Tags](docs/GAMEPLAY_TAGS.md)，局部能力复用见 [Gameplay Behavior 组合](docs/GAMEPLAY_BEHAVIORS.md)，空间查询的实测基线与 Spatial Hash 决策见 [Gameplay 空间查询基准](docs/GAMEPLAY_QUERY_PERFORMANCE.md)。
 
 Runner 内容：4 个彩色方块绕场景中心运动，鼠标控制圆形 Stencil 聚光灯；世界颜色先进入 RGBA16F Scene，随后经过 HDR Bloom 与 ACES Tone Mapping 输出到屏幕。
 

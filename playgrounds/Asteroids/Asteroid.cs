@@ -24,13 +24,13 @@ public sealed class Asteroid : GameInstance
         Collider = CollisionShape2D.Circle(spawn.Radius);
         AddTag(GameTags.Enemy);
         AddTag(GameTags.Damageable);
+        UseBehavior(new SpinBehavior(0.7f));
     }
 
     public override void OnStep(double deltaTime)
     {
         float dt = (float)deltaTime;
         MoveBy(_velocity * dt);
-        RotateBy(0.7f * dt);
         WrapAround();
     }
 

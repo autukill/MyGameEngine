@@ -205,7 +205,7 @@ public class SceneAggregate : IInstanceDrawTracker
         {
             instance.AttachDrawTracker(this);
             IndexInstance(instance);
-            instance.OnCreate();
+            instance.DispatchCreate();
         }
         catch
         {
@@ -236,7 +236,7 @@ public class SceneAggregate : IInstanceDrawTracker
     public void Destroy(InstanceId id)
     {
         if (!_instances.TryGetValue(id, out var instance)) return;
-        instance.OnDestroy();
+        instance.DispatchDestroy();
         Time.ReleaseOwner(id);
         instance.DetachDrawTracker(this);
         UnindexInstance(id);
@@ -325,7 +325,7 @@ public class SceneAggregate : IInstanceDrawTracker
         foreach (var instance in _lifecycleSnapshot)
         {
             if (ShouldUpdate(instance, time))
-                instance.OnBeginStep(DeltaFor(instance, time));
+                instance.DispatchBeginStep(DeltaFor(instance, time));
         }
 
         // GMS Step：主游戏逻辑
@@ -333,7 +333,7 @@ public class SceneAggregate : IInstanceDrawTracker
         foreach (var instance in _lifecycleSnapshot)
         {
             if (ShouldUpdate(instance, time))
-                instance.OnStep(DeltaFor(instance, time));
+                instance.DispatchStep(DeltaFor(instance, time));
         }
 
         // GMS End Step：校验/后处理
@@ -341,7 +341,7 @@ public class SceneAggregate : IInstanceDrawTracker
         foreach (var instance in _lifecycleSnapshot)
         {
             if (ShouldUpdate(instance, time))
-                instance.OnEndStep(DeltaFor(instance, time));
+                instance.DispatchEndStep(DeltaFor(instance, time));
         }
 
         // Sprite 动画在所有 End Step 完成后统一推进，Draw 阶段读取新帧。
@@ -1183,7 +1183,7 @@ public class SceneAggregate : IInstanceDrawTracker
         var nonPersistent = _instances.Values.Where(i => !i.IsPersistent).ToList();
         foreach (var instance in nonPersistent)
         {
-            instance.OnDestroy();
+            instance.DispatchDestroy();
             Time.ReleaseOwner(instance.Id);
             instance.DetachDrawTracker(this);
             UnindexInstance(instance.Id);

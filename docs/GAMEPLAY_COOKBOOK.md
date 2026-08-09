@@ -83,6 +83,17 @@ Spawn(BulletPrefab, Position);
 
 ## Alarm 生命周期和周期生成
 
+仅需要“存在一段时间后销毁”时，优先复用 Behavior：
+
+```csharp
+public Bullet(...)
+{
+    UseBehavior(new LifetimeBehavior(1.5d));
+}
+```
+
+需要到期执行对象专属回调或周期性重新调度时继续使用 Alarm。Behavior 与 Alarm 都继承 Owner 的时间域和暂停语义，但 Behavior 更适合跨对象复用完整局部能力。
+
 ```csharp
 private static readonly AlarmId SpawnTimer = new("spawn");
 public override void OnCreate() => SetAlarm(SpawnTimer, 0d);

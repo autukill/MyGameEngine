@@ -67,6 +67,7 @@
 - `GameplayStateMachine<TState>` 提供强类型 Enter/Step/Exit、`Elapsed`、显式 Restart 和回调后确定性切换；冲突与循环快速失败，稳态 Update/Change 为 0 B，AirplaneShooter Target 已用于验证 Spawning → Active。
 - `GameplayQueryBuffer<T>` 与 `CountInstances<T>()` 为高频 Find/Collision/Area/Radius 提供 0 B 结果复用；便利数组 API 保持不变，Hosting 遥测按采样 Step 汇总查询次数、候选、命中和耗时，Asteroids 提供 `--diagnostics` 出口。
 - `GameplayTag` 为敌人、可受伤对象、拾取物等横切身份提供大小写敏感的强类型引用；Find/Collision/Area/Radius 支持类型与单 Tag 组合，Asteroids 的射击和受击已解除对具体敌人类的依赖。
+- `GameplayBehavior<TInstance>` 为 Owner 局部能力提供构造期冻结组合、确定性顺序、创建失败回滚、暂停/时间域继承和 0 B 稳态调度；内置 `LifetimeBehavior`，Asteroids 展示项目自定义 `SpinBehavior`。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
 - Hosting 第二阶段多 Camera 已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Runner `--split-cameras` 验证两台真实 Camera。
 - 多 View 效果策略已显式化：主 View 由 `UseHdr` 配置；次级 View 默认 Direct，也可独立选择 HDR + Tone Mapping 与可选 Bloom。配置报告额外 Pass/租约，工厂按输入 Surface 尺寸创建目标，次级 View 不承担未声明成本。
