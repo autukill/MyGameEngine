@@ -75,6 +75,8 @@ Scene + Stencil + Bloom + Tone Mapping  （一次）
 
 `main` 保持为 `context.Camera`；额外 View 通过 `context.GetRenderView(new RenderViewRef("player.two"))` 取得。每个 `RenderView` 拥有独立 Camera、SceneColor 根 Surface、SceneRenderPass、RenderScale 和 Viewport，但不公开其 RenderTarget。resize 会按槽位像素尺寸与 RenderScale 同步 Camera 和目标。
 
+玩法代码可为每个 View 的 Camera 创建独立 `CameraFollowController`，获得 Anchor、Dead Zone、平滑、世界边界和叠加震屏；控制器不拥有 Scene/RenderTarget，也不需要继承 GameInstance。完整用法见[Camera 跟随指南](CAMERA_FOLLOWING.md)。
+
 ```csharp
 RenderView second = context.GetRenderView(new RenderViewRef("player.two"));
 second.Camera.Position = new Vector2(800, 0);

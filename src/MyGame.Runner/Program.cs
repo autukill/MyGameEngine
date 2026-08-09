@@ -8,6 +8,7 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Features.Bloom.Domain;
+using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.StencilMasking.Domain;
 using GameEngine.Features.ToneMapping.Domain;
@@ -195,9 +196,13 @@ internal static class Program {
         Vector2D center,
         float zoom ) {
         view.Camera.Zoom = zoom;
-        view.Camera.Position = new Vector2(
-            (float)center.X - (float)view.RenderSize.X / (2f * zoom),
-            (float)center.Y - (float)view.RenderSize.Y / (2f * zoom) );
+        new CameraFollowController(
+            view.Camera,
+            new CameraFollowSettings(
+                anchor: new Vector2( 0.5f ),
+                deadZoneSize: Vector2.Zero,
+                halfLifeSeconds: 0f ) )
+            .SnapTo( new Vector2( center.X, center.Y ) );
     }
 
     private sealed class SmokeExitController(

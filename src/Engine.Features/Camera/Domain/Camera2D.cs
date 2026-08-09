@@ -20,6 +20,10 @@ public class Camera2D
     private Vector2 _shakeOffset;
     private readonly Random _rng = new();
 
+    public bool IsShaking => _shakeTime > 0f;
+    public float ShakeMagnitude => IsShaking ? _shakeMagnitude : 0f;
+    public float ShakeTimeRemaining => MathF.Max(0f, _shakeTime);
+
     public Camera2D(Vector2 viewportSize) => ViewportSize = viewportSize;
 
     public void ResizeViewport(float width, float height)
@@ -28,8 +32,29 @@ public class Camera2D
     /// <summary>触发相机震屏</summary>
     public void Shake(float magnitude, float durationSeconds)
     {
+        ValidateShake(magnitude, durationSeconds);
+        if (magnitude == 0f || durationSeconds == 0f)
+        {
+            _shakeMagnitude = 0f;
+            _shakeTime = 0f;
+            _shakeOffset = Vector2.Zero;
+            return;
+        }
         _shakeMagnitude = magnitude;
         _shakeTime = durationSeconds;
+    }
+
+    /// <summary>
+    /// Adds an independent shake request without allocating a runtime effect object. Magnitudes
+    /// combine as orthogonal energy and the longest remaining duration wins.
+    /// </summary>
+    public void AddShake(float magnitude, float durationSeconds)
+    {
+        ValidateShake(magnitude, durationSeconds);
+        if (magnitude == 0f || durationSeconds == 0f) return;
+        _shakeMagnitude = MathF.Sqrt(
+            _shakeMagnitude * _shakeMagnitude + magnitude * magnitude);
+        _shakeTime = MathF.Max(_shakeTime, durationSeconds);
     }
 
     public Matrix4x4 GetViewProjectionMatrix()
@@ -48,9 +73,16 @@ public class Camera2D
     /// incorrectly rejecting visible content.
     /// </summary>
     public bool TryGetVisibleWorldBounds(out Bounds2D bounds)
+        => TryGetWorldBounds(GetViewProjectionMatrix(), out bounds);
+
+    /// <summary>Returns Camera bounds without presentation-only shake.</summary>
+    public bool TryGetStableVisibleWorldBounds(out Bounds2D bounds)
+        => TryGetWorldBounds(GetStableViewProjectionMatrix(), out bounds);
+
+    private bool TryGetWorldBounds(Matrix4x4 viewProjection, out Bounds2D bounds)
     {
         if (ViewportSize.X <= 0f || ViewportSize.Y <= 0f ||
-            !Matrix4x4.Invert(GetViewProjectionMatrix(), out Matrix4x4 inverse))
+            !Matrix4x4.Invert(viewProjection, out Matrix4x4 inverse))
         {
             bounds = default;
             return false;
@@ -138,11 +170,24 @@ public class Camera2D
                 ((float)_rng.NextDouble() * 2f - 1f) * _shakeMagnitude,
                 ((float)_rng.NextDouble() * 2f - 1f) * _shakeMagnitude);
             _shakeTime -= (float)deltaTime;
-            if (_shakeTime <= 0f) _shakeOffset = Vector2.Zero;
+            if (_shakeTime <= 0f)
+            {
+                _shakeTime = 0f;
+                _shakeMagnitude = 0f;
+                _shakeOffset = Vector2.Zero;
+            }
         }
         else
         {
             _shakeOffset = Vector2.Zero;
         }
+    }
+
+    private static void ValidateShake(float magnitude, float durationSeconds)
+    {
+        if (!float.IsFinite(magnitude) || magnitude < 0f)
+            throw new ArgumentOutOfRangeException(nameof(magnitude));
+        if (!float.IsFinite(durationSeconds) || durationSeconds < 0f)
+            throw new ArgumentOutOfRangeException(nameof(durationSeconds));
     }
 }
