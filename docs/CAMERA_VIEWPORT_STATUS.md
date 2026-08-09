@@ -102,7 +102,7 @@ second.Camera.Zoom = 0.75f;
 
 ### 阶段 3：显式效果策略（已完成）
 
-每 View Layer 过滤与显式效果策略已经完成。`Direct`、HDR + Tone Mapping、HDR + Bloom + Tone Mapping 三档配置直接暴露额外 Pass/RT 成本，次级 View 不会隐式继承主链。每个 View 的诊断现在还报告 Scene 候选访问、剔除、选择/绘制实例、排序比较和可选 CPU 分项耗时。Layer 索引已修正 `Layer × Scene` 放大；保守 Camera 剔除在 10,000 实例、各 View 可见 20% 的本机样本中把双 View 约从 `2.440 ms` 降至 `0.852 ms`，保持 0 B/frame。
+每 View Layer 过滤与显式效果策略已经完成。`Direct`、HDR + Tone Mapping、HDR + Bloom + Tone Mapping 三档配置直接暴露额外 Pass/RT 成本，次级 View 不会隐式继承主链。每个 View 的诊断现在还报告 Scene 候选访问、剔除、选择/绘制实例和可选 CPU 分项耗时。Layer/Depth 有序索引已修正 `Layer × Scene` 放大并消除 Draw 阶段重复排序；10,000 实例双 View 调度约从最初 `1.536 ms` 降至 `0.470 ms`，保持 0 B/frame。
 
 ### 阶段 4：高级终端
 

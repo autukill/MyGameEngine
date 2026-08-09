@@ -41,7 +41,7 @@ if (snapshot.FrameStatistics is { } frame)
 - `CandidateVisitCount`：收集阶段实际访问的实例候选总数。Scene 按 Layer 维护实例索引，因此该值是当前 View 允许层中的候选之和，不再乘以 Scene 的声明层数；inactive 实例仍是候选，但不会进入 Selected。
 - `CulledInstanceCount`：活跃候选中，已知视觉边界完全位于当前 Camera 可见世界 AABB 外的实例数。
 - `SelectedInstanceCount/DrawnInstanceCount`：进入排序列表和完成 Draw 回调的实例数。
-- `SortComparisonCount`：稳定 Depth 排序执行的精确比较次数。
+- `SortComparisonCount`：Draw 阶段执行的 Depth 排序比较次数。当前有序 Layer 索引使普通 View 路径恒为 `0`；字段保留用于诊断兼容和未来其他排序策略。
 - `TraversalTime/SortTime/DrawTime/TotalTime`：对应 CPU 分项耗时。
 
 计数路径始终开启且逐帧零分配。只有启用 `FrameStatisticsOptions`（或通过 Hosting 性能遥测间接启用）时，`TimingEnabled` 才为 `true` 并采集高频时间戳；普通运行仍提供计数，但时间字段保持零。数据只覆盖每个 View 的基础 `SceneRenderPass`，Stencil 等效果内部的额外场景重绘仍通过总 Draw Call/Pass 统计观察，避免错误归属到某个普通 View。
@@ -50,13 +50,15 @@ if (snapshot.FrameStatistics is { } frame)
 
 可选 Release 基准通过 `Engine.DddTests --benchmark-multi-view` 运行。2026-08-09 本机单次结果如下（6 个声明层、4 个有实例层、主 View 全层、observer 排除四分之一实例所在层）：
 
-| 实例数 | 优化前双 View | Layer 索引后双 View | 候选访问（前 → 后） |
-| ---: | ---: | ---: | ---: |
-| 100 | 0.0649 ms | 0.0520 ms | 600/500 → 100/75 |
-| 1,000 | 0.5157 ms | 0.5625 ms | 6,000/5,000 → 1,000/750 |
-| 10,000 | 1.5356 ms | 1.1854 ms | 60,000/50,000 → 10,000/7,500 |
+| 实例数 | 优化前双 View | Layer 索引后 | 有序 Draw 索引后 | 候选访问（前 → 后） |
+| ---: | ---: | ---: | ---: | ---: |
+| 100 | 0.0649 ms | 0.0520 ms | 0.0156 ms | 600/500 → 100/75 |
+| 1,000 | 0.5157 ms | 0.5625 ms | 0.1466 ms | 6,000/5,000 → 1,000/750 |
+| 10,000 | 1.5356 ms | 1.1854 ms | 0.4703 ms | 60,000/50,000 → 10,000/7,500 |
 
-微秒级结果会受 JIT 与机器噪声影响；候选计数是确定性的。10,000 实例样本约下降 22.8%，排序比较保持不变，后续若继续优化应聚焦可见性/排序，而不是再次缓存 Layer 收集。
+微秒级结果会受 JIT 与机器噪声影响；候选计数是确定性的。Layer 索引先消除了重复收集，有序 Draw 索引再把每 View 排序比较从 `199,580/149,685` 降为 `0/0`。10,000 实例相对 Layer 索引阶段约再下降 60.3%。
+
+Depth 顺序在实例加入、切 Layer 或 `ChangeDepth` 时维护。相同 Depth 继续按最初加入 Scene 的顺序稳定排列；从较早 Layer 的 Draw 回调修改较晚 Layer 的 Depth/Layer，仍会在同一个 View 的后续 Layer 捕获时生效。反复切层和改 Depth 预热后均为 0 B/frame。
 
 ## Camera 可见性剔除
 
@@ -86,7 +88,7 @@ public sealed class WorldWeather : GameInstance
 
 没有 Sprite、没有 `LocalDrawBounds` 或 Sprite 元数据暂不可解析时，路径会 fail-open 并继续绘制。`Collider` 不作为视觉边界：命中区域经常小于特效/Sprite，把两者复用会造成画面边缘突然消失。
 
-可选 Release 基准通过 `Engine.DddTests --benchmark-view-culling` 运行。2026-08-09 本机 10,000 实例、两个 Camera 各可见 20% 的样本，双 View 从约 `2.4403 ms` 降至 `0.8522 ms`，每个 View 绘制 2,000、剔除 8,000，保持 `0 B/frame`。该路径仍逐 View 检查候选，没有引入跨 View 缓存或通用空间树。
+可选 Release 基准通过 `Engine.DddTests --benchmark-view-culling` 运行。2026-08-09 本机 10,000 Sprite 实例、两个 Camera 各可见 20% 时，每个 View 绘制 2,000、剔除 8,000，保持 `0 B/frame`。无 GPU 的 Recording Batch 中，边界检查令双 View CPU 从约 `0.411 ms` 增至 `0.511 ms`；这个约 `0.10 ms` 是为了避免 16,000 次真实 Draw 回调、顶点生成和 GPU 提交，不应把纯 CPU 假 Batch 数字解读为剔除本身必然加速。该路径仍逐 View 检查候选，没有引入跨 View 缓存或通用空间树。
 
 ## Pipeline 快照
 

@@ -1,6 +1,9 @@
 namespace GameEngine.Core.Domain.ValueObjects;
 
-/// <summary>A zero-allocation snapshot of one Scene draw traversal.</summary>
+/// <summary>
+/// A zero-allocation snapshot of one Scene draw traversal. Sort fields remain for diagnostics
+/// compatibility; the ordered draw index keeps them at zero during ordinary View rendering.
+/// </summary>
 public readonly record struct SceneDrawStatistics(
     bool TimingEnabled,
     int VisibleLayerCount,

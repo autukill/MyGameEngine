@@ -232,7 +232,9 @@ internal static class Program {
                              diagnostics.Viewports[1].SceneDraw.DrawnInstanceCount + 1 ||
                          diagnostics.Viewports[0].SceneDraw.CandidateVisitCount <=
                              diagnostics.Viewports[1].SceneDraw.CandidateVisitCount ||
-                         diagnostics.Viewports[0].SceneDraw.SortComparisonCount == 0 ||
+                         diagnostics.Viewports[0].SceneDraw.SortComparisonCount != 0 ||
+                         diagnostics.Viewports[1].SceneDraw.SortComparisonCount != 0 ||
+                         diagnostics.Viewports[0].SceneDraw.SortTime != TimeSpan.Zero ||
                          !diagnostics.Viewports[1].SceneDraw.TimingEnabled ||
                          diagnostics.Viewports[1].SceneDraw.TotalTime <= TimeSpan.Zero ) {
                         throw new InvalidOperationException(

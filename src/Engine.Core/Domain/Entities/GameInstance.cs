@@ -26,8 +26,9 @@ using GameEngine.Core.Domain.ValueObjects;
 public class GameInstance
 {
     private IGameplayContext? _gameplay;
-    private IInstanceLayerTracker? _layerTracker;
+    private IInstanceDrawTracker? _drawTracker;
     private string? _layerName;
+    private LayerDepth _depth = LayerDepth.Instances;
     private Dictionary<AlarmId, double>? _alarms;
     private List<AlarmId>? _alarmKeys;
     private List<AlarmId>? _firedAlarms;
@@ -61,7 +62,25 @@ public class GameInstance
     }
 
     /// <summary>图层深度（决定渲染顺序，对应 GMS depth）</summary>
-    public LayerDepth Depth { get; protected set; } = LayerDepth.Instances;
+    public LayerDepth Depth
+    {
+        get => _depth;
+        protected set
+        {
+            if (_depth == value) return;
+            LayerDepth previous = _depth;
+            _depth = value;
+            try
+            {
+                _drawTracker?.OnDepthChanged(this, previous, value);
+            }
+            catch
+            {
+                _depth = previous;
+                throw;
+            }
+        }
+    }
 
     /// <summary>
     /// 归属的图层名称（对应 GMS 中间接的 Layer 概念）。
@@ -78,7 +97,7 @@ public class GameInstance
             _layerName = value;
             try
             {
-                _layerTracker?.OnLayerChanged(this, previous, value);
+                _drawTracker?.OnLayerChanged(this, previous, value);
             }
             catch
             {
@@ -409,18 +428,18 @@ public class GameInstance
         _alarms?.Clear();
     }
 
-    internal void AttachLayerTracker(IInstanceLayerTracker tracker)
+    internal void AttachDrawTracker(IInstanceDrawTracker tracker)
     {
         ArgumentNullException.ThrowIfNull(tracker);
-        if (_layerTracker is not null && !ReferenceEquals(_layerTracker, tracker))
-            throw new InvalidOperationException("Instance already belongs to another Scene layer index.");
-        _layerTracker = tracker;
+        if (_drawTracker is not null && !ReferenceEquals(_drawTracker, tracker))
+            throw new InvalidOperationException("Instance already belongs to another Scene draw index.");
+        _drawTracker = tracker;
     }
 
-    internal void DetachLayerTracker(IInstanceLayerTracker tracker)
+    internal void DetachDrawTracker(IInstanceDrawTracker tracker)
     {
-        if (ReferenceEquals(_layerTracker, tracker))
-            _layerTracker = null;
+        if (ReferenceEquals(_drawTracker, tracker))
+            _drawTracker = null;
     }
 
     private IGameplayContext RequireGameplay() => _gameplay ??
@@ -461,7 +480,8 @@ public class GameInstance
         $"{ObjectTypeName}#{Id} @ {Transform.Position} depth={Depth.Value} active={IsActive}";
 }
 
-internal interface IInstanceLayerTracker
+internal interface IInstanceDrawTracker
 {
     void OnLayerChanged(GameInstance instance, string? previousLayer, string? currentLayer);
+    void OnDepthChanged(GameInstance instance, LayerDepth previousDepth, LayerDepth currentDepth);
 }

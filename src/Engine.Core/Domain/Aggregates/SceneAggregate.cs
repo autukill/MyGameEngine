@@ -27,7 +27,7 @@ using GameEngine.Core.Domain.Entities;
 /// 生命周期：
 ///   Start() -> [Step loop: OnBeforeStep -> PerformStep -> OnAfterStep] -> End()
 /// </summary>
-public class SceneAggregate : IInstanceLayerTracker
+public class SceneAggregate : IInstanceDrawTracker
 {
     // ============ 聚合根标识 ============
 
@@ -201,13 +201,13 @@ public class SceneAggregate : IInstanceLayerTracker
         _instances.Add(instance.Id, instance);
         try
         {
-            instance.AttachLayerTracker(this);
+            instance.AttachDrawTracker(this);
             IndexInstance(instance);
             instance.OnCreate();
         }
         catch
         {
-            instance.DetachLayerTracker(this);
+            instance.DetachDrawTracker(this);
             UnindexInstance(instance.Id);
             _instances.Remove(instance.Id);
             instance.DetachGameplayContext(_gameplay);
@@ -236,7 +236,7 @@ public class SceneAggregate : IInstanceLayerTracker
         if (!_instances.TryGetValue(id, out var instance)) return;
         instance.OnDestroy();
         Time.ReleaseOwner(id);
-        instance.DetachLayerTracker(this);
+        instance.DetachDrawTracker(this);
         UnindexInstance(id);
         _instances.Remove(id);
         instance.DetachGameplayContext(_gameplay);
@@ -422,7 +422,7 @@ public class SceneAggregate : IInstanceLayerTracker
     /// GMS Draw 事件调度（Layer 感知版）。
     ///
     /// 按 Layer 分组绘制：先遍历 Layer 配置（跳过 IsVisible=false），
-    /// 再遍历该 Layer 下所有活跃实例，按 Depth 降序排序后调用 OnDraw。
+    /// 再遍历该 Layer 下所有活跃实例；内部索引已按 Depth 降序和加入顺序维护。
     ///
     /// 渲染约定：
     ///   - 调用方在调用前须已调用 SpriteBatch.Begin()
@@ -483,9 +483,7 @@ public class SceneAggregate : IInstanceLayerTracker
         int culledInstances = 0;
         int selectedInstances = 0;
         int drawnInstances = 0;
-        int sortComparisons = 0;
         long traversalTicks = 0;
-        long sortTicks = 0;
         long drawTicks = 0;
         foreach (var layer in _layers)
         {
@@ -501,9 +499,6 @@ public class SceneAggregate : IInstanceLayerTracker
             culledInstances += layerCulled;
             if (measureTime) traversalTicks += Stopwatch.GetTimestamp() - started;
 
-            started = measureTime ? Stopwatch.GetTimestamp() : 0L;
-            sortComparisons += SortDrawEntries();
-            if (measureTime) sortTicks += Stopwatch.GetTimestamp() - started;
             selectedInstances += _drawSnapshot.Count;
 
             started = measureTime ? Stopwatch.GetTimestamp() : 0L;
@@ -526,10 +521,10 @@ public class SceneAggregate : IInstanceLayerTracker
             culledInstances,
             selectedInstances,
             drawnInstances,
-            sortComparisons,
-            ToElapsedTime(traversalTicks),
-            ToElapsedTime(sortTicks),
-            ToElapsedTime(drawTicks));
+            SortComparisonCount: 0,
+            TraversalTime: ToElapsedTime(traversalTicks),
+            SortTime: TimeSpan.Zero,
+            DrawTime: ToElapsedTime(drawTicks));
     }
 
     /// <summary>
@@ -558,7 +553,6 @@ public class SceneAggregate : IInstanceLayerTracker
             if (layer.Name != layerName || !layer.IsVisible) continue;
 
             CaptureDrawEntries(batch, layer.Name, viewBounds: null, out _);
-            SortDrawEntries();
             foreach (DrawEntry entry in _drawSnapshot)
             {
                 GameInstance instance = entry.Instance;
@@ -906,7 +900,7 @@ public class SceneAggregate : IInstanceLayerTracker
         {
             instance.OnDestroy();
             Time.ReleaseOwner(instance.Id);
-            instance.DetachLayerTracker(this);
+            instance.DetachDrawTracker(this);
             UnindexInstance(instance.Id);
             _instances.Remove(instance.Id);
             instance.DetachGameplayContext(_gameplay);
@@ -955,7 +949,7 @@ public class SceneAggregate : IInstanceLayerTracker
                 culledInstances++;
                 continue;
             }
-            _drawSnapshot.Add(new DrawEntry(instance, indexed.Sequence));
+            _drawSnapshot.Add(new DrawEntry(instance));
         }
         return instances.Count;
     }
@@ -1020,7 +1014,7 @@ public class SceneAggregate : IInstanceLayerTracker
         }
     }
 
-    void IInstanceLayerTracker.OnLayerChanged(
+    void IInstanceDrawTracker.OnLayerChanged(
         GameInstance instance,
         string? previousLayer,
         string? currentLayer)
@@ -1042,9 +1036,35 @@ public class SceneAggregate : IInstanceLayerTracker
         }
     }
 
+    void IInstanceDrawTracker.OnDepthChanged(
+        GameInstance instance,
+        LayerDepth previousDepth,
+        LayerDepth currentDepth)
+    {
+        if (!_indexedInstances.TryGetValue(instance.Id, out IndexedInstance? indexed))
+            return;
+
+        RemoveFromLayer(indexed);
+        indexed.Depth = currentDepth;
+        try
+        {
+            AddToLayer(indexed);
+        }
+        catch
+        {
+            indexed.Depth = previousDepth;
+            AddToLayer(indexed);
+            throw;
+        }
+    }
+
     private void IndexInstance(GameInstance instance)
     {
-        var indexed = new IndexedInstance(instance, _nextDrawSequence++, instance.LayerName);
+        var indexed = new IndexedInstance(
+            instance,
+            _nextDrawSequence++,
+            instance.LayerName,
+            instance.Depth);
         _indexedInstances.Add(instance.Id, indexed);
         AddToLayer(indexed);
     }
@@ -1068,7 +1088,17 @@ public class SceneAggregate : IInstanceLayerTracker
             instances = new List<IndexedInstance>();
             _instancesByLayer.Add(indexed.LayerName, instances);
         }
-        instances.Add(indexed);
+        int low = 0;
+        int high = instances.Count;
+        while (low < high)
+        {
+            int middle = low + (high - low) / 2;
+            if (CompareIndexedInstances(instances[middle], indexed) < 0)
+                low = middle + 1;
+            else
+                high = middle;
+        }
+        instances.Insert(low, indexed);
     }
 
     private void RemoveFromLayer(IndexedInstance indexed)
@@ -1080,46 +1110,6 @@ public class SceneAggregate : IInstanceLayerTracker
         }
 
         instances.Remove(indexed);
-    }
-
-    private int SortDrawEntries()
-    {
-        int comparisons = 0;
-        int count = _drawSnapshot.Count;
-        for (int root = count / 2 - 1; root >= 0; root--)
-            SiftDrawEntryDown(root, count, ref comparisons);
-
-        for (int end = count - 1; end > 0; end--)
-        {
-            (_drawSnapshot[0], _drawSnapshot[end]) = (_drawSnapshot[end], _drawSnapshot[0]);
-            SiftDrawEntryDown(0, end, ref comparisons);
-        }
-        return comparisons;
-    }
-
-    private void SiftDrawEntryDown(int root, int count, ref int comparisons)
-    {
-        while (true)
-        {
-            int child = root * 2 + 1;
-            if (child >= count) return;
-            if (child + 1 < count)
-            {
-                comparisons++;
-                if (CompareDrawEntries(
-                        _drawSnapshot[child], _drawSnapshot[child + 1]) < 0)
-                {
-                    child++;
-                }
-            }
-            comparisons++;
-            if (CompareDrawEntries(_drawSnapshot[root], _drawSnapshot[child]) >= 0)
-                return;
-
-            (_drawSnapshot[root], _drawSnapshot[child]) =
-                (_drawSnapshot[child], _drawSnapshot[root]);
-            root = child;
-        }
     }
 
     private static TimeSpan ToElapsedTime(long timestampTicks) =>
@@ -1248,16 +1238,18 @@ public class SceneAggregate : IInstanceLayerTracker
             new(InstanceMutationKind.Destroy, null, id);
     }
 
-    private readonly record struct DrawEntry(GameInstance Instance, long Sequence);
+    private readonly record struct DrawEntry(GameInstance Instance);
 
     private sealed class IndexedInstance(
         GameInstance instance,
         long sequence,
-        string? layerName)
+        string? layerName,
+        LayerDepth depth)
     {
         public GameInstance Instance { get; } = instance;
         public long Sequence { get; } = sequence;
         public string? LayerName { get; set; } = layerName;
+        public LayerDepth Depth { get; set; } = depth;
     }
 
     private enum QueryKind
@@ -1276,9 +1268,9 @@ public class SceneAggregate : IInstanceLayerTracker
         public long ElapsedTimestampTicks;
     }
 
-    private static int CompareDrawEntries(DrawEntry x, DrawEntry y)
+    private static int CompareIndexedInstances(IndexedInstance x, IndexedInstance y)
     {
-        int depth = y.Instance.Depth.Value.CompareTo(x.Instance.Depth.Value);
+        int depth = y.Depth.Value.CompareTo(x.Depth.Value);
         return depth != 0 ? depth : x.Sequence.CompareTo(y.Sequence);
     }
 

@@ -26,7 +26,22 @@ using GameEngine.Core.Infrastructure.Windowing;
 /// </summary>
 internal sealed class Program
 {
-    private static void Main(string[] args)
+    private static int Main(string[] args)
+    {
+        try
+        {
+            Run(args);
+            return 0;
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine("\n=== Engine.DddTests failed ===");
+            Console.Error.WriteLine(exception);
+            return 1;
+        }
+    }
+
+    private static void Run(string[] args)
     {
         Console.WriteLine("=== Phase 1.4 DDD Tactical Design Smoke Test ===\n");
 
@@ -707,11 +722,38 @@ internal sealed class Program
         var order = new List<string>();
         drawScene.Add(new DrawOrderProbe("back", 20, order));
         drawScene.Add(new DrawOrderProbe("equal-first", 10, order));
-        drawScene.Add(new DrawOrderProbe("equal-second", 10, order));
+        var equalSecond = drawScene.Add(new DrawOrderProbe("equal-second", 10, order));
         drawScene.Add(new DrawOrderProbe("front", -10, order));
         drawScene.DrawActive(batch);
         Assert(order.SequenceEqual(["back", "equal-first", "equal-second", "front"]),
             "Draw keeps descending depth and stable insertion order for equal depths");
+
+        equalSecond.ChangeDepth(new LayerDepth(30), static _ => { });
+        order.Clear();
+        drawScene.DrawActive(batch);
+        Assert(order.SequenceEqual(["equal-second", "back", "equal-first", "front"]),
+            "Runtime Depth changes immediately reposition the indexed draw entry");
+        equalSecond.ChangeDepth(new LayerDepth(10), static _ => { });
+        order.Clear();
+        drawScene.DrawActive(batch);
+        Assert(order.SequenceEqual(["back", "equal-first", "equal-second", "front"]),
+            "Returning to an equal Depth restores stable Scene insertion order");
+        Action<IDomainEvent> ignoreDepthEvent = static _ => { };
+        for (int i = 0; i < 64; i++)
+        {
+            equalSecond.ChangeDepth(new LayerDepth(30), ignoreDepthEvent);
+            equalSecond.ChangeDepth(new LayerDepth(10), ignoreDepthEvent);
+        }
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+        {
+            equalSecond.ChangeDepth(new LayerDepth(30), ignoreDepthEvent);
+            equalSecond.ChangeDepth(new LayerDepth(10), ignoreDepthEvent);
+        }
+        long depthMoveAllocated =
+            GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert(depthMoveAllocated == 0,
+            $"Repeated Depth changes remain allocation-free ({depthMoveAllocated:N0} B)");
 
         drawScene.AddLayer("MainOnly", -100);
         var movableLayerProbe = drawScene.Add(
@@ -759,6 +801,25 @@ internal sealed class Program
         Assert(sameDrawOrder.SequenceEqual(["move", "moved"]),
             "An earlier Layer draw can move an instance into a later Layer in the same View");
 
+        var sameDepthScene = new SceneAggregate("SameDrawDepthMove");
+        sameDepthScene.AddLayer("DepthSource", 600);
+        sameDepthScene.AddLayer("DepthTarget", 500);
+        var sameDepthOrder = new List<string>();
+        var raisedDuringDraw = sameDepthScene.Add(
+            new DrawOrderProbe("raised", 0, sameDepthOrder) { LayerName = "DepthTarget" });
+        sameDepthScene.Add(
+            new DrawOrderProbe("previous-front", 10, sameDepthOrder)
+            {
+                LayerName = "DepthTarget"
+            });
+        sameDepthScene.Add(new DepthMoveOnDrawProbe(raisedDuringDraw, 20, sameDepthOrder)
+        {
+            LayerName = "DepthSource"
+        });
+        sameDepthScene.DrawActive(batch);
+        Assert(sameDepthOrder.SequenceEqual(["move-depth", "raised", "previous-front"]),
+            "An earlier Layer draw can reorder a later Layer by Depth in the same View");
+
         for (int i = 0; i < 64; i++)
         {
             order.Clear();
@@ -782,8 +843,9 @@ internal sealed class Program
                drawStatistics.CulledInstanceCount == 0 &&
                drawStatistics.SelectedInstanceCount == 4 &&
                drawStatistics.DrawnInstanceCount == 4 &&
-               drawStatistics.SortComparisonCount > 0,
-            "Measured Scene drawing visits only indexed candidates in allowed Layers");
+               drawStatistics.SortComparisonCount == 0 &&
+               drawStatistics.SortTime == TimeSpan.Zero,
+            "Measured Scene drawing visits indexed candidates without per-View sorting");
         for (int i = 0; i < 64; i++)
         {
             order.Clear();
@@ -867,6 +929,7 @@ internal sealed class Program
         Console.WriteLine("   [PASS] phase mutation visibility and stable depth ordering are preserved");
         Console.WriteLine("   [PASS] per-View Scene layer filtering remains at 0 B/frame");
         Console.WriteLine("   [PASS] LayerName changes update the indexed draw path in the same View");
+        Console.WriteLine("   [PASS] Depth changes maintain stable indexed order at 0 B/frame");
         Console.WriteLine("   [PASS] conservative per-View culling remains at 0 B/frame");
         Console.WriteLine("   [PASS] measured traversal/sort/draw diagnostics remain at 0 B/frame");
     }
@@ -986,15 +1049,18 @@ internal sealed class Program
             for (int i = 0; i < count; i++)
             {
                 int group = i % 5;
-                scene.Add(new AllocationFreeProbe(new LayerDepth(i % 8))
+                Vector2D position = group switch
                 {
-                    Sprite = sprite,
-                    Position = group switch
-                    {
-                        0 => new Vector2D(100 + i % 600, 100 + i % 400),
-                        1 => new Vector2D(1_100 + i % 600, 100 + i % 400),
-                        _ => new Vector2D(5_000 + i, 5_000)
-                    }
+                    0 => new Vector2D(100 + i % 600, 100 + i % 400),
+                    1 => new Vector2D(1_100 + i % 600, 100 + i % 400),
+                    _ => new Vector2D(5_000 + i, 5_000)
+                };
+                scene.Add(new GameInstance(
+                    "BenchmarkSprite",
+                    position,
+                    new LayerDepth(i % 8))
+                {
+                    Sprite = sprite
                 });
             }
 
@@ -1606,6 +1672,18 @@ internal sealed class Program
         {
             order.Add("move");
             target.LayerName = targetLayer;
+        }
+    }
+
+    private sealed class DepthMoveOnDrawProbe(
+        GameInstance target,
+        int targetDepth,
+        List<string> order) : GameInstance
+    {
+        public override void OnDraw(ISpriteBatch batch)
+        {
+            order.Add("move-depth");
+            target.ChangeDepth(new LayerDepth(targetDepth), static _ => { });
         }
     }
 
