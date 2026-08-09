@@ -34,6 +34,8 @@ if (snapshot.FrameStatistics is { } frame)
 
 `ScenePipelineDiagnostics` 保存当前 viewport、稳定效果顺序和逻辑 Surface 图。Effect 项包含 Key、owner `InstanceId`、输入/输出契约与关联 Pass Handle；Surface 项包含格式、Linear/Display 编码、根标记、生产者和消费者。
 
+多 Render View 模式下，`ScenePipelineDiagnostics.Width/Height` 表示主 View 动态效果分辨率，而不是窗口尺寸；它应与主 View 的 `RenderWidth/RenderHeight` 一致。次级 LDR View 没有隐藏的动态效果租约。
+
 owner、输入、输出和消费者均在捕获时复制；后续帧更新、owner 释放或图重建不会修改旧快照。
 
 ## RenderTarget 租约快照

@@ -78,20 +78,21 @@ second.Camera.Zoom = 0.75f;
 
 `ViewportHit.View` 会标识命中的 Render View，坐标通过该 View 自己的 Camera 与源分辨率反算。诊断同时报告呈现像素矩形和 `RenderWidth/RenderHeight`。
 
-第一版真正多 Camera 先限定：
+当前多 Camera 策略：
 
 - 每个 View 重绘同一 Scene，但使用独立 Camera。
-- 每个 View 独立 RGBA8/Display SceneColor；不复制 Bloom/Tone Mapping/Stencil。
+- 主 View 可使用现有 HDR/Bloom/Tone Mapping/Stencil；效果图只按主 View 的实际 RenderScale 尺寸构建。
+- 次级 View 保持 RGBA8/Display SceneColor，不复制动态效果链。
 - resize 按 Viewport 与 RenderScale 重建目标。
 - 诊断明确列出每个 View 的 Pass、RT 显存和 Draw Call 成本。
 - `UseRenderViews` 与 `UseSingleCameraViewports` 互斥，避免“重绘”和“镜像呈现”语义混淆。
-- Runner `--split-cameras` 验证两台独立 Camera；当前为 4 Pass、3 个根目标、0 个动态 RT 租约。
+- Runner `--split-cameras` 验证“主 HDR + Stencil / 次级 LDR”；当前为 7 Pass、3 个根目标和 5 个主 View 尺寸动态租约。
 
 ## 后续阶段
 
-### 阶段 3：每 View 渲染策略
+### 阶段 3：每 View Layer 与显式效果策略
 
-在真实多 Camera 稳定后，再增加 Layer 过滤、每 View 后处理选择、重叠输入优先级和可选不同分辨率。此时才讨论共享阴影/后处理、可见性缓存等性能优化。
+主效果边界已经稳定。下一步增加 Layer 过滤，并把当前“全局效果仅属于 main”的规则逐步显式化；次级 View 是否启用 Tone Mapping 等效果应由配置声明，不能隐式复制。此时再讨论共享后处理、可见性缓存等性能优化。
 
 ### 阶段 4：高级终端
 
@@ -99,7 +100,7 @@ second.Camera.Zoom = 0.75f;
 
 ## 当前明确不支持
 
-- 多 Camera 模式下的 HDR、Bloom、Stencil 和每 View 后处理；配置时会明确拒绝，而不是静默退化。
+- 次级 View 的 HDR、Bloom、Stencil 或独立后处理链；当前这些效果明确只属于 main。
 - 每 View Layer 过滤；当前所有 View 都重绘同一组活跃 Scene 实例。
 - 多窗口与多个默认 framebuffer 终端。
 - Viewport 动画、鼠标捕获策略和编辑器 Dock。

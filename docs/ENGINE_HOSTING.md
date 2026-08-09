@@ -78,7 +78,7 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 
 每个 View 重绘 Scene 并拥有独立 Camera 与 SceneColor。`context.Camera` 仍是 `RenderViewRef.Main`；其他 Camera 通过 `context.GetRenderView(...)` 获取。`PresentViewSurface` 只把自定义 Surface 送入指定 View 的槽位。
 
-当前多 Render View 模式固定为 LDR，并明确拒绝 HDR、Bloom 和 Stencil；下一切片会增加每 View 效果策略。`UseRenderViews` 与 `UseSingleCameraViewports` 互斥，前者表示重绘，后者表示复用同一次渲染。
+`UseHdr/EnableStencilMasking` 在多 Render View 模式下只作用于 `main`，动态目标按主 View 的内部尺寸创建；次级 View 保持轻量 RGBA8/Display，不复制效果链。自定义主 View Stencil 输出使用 `PresentViewSurface(RenderViewRef.Main, ...)`。`UseRenderViews` 与 `UseSingleCameraViewports` 互斥，前者表示重绘，后者表示复用同一次渲染。
 
 ## Default2DGameContext
 

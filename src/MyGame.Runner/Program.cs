@@ -33,13 +33,12 @@ internal static class Program {
             : null;
         Console.WriteLine( "=== Engine Hosting Demo ===" );
         Console.WriteLine( "  4 个 OrbitingSprite 做圆周运动" );
-        if ( !splitCameras ) {
-            Console.WriteLine( "  鼠标位置 = Spotlight 中心 (Stencil ShowInside)" );
-            Console.WriteLine( "  HDR Scene → Bloom → ACES Tone Mapping 由 Hosting 默认预设装配" );
-        }
+        Console.WriteLine( "  鼠标位置 = Spotlight 中心 (Stencil ShowInside)" );
+        Console.WriteLine( "  主 View: HDR Scene → Bloom → ACES Tone Mapping" );
         Console.WriteLine( "  ESC: 退出" );
         if ( mirroredViewports ) Console.WriteLine( "  Single Camera → two Cover Viewports" );
-        if ( splitCameras ) Console.WriteLine( "  Two Cameras → independent left/right Scene Views" );
+        if ( splitCameras )
+            Console.WriteLine( "  Two Cameras → main HDR left / lightweight LDR observer right" );
 
         var windowOptions = smoke
             ? EngineWindowOptions.Default
@@ -76,14 +75,8 @@ internal static class Program {
         bool splitCameras ) {
         renderer
             .UseContent( GameAssets.Packages.Root )
-            .UseShaderAssets( GameShaders.ManifestPath );
-        if ( splitCameras ) {
-            renderer.UseRenderViews( views => views
-                .ConfigureMain( ViewportRect.LeftHalf )
-                .Add( "observer", ViewportRect.RightHalf, renderScale: 0.75f ) );
-        }
-        else {
-            renderer.UseHdr(
+            .UseShaderAssets( GameShaders.ManifestPath )
+            .UseHdr(
                 ToneMappingSettings.Default,
                 new BloomSettings(
                     0.3f,
@@ -91,7 +84,11 @@ internal static class Program {
                     1f,
                     2,
                     BloomResolution.Half ) )
-                .EnableStencilMasking();
+            .EnableStencilMasking();
+        if ( splitCameras ) {
+            renderer.UseRenderViews( views => views
+                .ConfigureMain( ViewportRect.LeftHalf )
+                .Add( "observer", ViewportRect.RightHalf, renderScale: 0.75f ) );
         }
         if ( mirroredViewports ) {
             renderer.UseSingleCameraViewports( views => views
@@ -159,22 +156,26 @@ internal static class Program {
                 orbitMaterial ) );
         }
 
-        if ( !splitCameras ) {
-            var spotlightGroup = new StencilMaskGroupRef( "spotlight" );
-            scene.Add( new SpotlightController(
-                spotlightGroup,
-                scene.RaiseEvent,
-                context,
-                center,
-                120f,
-                context.Close ) );
-            context.PresentWorldSurface(
+        var spotlightGroup = new StencilMaskGroupRef( "spotlight" );
+        scene.Add( new SpotlightController(
+            spotlightGroup,
+            scene.RaiseEvent,
+            context,
+            center,
+            120f,
+            context.Close ) );
+        if ( splitCameras ) {
+            context.PresentViewSurface(
+                RenderViewRef.Main,
                 spotlightGroup.Output,
                 layer: 100,
                 blend: GameEngine.Features.Presentation.Domain.PresentationBlendMode.AlphaBlend );
         }
         else {
-            scene.Add( new EscapeCloseController( context.Close ) );
+            context.PresentWorldSurface(
+                spotlightGroup.Output,
+                layer: 100,
+                blend: GameEngine.Features.Presentation.Domain.PresentationBlendMode.AlphaBlend );
         }
         if ( smoke ) scene.Add( new SmokeExitController( context, context.Close ) );
     }
@@ -187,12 +188,6 @@ internal static class Program {
         view.Camera.Position = new Vector2(
             (float)center.X - (float)view.RenderSize.X / (2f * zoom),
             (float)center.Y - (float)view.RenderSize.Y / (2f * zoom) );
-    }
-
-    private sealed class EscapeCloseController( Action close ) : GameInstance {
-        public override void OnKeyDown( GameEngine.Core.Domain.Input.InputKey key ) {
-            if ( key == GameEngine.Core.Domain.Input.InputKey.Escape ) close();
-        }
     }
 
     private sealed class SmokeExitController(
@@ -218,13 +213,27 @@ internal static class Program {
                         throw new InvalidOperationException(
                             "Multi-Camera Viewport mapping or RenderScale diagnostics are invalid." );
                     }
+                    ViewportSlotDiagnostics main = diagnostics.Viewports[0];
+                    if ( diagnostics.RenderTargets.ActiveLeases.Count == 0 )
+                        throw new InvalidOperationException(
+                            "Primary View effects did not rent their expected targets." );
+                    int maxLeaseWidth = diagnostics.RenderTargets.ActiveLeases
+                        .Max( lease => lease.Descriptor.Width );
+                    int maxLeaseHeight = diagnostics.RenderTargets.ActiveLeases
+                        .Max( lease => lease.Descriptor.Height );
+                    if ( diagnostics.Effects.Width != main.RenderWidth ||
+                         diagnostics.Effects.Height != main.RenderHeight ||
+                         maxLeaseWidth != main.RenderWidth ||
+                         maxLeaseHeight != main.RenderHeight ) {
+                        throw new InvalidOperationException(
+                            "Primary View effects were not built at the primary render resolution." );
+                    }
                 }
                 if ( diagnostics.Pipeline.DependencyError is not null ||
                      diagnostics.Pipeline.Passes.Count == 0 ||
                      diagnostics.Effects.Effects.Count == 0 ||
                      diagnostics.Effects.Surfaces.Count == 0 ||
-                     ( context.RenderViews.Count == 1 &&
-                       diagnostics.RenderTargets.ActiveLeases.Count == 0 ) ||
+                     diagnostics.RenderTargets.ActiveLeases.Count == 0 ||
                      diagnostics.Viewports.Count == 0 ||
                      ( diagnostics.Viewports.Count != context.RenderViews.Count &&
                        context.RenderViews.Count > 1 ) ||
@@ -245,8 +254,7 @@ internal static class Program {
                 var performance = context.CapturePerformanceSnapshot();
                 if ( performance.GpuMemory.TextureCount == 0 ||
                      performance.GpuMemory.RootRenderTargetCount != context.RenderViews.Count + 1 ||
-                     ( context.RenderViews.Count == 1 &&
-                       performance.GpuMemory.LeasedRenderTargetCount == 0 ) ||
+                     performance.GpuMemory.LeasedRenderTargetCount == 0 ||
                      performance.GpuMemory.TotalBytes <= 0 ) {
                     throw new InvalidOperationException(
                         "Hosting performance diagnostics did not capture GPU resource estimates." );

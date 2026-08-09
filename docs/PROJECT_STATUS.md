@@ -68,6 +68,7 @@
 - `GameplayQueryBuffer<T>` 与 `CountInstances<T>()` 为高频 Find/Collision/Area/Radius 提供 0 B 结果复用；便利数组 API 保持不变，Hosting 遥测按采样 Step 汇总查询次数、候选、命中和耗时，Asteroids 提供 `--diagnostics` 出口。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
 - Hosting 第二阶段多 Camera 已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Runner `--split-cameras` 验证两台真实 Camera。
+- 多 View 效果边界已支持主 HDR/Bloom/Tone Mapping/Stencil 与次级 LDR 共存；Builder 和 Pool 按主 View 实际分辨率创建、resize 和清理动态目标，次级 View 不承担隐藏后处理成本。
 
 ## 仍在演进
 
@@ -77,14 +78,14 @@
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
 - 各交互式 VisualTests 仍需人工观察；自动基线已覆盖八条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - Hosting v1 仅支持单窗口；已有声明式及强类型参数 Scene 切换和无 UI 暂停策略，但尚无 Scene 栈或后台加载。
-- 多 Render View 首版限定 LDR 且所有 View 重绘相同 Scene；HDR/Bloom/Stencil 与 Layer 过滤尚未扩展到每 View。
+- 多 Render View 当前所有 View 重绘相同 Scene；效果只属于主 View，次级效果选择和 Layer 过滤尚未声明式开放。
 
 ## 下一里程碑：声明式多 Camera/View
 
 1. 已完成单 Camera 多呈现槽位与 Fit/输入映射。
 2. 已完成多 Render View 的独立 Camera、Scene Surface、RenderScale、resize 与 Presentation 装配。
-3. 下一步定义每 View 效果策略，先允许主 View 使用 HDR/Stencil，同时让次级 LDR View 保持轻量。
-4. 后续再加入 Layer 过滤和小地图样例；用成本诊断约束额外 Scene Draw，不在首版引入通用剔除。
+3. 已允许主 View 使用 HDR/Stencil，同时让次级 LDR View 保持轻量，效果租约跟随主 View RenderScale。
+4. 下一步加入 Layer 过滤和小地图样例，并逐步显式化次级 View 效果选择；不在首版引入通用剔除。
 
 ## 已知限制
 

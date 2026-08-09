@@ -122,7 +122,7 @@ internal sealed class Default2DGameRuntime : IDisposable
         }
         _guiTarget?.Resize(width, height);
         _pipeline.Resize(width, height);
-        _builder.Resize(width, height);
+        _builder.Resize(_sceneTarget.Width, _sceneTarget.Height);
     }
 
     public void Dispose()
@@ -290,8 +290,8 @@ internal sealed class Default2DGameRuntime : IDisposable
         _builder = _resources.Add(new ScenePipelineBuilder(
             _pipeline,
             _targetPool,
-            width,
-            height));
+            _sceneTarget.Width,
+            _sceneTarget.Height));
         for (int i = 0; i < _renderViews.Count; i++)
         {
             RenderView view = _renderViews[i];
@@ -393,12 +393,18 @@ internal sealed class Default2DGameRuntime : IDisposable
         SceneAggregate scene = _scene!;
         if (renderer.MultipleRenderViewsEnabled)
         {
+            if (renderer.HdrEnabled)
+                scene.Add(new DefaultWorldEffectsController(scene.RaiseEvent, renderer));
             for (int i = 0; i < Context.RenderViews.Count; i++)
             {
                 RenderView view = Context.RenderViews[i];
+                RenderSurfaceKey source = view.Ref == RenderViewRef.Main && renderer.HdrEnabled
+                    ? ToneMappingEffectDescriptor.ColorOutput(
+                        ToneMappingEffectDescriptor.DefaultKey)
+                    : view.SceneColor;
                 Context.PresentViewSurface(
                     view.Ref,
-                    view.SceneColor,
+                    source,
                     layer: 0,
                     blend: PresentationBlendMode.Opaque);
             }

@@ -256,9 +256,5 @@ internal sealed record Default2DRendererPlan(
                 "Declarative materials require their Shader file definitions.");
         if (ResolvedViewports.Count == 0)
             throw new InvalidOperationException("At least one Viewport slot is required.");
-        if (MultipleRenderViewsEnabled && (HdrEnabled || Bloom is not null || StencilMaskingEnabled))
-            throw new InvalidOperationException(
-                "Multiple Render Views currently require LDR without Bloom or Stencil. " +
-                "Per-View effects are introduced in the next slice.");
     }
 }

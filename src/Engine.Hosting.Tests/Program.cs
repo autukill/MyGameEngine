@@ -152,13 +152,15 @@ internal static class Program
                 .UseSingleCameraViewports(views => views.Add("main", ViewportRect.FullScreen))
                 .UseRenderViews(views => views.Add("second", ViewportRect.RightHalf)),
             "Mirrored Viewports and independent Render Views cannot be combined");
-        CheckThrows<InvalidOperationException>(
-            () => new Default2DRendererOptions()
-                .UseHdr(ToneMappingSettings.Default)
-                .UseRenderViews(views => views.Add("second", ViewportRect.RightHalf))
-                .ToPlan()
-                .Validate(),
-            "The first multi-Camera slice rejects per-View HDR effects explicitly");
+        var primaryEffects = new Default2DRendererOptions()
+            .UseHdr(ToneMappingSettings.Default, BloomSettings.Default)
+            .EnableStencilMasking()
+            .UseRenderViews(views => views.Add("second", ViewportRect.RightHalf))
+            .ToPlan();
+        primaryEffects.Validate();
+        Check(primaryEffects.MultipleRenderViewsEnabled && primaryEffects.HdrEnabled &&
+              primaryEffects.StencilMaskingEnabled,
+            "Primary HDR/Bloom/Stencil can coexist with lightweight secondary LDR Views");
     }
 
     private static void TestSceneCatalogAndPrefabs()

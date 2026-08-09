@@ -87,7 +87,7 @@ GameAssets.Packages.SharedPrimitives
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：多 Camera/Viewport 的前两阶段已经落地——既可复用同一次渲染到多个 Viewport，也可由独立 Render View 使用不同 Camera 重绘 Scene。下一阶段聚焦每 View 效果策略与 Layer 过滤，先保证主 HDR View 与轻量 LDR 次级 View 可以共存，详见 [Camera 与 Viewport 渐进式路线](CAMERA_VIEWPORT_STATUS.md)。查询 Buffer、真实负载统计、强类型状态机、暂停时间域和 Scene 生命周期零稳态分配已经落地；当前 1,000 Collider 线性扫描约 0.0209 ms/查询，不提前引入 Spatial Hash。逐帧多区域与 Sprite 异形碰撞继续保持需求记录。暂不进入 UI、完整协程或物理系统。
+下一步优先级：多 Camera/Viewport 已支持镜像呈现、独立 Render View，以及主 HDR/Stencil 与轻量次级 LDR 共存。下一阶段聚焦每 View Layer 过滤和小地图黄金路径，并逐步显式化次级 View 效果选择，详见 [Camera 与 Viewport 渐进式路线](CAMERA_VIEWPORT_STATUS.md)。查询 Buffer、真实负载统计、强类型状态机、暂停时间域和 Scene 生命周期零稳态分配已经落地；当前 1,000 Collider 线性扫描约 0.0209 ms/查询，不提前引入 Spatial Hash。逐帧多区域与 Sprite 异形碰撞继续保持需求记录。暂不进入 UI、完整协程或物理系统。
 
 ## 设计约束
 

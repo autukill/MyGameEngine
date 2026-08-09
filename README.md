@@ -139,7 +139,7 @@ Runner 内容：4 个彩色方块绕场景中心运动，鼠标控制圆形 Sten
 - `Esc`：退出
 - 调整窗口：同步 resize Camera、RenderTarget 和 Pipeline Viewport
 - `--mirrored-viewports`：同一 Camera/后处理结果以 Cover 模式呈现到左右两个 Viewport
-- `--split-cameras`：两台独立 Camera 分别渲染左右 Viewport，次级 View 使用 0.75 RenderScale
+- `--split-cameras`：主 HDR/Stencil Camera 与 0.75 RenderScale 的轻量 LDR Camera 分别渲染左右 Viewport
 
 ## 验证
 
@@ -285,7 +285,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 扩展每 Render View 的效果策略，让主 HDR View 与轻量 LDR 次级 View 共存。
+1. 为 Render View 增加 Layer 过滤，并用声明式小地图样例验证开发体验与额外 Draw 成本。
 2. 让每个 View 明确 Viewport、RenderScale、RenderSurface、resize 和可选后处理所有权。
 3. 保持唯一 Presentation 屏幕终端，并用 VisualTests 验证双视图成本和释放。
 
