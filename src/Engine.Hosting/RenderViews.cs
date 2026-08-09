@@ -4,6 +4,7 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
+using GameEngine.Features.ToneMapping.Domain;
 
 public readonly record struct RenderViewRef
 {
@@ -31,6 +32,7 @@ public sealed record RenderViewDefinition
     public float RenderScale { get; }
     public int Layer { get; }
     public SceneLayerFilter SceneLayers { get; }
+    public RenderViewEffects Effects { get; }
     internal int DeclarationOrder { get; }
 
     internal RenderViewDefinition(
@@ -40,6 +42,7 @@ public sealed record RenderViewDefinition
         float renderScale,
         int layer,
         SceneLayerFilter sceneLayers,
+        RenderViewEffects effects,
         int declarationOrder)
     {
         Ref = reference;
@@ -49,6 +52,7 @@ public sealed record RenderViewDefinition
         RenderScale = renderScale;
         Layer = layer;
         SceneLayers = sceneLayers;
+        Effects = effects;
         DeclarationOrder = declarationOrder;
     }
 }
@@ -65,6 +69,7 @@ public sealed class RenderViewLayoutBuilder
         1f,
         0,
         SceneLayerFilter.All,
+        RenderViewEffects.Direct,
         0);
     private bool _mainConfigured;
 
@@ -84,6 +89,7 @@ public sealed class RenderViewLayoutBuilder
             renderScale,
             layer,
             sceneLayers ?? SceneLayerFilter.All,
+            RenderViewEffects.Direct,
             0);
         _mainConfigured = true;
         return this;
@@ -95,7 +101,8 @@ public sealed class RenderViewLayoutBuilder
         float renderScale = 1f,
         ViewportFitMode fit = ViewportFitMode.Stretch,
         int? layer = null,
-        SceneLayerFilter? sceneLayers = null)
+        SceneLayerFilter? sceneLayers = null,
+        RenderViewEffects? effects = null)
     {
         var reference = new RenderViewRef(name);
         if (!_names.Add(reference.Name))
@@ -108,6 +115,7 @@ public sealed class RenderViewLayoutBuilder
             renderScale,
             layer ?? order,
             sceneLayers ?? SceneLayerFilter.All,
+            effects ?? RenderViewEffects.Direct,
             order));
         return this;
     }
@@ -146,6 +154,7 @@ public sealed class RenderViewLayoutBuilder
         float renderScale,
         int layer,
         SceneLayerFilter sceneLayers,
+        RenderViewEffects effects,
         int order)
     {
         SingleCameraViewportLayoutBuilder.ValidateViewport(viewport);
@@ -154,8 +163,20 @@ public sealed class RenderViewLayoutBuilder
             throw new ArgumentOutOfRangeException(
                 nameof(renderScale), "Render scale must be in (0, 1].");
         return new RenderViewDefinition(
-            reference, viewport, fit, renderScale, layer, sceneLayers, order);
+            reference, viewport, fit, renderScale, layer, sceneLayers, effects, order);
     }
+
+    internal static RenderViewDefinition WithEffects(
+        RenderViewDefinition definition,
+        RenderViewEffects effects) => new(
+            definition.Ref,
+            definition.Viewport,
+            definition.Fit,
+            definition.RenderScale,
+            definition.Layer,
+            definition.SceneLayers,
+            effects,
+            definition.DeclarationOrder);
 }
 
 /// <summary>A logical View exposed to gameplay without exposing its RenderTarget.</summary>
@@ -171,7 +192,9 @@ public sealed class RenderView
     public float RenderScale { get; }
     public int Layer { get; }
     public SceneLayerFilter SceneLayers { get; }
+    public RenderViewEffects Effects { get; }
     public RenderSurfaceKey SceneColor { get; }
+    public RenderSurfaceKey DisplayColor { get; }
     public Vector2D RenderSize => new(_target.Width, _target.Height);
     internal RenderTarget2D Target => _target;
     internal int DeclarationOrder { get; }
@@ -189,10 +212,15 @@ public sealed class RenderView
         RenderScale = definition.RenderScale;
         Layer = definition.Layer;
         SceneLayers = definition.SceneLayers;
+        Effects = definition.Effects;
         DeclarationOrder = definition.DeclarationOrder;
         SceneColor = definition.Ref == RenderViewRef.Main
             ? RenderSurfaceKey.SceneColor
             : new RenderSurfaceKey("scene-view", definition.Ref.Name, "color");
+        DisplayColor = Effects.IsHdr
+            ? ToneMappingEffectDescriptor.ColorOutput(
+                new RenderEffectKey(ToneMappingEffectDescriptor.EffectKind, definition.Ref.Name))
+            : SceneColor;
         _target = target;
     }
 }

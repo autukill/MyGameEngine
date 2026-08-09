@@ -150,13 +150,13 @@ internal sealed class Default2DGameRuntime : IDisposable
         StencilMaskShader? stencilShader = renderer.StencilMaskingEnabled
             ? _resources.Add(new StencilMaskShader(gl))
             : null;
-        BloomExtractShader? bloomExtractShader = renderer.Bloom is not null
+        BloomExtractShader? bloomExtractShader = renderer.AnyBloomEnabled
             ? _resources.Add(new BloomExtractShader(gl))
             : null;
-        GaussianBlurShader? bloomBlurShader = renderer.Bloom is not null
+        GaussianBlurShader? bloomBlurShader = renderer.AnyBloomEnabled
             ? _resources.Add(new GaussianBlurShader(gl))
             : null;
-        ToneMappingShader? toneMappingShader = renderer.HdrEnabled
+        ToneMappingShader? toneMappingShader = renderer.AnyHdrEnabled
             ? _resources.Add(new ToneMappingShader(gl))
             : null;
         var blitShader = _resources.Add(new BlitShader(gl));
@@ -237,6 +237,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                     1f,
                     0,
                     SceneLayerFilter.All,
+                    renderer.MainEffects,
                     0)
             });
         for (int i = 0; i < viewDefinitions.Count; i++)
@@ -251,7 +252,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             var target = _resources.Add(new RenderTarget2D(gl, new RenderTargetDescriptor(
                 renderWidth,
                 renderHeight,
-                definition.Ref == RenderViewRef.Main && renderer.HdrEnabled
+                definition.Effects.IsHdr
                     ? RenderTargetColorFormat.Rgba16Float
                     : RenderTargetColorFormat.Rgba8,
                 RenderTargetDepthStencilFormat.Depth24Stencil8)));
@@ -300,7 +301,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _builder.RegisterRootSurface(
                 view.SceneColor,
                 view.Target,
-                view.Ref == RenderViewRef.Main && renderer.HdrEnabled
+                view.Effects.IsHdr
                     ? RenderSurfaceEncoding.Linear
                     : RenderSurfaceEncoding.Display);
         }
@@ -320,12 +321,12 @@ internal sealed class Default2DGameRuntime : IDisposable
                 _shaders,
                 _renderViews[0].SceneLayers));
         }
-        if (renderer.Bloom is not null)
+        if (renderer.AnyBloomEnabled)
             _builder.RegisterFactory(new BloomEffectFactory(
                 gl,
                 bloomExtractShader!,
                 bloomBlurShader!));
-        if (renderer.HdrEnabled)
+        if (renderer.AnyHdrEnabled)
             _builder.RegisterFactory(new ToneMappingEffectFactory(gl, toneMappingShader!));
         _builder.RegisterFactory(new PresentationEffectFactory(gl, blitShader, _batch));
 
@@ -396,18 +397,18 @@ internal sealed class Default2DGameRuntime : IDisposable
         SceneAggregate scene = _scene!;
         if (renderer.MultipleRenderViewsEnabled)
         {
-            if (renderer.HdrEnabled)
-                scene.Add(new DefaultWorldEffectsController(scene.RaiseEvent, renderer));
             for (int i = 0; i < Context.RenderViews.Count; i++)
             {
                 RenderView view = Context.RenderViews[i];
-                RenderSurfaceKey source = view.Ref == RenderViewRef.Main && renderer.HdrEnabled
-                    ? ToneMappingEffectDescriptor.ColorOutput(
-                        ToneMappingEffectDescriptor.DefaultKey)
-                    : view.SceneColor;
+                if (view.Effects.IsHdr)
+                    scene.Add(new DefaultWorldEffectsController(
+                        scene.RaiseEvent,
+                        view.Ref,
+                        view.SceneColor,
+                        view.Effects));
                 Context.PresentViewSurface(
                     view.Ref,
-                    source,
+                    view.DisplayColor,
                     layer: 0,
                     blend: PresentationBlendMode.Opaque);
             }
@@ -415,13 +416,15 @@ internal sealed class Default2DGameRuntime : IDisposable
                 scene.Add(new DefaultGuiPresentationController(scene.RaiseEvent));
             return;
         }
-        if (renderer.HdrEnabled)
-            scene.Add(new DefaultWorldEffectsController(scene.RaiseEvent, renderer));
-        RenderSurfaceKey worldSource = renderer.HdrEnabled
-            ? ToneMappingEffectDescriptor.ColorOutput(ToneMappingEffectDescriptor.DefaultKey)
-            : RenderSurfaceKey.SceneColor;
+        RenderView mainView = Context.RenderViews[0];
+        if (mainView.Effects.IsHdr)
+            scene.Add(new DefaultWorldEffectsController(
+                scene.RaiseEvent,
+                mainView.Ref,
+                mainView.SceneColor,
+                mainView.Effects));
         Context.PresentWorldSurface(
-            worldSource,
+            mainView.DisplayColor,
             layer: 0,
             blend: PresentationBlendMode.Opaque);
         if (_plan.Renderer.SceneGuiEnabled)

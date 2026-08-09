@@ -12,35 +12,47 @@ using GameEngine.Features.ToneMapping.Domain;
 
 internal sealed class DefaultWorldEffectsController(
     Action<IDomainEvent> raiseEvent,
-    Default2DRendererPlan renderer) : GameInstance
+    RenderViewRef view,
+    RenderSurfaceKey sceneColor,
+    RenderViewEffects effects) : GameInstance
 {
+    private readonly RenderEffectKey _bloomKey = new(
+        BloomEffectDescriptor.EffectKind,
+        view.Name);
+    private readonly RenderEffectKey _toneMappingKey = new(
+        ToneMappingEffectDescriptor.EffectKind,
+        view.Name);
+
     public override void OnCreate()
     {
-        if (!renderer.HdrEnabled) return;
+        if (!effects.IsHdr) return;
 
         RenderSurfaceKey? bloomSource = null;
-        if (renderer.Bloom is { } bloom)
+        if (effects.Bloom is { } bloom)
         {
             this.RequestBloom(
                 bloom,
                 raiseEvent,
+                key: _bloomKey,
+                source: sceneColor,
                 colorFormat: RenderTargetColorFormat.Rgba16Float,
                 encoding: RenderSurfaceEncoding.Linear);
-            bloomSource = BloomEffectDescriptor.GlowOutput(
-                BloomEffectDescriptor.DefaultKey);
+            bloomSource = BloomEffectDescriptor.GlowOutput(_bloomKey);
         }
 
         this.RequestToneMapping(
-            renderer.ToneMapping,
+            effects.ToneMapping!.Value,
             raiseEvent,
+            key: _toneMappingKey,
+            source: sceneColor,
             bloomSource: bloomSource);
     }
 
     public override void OnDestroy()
     {
-        if (!renderer.HdrEnabled) return;
-        this.ReleaseToneMapping(raiseEvent);
-        if (renderer.Bloom is not null) this.ReleaseBloom(raiseEvent);
+        if (!effects.IsHdr) return;
+        this.ReleaseToneMapping(raiseEvent, _toneMappingKey);
+        if (effects.Bloom is not null) this.ReleaseBloom(raiseEvent, _bloomKey);
     }
 }
 

@@ -40,7 +40,7 @@ internal static class Program {
         Console.WriteLine( "  ESC: 退出" );
         if ( mirroredViewports ) Console.WriteLine( "  Single Camera → two Cover Viewports" );
         if ( splitCameras )
-            Console.WriteLine( "  Two Cameras → main HDR left / lightweight LDR observer right" );
+            Console.WriteLine( "  Two Cameras → main HDR+Bloom left / observer HDR+ToneMapping right" );
 
         var windowOptions = smoke
             ? EngineWindowOptions.Default
@@ -94,7 +94,8 @@ internal static class Program {
                     "observer",
                     ViewportRect.RightHalf,
                     renderScale: 0.75f,
-                    sceneLayers: SceneLayerFilter.Exclude( MainOnlyLayer ) ) );
+                    sceneLayers: SceneLayerFilter.Exclude( MainOnlyLayer ),
+                    effects: RenderViewEffects.Hdr( ToneMappingSettings.Default ) ) );
         }
         if ( mirroredViewports ) {
             renderer.UseSingleCameraViewports( views => views
@@ -220,7 +221,11 @@ internal static class Program {
                          right.View != new RenderViewRef( "observer" ) ||
                          diagnostics.Viewports[1].RenderWidth >= diagnostics.Viewports[0].RenderWidth ||
                          diagnostics.Viewports[0].SceneLayers.IsAll == false ||
-                         diagnostics.Viewports[1].SceneLayers.Allows( MainOnlyLayer ) ) {
+                         diagnostics.Viewports[1].SceneLayers.Allows( MainOnlyLayer ) ||
+                         !diagnostics.Viewports[1].Effects.IsHdr ||
+                         diagnostics.Viewports[1].Effects.Bloom is not null ||
+                         diagnostics.Viewports[1].Effects.AdditionalPassCount != 1 ||
+                         diagnostics.Viewports[1].Effects.AdditionalRenderTargetCount != 1 ) {
                         throw new InvalidOperationException(
                             "Multi-Camera Viewport mapping or RenderScale diagnostics are invalid." );
                     }
@@ -228,6 +233,14 @@ internal static class Program {
                     if ( diagnostics.RenderTargets.ActiveLeases.Count == 0 )
                         throw new InvalidOperationException(
                             "Primary View effects did not rent their expected targets." );
+                    ViewportSlotDiagnostics observer = diagnostics.Viewports[1];
+                    if ( !diagnostics.RenderTargets.ActiveLeases.Any( lease =>
+                             lease.Descriptor.Width == observer.RenderWidth &&
+                             lease.Descriptor.Height == observer.RenderHeight &&
+                             lease.Descriptor.ColorFormat == RenderTargetColorFormat.Rgba8 ) ) {
+                        throw new InvalidOperationException(
+                            "Secondary View Tone Mapping did not rent an output at its own resolution." );
+                    }
                     int maxLeaseWidth = diagnostics.RenderTargets.ActiveLeases
                         .Max( lease => lease.Descriptor.Width );
                     int maxLeaseHeight = diagnostics.RenderTargets.ActiveLeases

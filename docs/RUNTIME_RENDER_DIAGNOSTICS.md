@@ -24,7 +24,7 @@ if (snapshot.FrameStatistics is { } frame)
 
 高级组合根也可分别调用 `RenderPipeline.CaptureDiagnostics()`、`ScenePipelineBuilder.CaptureDiagnostics()` 与 `RenderTargetPool.CaptureDiagnostics()`。
 
-`Viewports` 保存 Render View、标准化布局、实际呈现像素矩形、内部 RenderWidth/RenderHeight、Fit、合成 Layer 与不可变 `SceneLayers` 过滤器；也可单独调用 `context.CaptureViewportDiagnostics()`。Contain 的像素矩形只包含真实画面，不包含 letterbox 黑边。RenderScale 只改变内部渲染尺寸，不改变呈现槽位。
+`Viewports` 保存 Render View、标准化布局、实际呈现像素矩形、内部 RenderWidth/RenderHeight、Fit、合成 Layer、不可变 `SceneLayers` 过滤器与 `Effects` Profile；也可单独调用 `context.CaptureViewportDiagnostics()`。`Effects.AdditionalPassCount/AdditionalRenderTargetCount` 可在不解析底层图的情况下展示配置成本。Contain 的像素矩形只包含真实画面，不包含 letterbox 黑边。RenderScale 只改变内部渲染尺寸，不改变呈现槽位。
 
 ## Pipeline 快照
 
@@ -34,7 +34,7 @@ if (snapshot.FrameStatistics is { } frame)
 
 `ScenePipelineDiagnostics` 保存当前 viewport、稳定效果顺序和逻辑 Surface 图。Effect 项包含 Key、owner `InstanceId`、输入/输出契约与关联 Pass Handle；Surface 项包含格式、Linear/Display 编码、根标记、生产者和消费者。
 
-多 Render View 模式下，`ScenePipelineDiagnostics.Width/Height` 表示主 View 动态效果分辨率，而不是窗口尺寸；它应与主 View 的 `RenderWidth/RenderHeight` 一致。次级 LDR View 没有隐藏的动态效果租约。
+多 Render View 模式下，`ScenePipelineDiagnostics.Width/Height` 表示 Builder 的主 View 分辨率，而不是窗口尺寸；它应与主 View 的 `RenderWidth/RenderHeight` 一致。每个效果输出实际按其输入 Surface 尺寸创建：Direct 次级 View 没有隐藏租约，显式 HDR Profile 的租约则匹配对应 View 的 `RenderWidth/RenderHeight`。
 
 owner、输入、输出和消费者均在捕获时复制；后续帧更新、owner 释放或图重建不会修改旧快照。
 

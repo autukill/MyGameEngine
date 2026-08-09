@@ -59,9 +59,10 @@ public sealed class Default2DRendererOptions
         ToneMappingSettings toneMapping,
         BloomSettings? bloom = null)
     {
+        RenderViewEffects effects = RenderViewEffects.Hdr(toneMapping, bloom);
         _hdrEnabled = true;
-        _toneMapping = toneMapping;
-        _bloom = bloom;
+        _toneMapping = effects.ToneMapping!.Value;
+        _bloom = effects.Bloom;
         return this;
     }
 
@@ -203,7 +204,19 @@ public sealed class Default2DRendererOptions
         _shaderAssetManifestPath,
         _shaderMaterials.ToArray(),
         _viewports ?? SingleCameraViewportLayoutBuilder.Default,
-        _renderViews);
+        FreezeRenderViews());
+
+    private IReadOnlyList<RenderViewDefinition>? FreezeRenderViews()
+    {
+        if (_renderViews is null) return null;
+        var result = _renderViews.ToArray();
+        result[0] = RenderViewLayoutBuilder.WithEffects(
+            result[0],
+            _hdrEnabled
+                ? RenderViewEffects.Hdr(_toneMapping, _bloom)
+                : RenderViewEffects.Direct);
+        return Array.AsReadOnly(result);
+    }
 }
 
 internal sealed record Default2DRendererPlan(
@@ -228,6 +241,13 @@ internal sealed record Default2DRendererPlan(
     public IReadOnlyList<SingleCameraViewportDefinition> ResolvedViewports =>
         Viewports ?? SingleCameraViewportLayoutBuilder.Default;
     public bool MultipleRenderViewsEnabled => RenderViews is { Count: > 1 };
+    public RenderViewEffects MainEffects => HdrEnabled
+        ? RenderViewEffects.Hdr(ToneMapping, Bloom)
+        : RenderViewEffects.Direct;
+    public bool AnyHdrEnabled => HdrEnabled ||
+        RenderViews?.Any(view => view.Effects.IsHdr) == true;
+    public bool AnyBloomEnabled => Bloom.HasValue ||
+        RenderViews?.Any(view => view.Effects.Bloom.HasValue) == true;
 
     public void Validate()
     {
@@ -242,6 +262,12 @@ internal sealed record Default2DRendererPlan(
         }
         if (Bloom is not null && !HdrEnabled)
             throw new InvalidOperationException("The default Bloom preset requires HDR.");
+        if (RenderViews is { Count: > 0 } renderViews &&
+            (renderViews[0].Ref != RenderViewRef.Main || renderViews[0].Effects != MainEffects))
+        {
+            throw new InvalidOperationException(
+                "The main Render View effect profile must match UseHdr configuration.");
+        }
         if (ContentHotReload is not null && ContentPackagesRoot is null)
             throw new InvalidOperationException("Content hot reload requires UseContent.");
         if ((ShaderRoot is null) != (ShaderFiles is null or { Count: 0 }))

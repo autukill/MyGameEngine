@@ -51,8 +51,8 @@ public sealed class ToneMappingEffectFactory : IRenderEffectFactory
         try
         {
             output = context.Targets.Rent(new RenderTargetDescriptor(
-                context.Width,
-                context.Height,
+                scene.Width,
+                scene.Height,
                 RenderTargetColorFormat.Rgba8));
             pass = new ToneMappingPass(
                 $"ToneMapping:{key.Slot}",

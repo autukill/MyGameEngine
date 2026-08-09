@@ -55,7 +55,7 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
         var configuration = BloomEffectPolicy.ValidateAndGetConfiguration(key, owners);
         BloomSettings settings = configuration.Settings;
         RenderTarget2D source = context.Surfaces.Resolve(configuration.Source);
-        var size = BloomPass.CalculateTargetSize(context.Width, context.Height, settings.Resolution);
+        var size = BloomPass.CalculateTargetSize(source.Width, source.Height, settings.Resolution);
         var descriptor = new RenderTargetDescriptor(
             size.Width,
             size.Height,

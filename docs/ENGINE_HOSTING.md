@@ -77,14 +77,23 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
             "observer",
             ViewportRect.RightHalf,
             renderScale: 0.75f,
-            sceneLayers: SceneLayerFilter.Exclude("MainOnly"))))
+            sceneLayers: SceneLayerFilter.Exclude("MainOnly"),
+            effects: RenderViewEffects.Hdr(ToneMappingSettings.Default))))
 ```
 
 每个 View 重绘 Scene 并拥有独立 Camera、SceneColor 与不可变 `SceneLayerFilter`。`Include(...)` 只绘制具名层，`Exclude(...)` 绘制除此之外的可见层，省略时为 `SceneLayerFilter.All`。过滤只作用于 `GameInstance` Layer；Scene 的清屏色和 Background Sprite 仍是每个 View 的共同背景。名单在装配时复制并拒绝空名称或重复项，逐帧查询不会分配。
 
 `context.Camera` 仍是 `RenderViewRef.Main`；其他 Camera 通过 `context.GetRenderView(...)` 获取。`PresentViewSurface` 只把自定义 Surface 送入指定 View 的槽位。主 View 的 Stencil 场景重绘使用同一份 Layer 过滤，避免遮罩输出重新带回已排除实例。
 
-`UseHdr/EnableStencilMasking` 在多 Render View 模式下只作用于 `main`，动态目标按主 View 的内部尺寸创建；次级 View 保持轻量 RGBA8/Display，不复制效果链。自定义主 View Stencil 输出使用 `PresentViewSurface(RenderViewRef.Main, ...)`。`UseRenderViews` 与 `UseSingleCameraViewports` 互斥，前者表示重绘，后者表示复用同一次渲染。
+`UseHdr(...)` 继续配置 `main`；次级 View 默认使用 `RenderViewEffects.Direct`，只有在 `.Add(..., effects: ...)` 中显式选择时才创建独立后处理链。`RenderViewEffects.Hdr(toneMapping)` 创建 HDR SceneColor 与 Tone Mapping；再传入 Bloom 设置才增加 Bloom。每条效果链用 View 名称作为稳定 Effect Slot，并按该 View 自己的 RenderScale 尺寸租赁目标。`RenderView.DisplayColor` 始终指向可安全呈现的 Display Surface。
+
+| Profile | 根 SceneColor | 额外 Pass | 额外租赁目标 |
+| --- | --- | ---: | ---: |
+| `RenderViewEffects.Direct` | RGBA8 / Display | 0 | 0 |
+| `RenderViewEffects.Hdr(toneMapping)` | RGBA16F / Linear | 1 | 1 |
+| `RenderViewEffects.Hdr(toneMapping, bloom)` | RGBA16F / Linear | 2 | 4 |
+
+这组成本也可从 `AdditionalPassCount/AdditionalRenderTargetCount` 直接读取，并随 Viewport 诊断返回。Stencil 目前仍由 `EnableStencilMasking` 配置且只属于主 View；自定义主 View Stencil 输出使用 `PresentViewSurface(RenderViewRef.Main, ...)`。`UseRenderViews` 与 `UseSingleCameraViewports` 互斥，前者表示重绘，后者表示复用同一次渲染。
 
 ## Default2DGameContext
 
@@ -155,7 +164,7 @@ Shader
 ## 当前边界
 
 - v1 只提供单窗口和 OpenGL 默认 2D Runtime；已支持 Scene 目录/切换，但没有 Scene 栈或后台加载。
-- 支持单 Camera 多呈现槽位，以及带独立 Camera、RenderScale 和 Scene Layer 过滤的多 Render View；次级 View 后处理策略仍在后续阶段。
+- 支持单 Camera 多呈现槽位，以及带独立 Camera、RenderScale、Scene Layer 过滤和显式 HDR/Bloom/Tone Mapping 策略的多 Render View；次级 Stencil 尚未开放。
 - Host 不自动注册未启用的可选 Feature；请求缺失 Factory 会沿用 Builder 的明确诊断。
 - 内容路径相对 `AppContext.BaseDirectory` 解析；绝对路径视为开发者显式选择。
 - 高级用户可以继续不使用 Hosting，直接组合现有底层模块。

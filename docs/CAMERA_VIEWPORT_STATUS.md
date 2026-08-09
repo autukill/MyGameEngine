@@ -69,7 +69,8 @@ Scene + Stencil + Bloom + Tone Mapping  （一次）
             "player.two",
             ViewportRect.RightHalf,
             renderScale: 0.75f,
-            sceneLayers: SceneLayerFilter.Include("Instances", "Effects"))))
+            sceneLayers: SceneLayerFilter.Include("Instances", "Effects"),
+            effects: RenderViewEffects.Hdr(ToneMappingSettings.Default))))
 ```
 
 `main` 保持为 `context.Camera`；额外 View 通过 `context.GetRenderView(new RenderViewRef("player.two"))` 取得。每个 `RenderView` 拥有独立 Camera、SceneColor 根 Surface、SceneRenderPass、RenderScale 和 Viewport，但不公开其 RenderTarget。resize 会按槽位像素尺寸与 RenderScale 同步 Camera 和目标。
@@ -87,18 +88,19 @@ second.Camera.Zoom = 0.75f;
 当前多 Camera 策略：
 
 - 每个 View 重绘同一 Scene，但使用独立 Camera。
-- 主 View 可使用现有 HDR/Bloom/Tone Mapping/Stencil；效果图只按主 View 的实际 RenderScale 尺寸构建。
-- 次级 View 保持 RGBA8/Display SceneColor，不复制动态效果链。
+- 主 View 继续由 `UseHdr` 和 `EnableStencilMasking` 配置。
+- 次级 View 默认 `Direct`，可显式选择独立 HDR + Tone Mapping，以及可选 Bloom；不会从主 View 隐式继承。
+- Bloom 和 Tone Mapping 的租赁目标从实际输入 Surface 解析尺寸，保证每条链跟随所属 View 的 RenderScale。
 - resize 按 Viewport 与 RenderScale 重建目标。
 - 诊断明确列出每个 View 的 Pass、RT 显存和 Draw Call 成本。
 - `UseRenderViews` 与 `UseSingleCameraViewports` 互斥，避免“重绘”和“镜像呈现”语义混淆。
-- Runner `--split-cameras` 验证“主 HDR + Stencil + 全部层 / 次级 LDR + 排除 MainOnly”；当前为 7 Pass、3 个根目标和 5 个主 View 尺寸动态租约。
+- Runner `--split-cameras` 验证“主 HDR + Bloom + Stencil + 全部层 / 次级 HDR + Tone Mapping + 排除 MainOnly”；当前为 8 Pass、3 个根目标和 6 个动态租约，次级输出租约使用自己的 0.75 RenderScale 尺寸。
 
 ## 后续阶段
 
-### 阶段 3：显式效果策略
+### 阶段 3：显式效果策略（已完成）
 
-每 View Layer 过滤已经完成。下一步把当前“全局效果仅属于 main”的规则逐步显式化；次级 View 是否启用 Tone Mapping 等效果应由配置声明，不能隐式复制。此时再讨论共享后处理、跨 View 可见性缓存等性能优化。
+每 View Layer 过滤与显式效果策略已经完成。`Direct`、HDR + Tone Mapping、HDR + Bloom + Tone Mapping 三档配置直接暴露额外 Pass/RT 成本，次级 View 不会隐式继承主链。下一步以真实多 View 负载测量为依据，评估是否值得缓存跨 View 可见性与排序结果。
 
 ### 阶段 4：高级终端
 
@@ -106,7 +108,7 @@ second.Camera.Zoom = 0.75f;
 
 ## 当前明确不支持
 
-- 次级 View 的 HDR、Bloom、Stencil 或独立后处理链；当前这些效果明确只属于 main。
+- 次级 View 的 Stencil；HDR、Bloom 和 Tone Mapping 已可独立声明。
 - 跨 View 可见性缓存或通用空间剔除；当前每个 View 独立遍历并绘制被 Layer 过滤后的实例。
 - 多窗口与多个默认 framebuffer 终端。
 - Viewport 动画、鼠标捕获策略和编辑器 Dock。

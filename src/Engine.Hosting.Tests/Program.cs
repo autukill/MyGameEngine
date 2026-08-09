@@ -97,7 +97,8 @@ internal static class Program
                     "player.two",
                     ViewportRect.RightHalf,
                     renderScale: 0.5f,
-                    sceneLayers: SceneLayerFilter.Exclude("MainOnly"))))
+                    sceneLayers: SceneLayerFilter.Exclude("MainOnly"),
+                    effects: RenderViewEffects.Hdr(ToneMappingSettings.Default))))
             .ConfigureScene("Split", _ => { })
             .BuildPlan();
         Check(renderViews.Renderer.MultipleRenderViewsEnabled &&
@@ -106,10 +107,16 @@ internal static class Program
               definitions[1].Ref == new RenderViewRef("player.two") &&
               definitions[1].RenderScale == 0.5f &&
               definitions[0].SceneLayers.IsAll &&
+              definitions[0].Effects == RenderViewEffects.Direct &&
               definitions[1].SceneLayers.IsExclusive &&
               !definitions[1].SceneLayers.Allows("MainOnly") &&
-              definitions[1].SceneLayers.Allows(SceneAggregate.LayerNameInstances),
-            "Render View plans freeze Camera scale and allocation-free Scene layer selection");
+              definitions[1].SceneLayers.Allows(SceneAggregate.LayerNameInstances) &&
+              definitions[1].Effects.IsHdr &&
+              definitions[1].Effects.Bloom is null &&
+              definitions[1].Effects.AdditionalPassCount == 1 &&
+              definitions[1].Effects.AdditionalRenderTargetCount == 1 &&
+              renderViews.Renderer.AnyHdrEnabled,
+            "Render View plans freeze Camera, layers, and explicit post-processing cost");
         Check(RenderViewLayoutBuilder.ResolveRenderSize(
                   ViewportRect.RightHalf, 0.5f, 801, 601) == (200, 301),
             "Render View size combines shared-edge Viewport rounding and RenderScale deterministically");
@@ -159,6 +166,18 @@ internal static class Program
         CheckThrows<ArgumentException>(
             () => SceneLayerFilter.Include("Actors", "Actors"),
             "Duplicate Scene layer selections are rejected during configuration");
+        Check(RenderViewEffects.Direct.AdditionalPassCount == 0 &&
+              RenderViewEffects.Direct.AdditionalRenderTargetCount == 0 &&
+              RenderViewEffects.Hdr(
+                  ToneMappingSettings.Default,
+                  BloomSettings.Default).AdditionalPassCount == 2 &&
+              RenderViewEffects.Hdr(
+                  ToneMappingSettings.Default,
+                  BloomSettings.Default).AdditionalRenderTargetCount == 4,
+            "Render View effect profiles expose their exact additional Pass and target cost");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => RenderViewEffects.Hdr(default),
+            "Default-initialized invalid effect settings are rejected at configuration time");
         CheckThrows<InvalidOperationException>(
             () => new Default2DRendererOptions()
                 .UseSingleCameraViewports(views => views.Add("main", ViewportRect.FullScreen))
@@ -307,7 +326,11 @@ internal static class Program
             true,
             true);
         var events = new List<IDomainEvent>();
-        var hdr = new DefaultWorldEffectsController(events.Add, hdrPlan);
+        var hdr = new DefaultWorldEffectsController(
+            events.Add,
+            RenderViewRef.Main,
+            RenderSurfaceKey.SceneColor,
+            hdrPlan.MainEffects);
         hdr.OnCreate();
         Check(events.OfType<RenderEffectRequestedEvent>().Select(value => value.Descriptor.Key.Kind)
                 .SequenceEqual(new[]
@@ -325,6 +348,25 @@ internal static class Program
                     BloomEffectDescriptor.EffectKind
                 }),
             "HDR preset releases consumers before producers");
+
+        events.Clear();
+        RenderViewRef observer = new("observer");
+        RenderSurfaceKey observerScene = new("scene-view", observer.Name, "color");
+        var observerHdr = new DefaultWorldEffectsController(
+            events.Add,
+            observer,
+            observerScene,
+            RenderViewEffects.Hdr(ToneMappingSettings.Default));
+        observerHdr.OnCreate();
+        Check(events.Single() is RenderEffectRequestedEvent
+            {
+                Descriptor: ToneMappingEffectDescriptor
+                {
+                    Key.Slot: "observer",
+                    Source: var observerSource
+                }
+            } && observerSource == observerScene,
+            "A secondary HDR View owns a distinct effect key and consumes its own Scene Surface");
 
         events.Clear();
         var viewport = SingleCameraViewportLayoutBuilder.Default.Single();
