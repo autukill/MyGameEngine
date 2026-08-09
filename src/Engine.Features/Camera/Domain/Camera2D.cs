@@ -1,6 +1,7 @@
 namespace GameEngine.Features.Camera.Domain;
 
 using System.Numerics;
+using GameEngine.Core.Domain.Gameplay;
 
 /// <summary>
 /// 2D 正交相机：平移 / 缩放 / 旋转 + 震屏。
@@ -40,6 +41,48 @@ public class Camera2D
     /// </summary>
     public Matrix4x4 GetStableViewProjectionMatrix() =>
         CreateViewProjectionMatrix(Position);
+
+    /// <summary>
+    /// Returns a conservative world-space AABB for the actual rendered View, including the current
+    /// presentation shake. A rotated Camera therefore keeps its enclosing corners rather than
+    /// incorrectly rejecting visible content.
+    /// </summary>
+    public bool TryGetVisibleWorldBounds(out Bounds2D bounds)
+    {
+        if (ViewportSize.X <= 0f || ViewportSize.Y <= 0f ||
+            !Matrix4x4.Invert(GetViewProjectionMatrix(), out Matrix4x4 inverse))
+        {
+            bounds = default;
+            return false;
+        }
+
+        float minX = float.PositiveInfinity;
+        float minY = float.PositiveInfinity;
+        float maxX = float.NegativeInfinity;
+        float maxY = float.NegativeInfinity;
+        Include(-1f, -1f);
+        Include(1f, -1f);
+        Include(1f, 1f);
+        Include(-1f, 1f);
+        if (!float.IsFinite(minX) || !float.IsFinite(minY) ||
+            !float.IsFinite(maxX) || !float.IsFinite(maxY))
+        {
+            bounds = default;
+            return false;
+        }
+
+        bounds = new Bounds2D(minX, minY, maxX, maxY);
+        return true;
+
+        void Include(float clipX, float clipY)
+        {
+            Vector4 world = Vector4.Transform(new Vector4(clipX, clipY, 0f, 1f), inverse);
+            minX = MathF.Min(minX, world.X);
+            minY = MathF.Min(minY, world.Y);
+            maxX = MathF.Max(maxX, world.X);
+            maxY = MathF.Max(maxY, world.Y);
+        }
+    }
 
     public Vector2 WorldToViewport(Vector2 worldPosition)
     {

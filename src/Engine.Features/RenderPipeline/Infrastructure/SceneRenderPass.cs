@@ -72,10 +72,16 @@ public sealed class SceneRenderPass : RenderPass
 
         // 4. 调用 SceneAggregate.DrawActive（Layer 感知版——按层分组遍历实例）
         ctx.Batch.Begin();
-        LastDrawStatistics = _scene.DrawActiveMeasured(
-            ctx.Batch,
-            _layerFilter,
-            _measureTiming);
+        LastDrawStatistics = _camera.TryGetVisibleWorldBounds(out var viewBounds)
+            ? _scene.DrawActiveMeasured(
+                ctx.Batch,
+                _layerFilter,
+                viewBounds,
+                _measureTiming)
+            : _scene.DrawActiveMeasured(
+                ctx.Batch,
+                _layerFilter,
+                _measureTiming);
         ctx.Batch.End();
     }
 

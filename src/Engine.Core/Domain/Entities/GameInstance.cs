@@ -103,6 +103,19 @@ public class GameInstance
     /// <summary>Optional lightweight collider used by Scene gameplay queries.</summary>
     public CollisionShape2D? Collider { get; set; }
 
+    /// <summary>
+    /// Conservative per-View draw culling policy. Automatic uses LocalDrawBounds first, then the
+    /// logical Sprite bounds; instances without known bounds remain visible.
+    /// </summary>
+    public InstanceViewCullingMode ViewCulling { get; set; } =
+        InstanceViewCullingMode.Automatic;
+
+    /// <summary>
+    /// Optional local-space visual bounds for custom OnDraw implementations. This is independent
+    /// from Collider because gameplay collision and rendered extent commonly differ.
+    /// </summary>
+    public Bounds2D? LocalDrawBounds { get; set; }
+
     /// <summary>当前动画帧（对应 GMS image_index，可为小数）。</summary>
     public float ImageIndex { get; set; }
 

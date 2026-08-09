@@ -83,6 +83,8 @@ second.Camera.Zoom = 0.75f;
 
 `SceneLayerFilter.Include(...)` 适合只显示世界或小地图层，`Exclude(...)` 适合隐藏主视图专属装饰；默认 `All` 保持兼容行为。它组合现有 `SceneLayerConfig.IsVisible`：层必须同时全局可见且被 View 允许才会绘制。Background 不属于 Instance Layer，因此不会被过滤。Scene 内部按 Layer 索引实例，View 只访问允许层中的候选；过滤检查与绘制保持零稳态分配，但每个 View 仍会独立排序并绘制其可见实例。
 
+每个 View 还会用自己的 Camera 进行排序前粗剔除。默认 Sprite 从 Size/Origin 推导视觉边界；自定义绘制可设置 `LocalDrawBounds`，跨屏幕/跨世界绘制可选择 `InstanceViewCullingMode.AlwaysVisible`。未知边界始终保留，Collider 不会被误作视觉边界。旋转 Camera 使用可见四角的世界 AABB，保证保守而非精确多边形剔除。
+
 `ViewportHit.View` 会标识命中的 Render View，坐标通过该 View 自己的 Camera 与源分辨率反算。诊断同时报告呈现像素矩形、`RenderWidth/RenderHeight` 和 `SceneLayers`。
 
 当前多 Camera 策略：
@@ -100,7 +102,7 @@ second.Camera.Zoom = 0.75f;
 
 ### 阶段 3：显式效果策略（已完成）
 
-每 View Layer 过滤与显式效果策略已经完成。`Direct`、HDR + Tone Mapping、HDR + Bloom + Tone Mapping 三档配置直接暴露额外 Pass/RT 成本，次级 View 不会隐式继承主链。每个 View 的诊断现在还报告 Scene 候选访问、选择/绘制实例、排序比较和可选 CPU 分项耗时。100/1,000/10,000 实例基准确认了旧路径的 `Layer × Scene` 放大，现已用运行时同步的 Layer 索引修正；10,000 实例双 View 本机样本约从 `1.536 ms` 降至 `1.185 ms`，且保持 0 B/frame 和同帧切层语义。
+每 View Layer 过滤与显式效果策略已经完成。`Direct`、HDR + Tone Mapping、HDR + Bloom + Tone Mapping 三档配置直接暴露额外 Pass/RT 成本，次级 View 不会隐式继承主链。每个 View 的诊断现在还报告 Scene 候选访问、剔除、选择/绘制实例、排序比较和可选 CPU 分项耗时。Layer 索引已修正 `Layer × Scene` 放大；保守 Camera 剔除在 10,000 实例、各 View 可见 20% 的本机样本中把双 View 约从 `2.440 ms` 降至 `0.852 ms`，保持 0 B/frame。
 
 ### 阶段 4：高级终端
 
@@ -109,6 +111,6 @@ second.Camera.Zoom = 0.75f;
 ## 当前明确不支持
 
 - 次级 View 的 Stencil；HDR、Bloom 和 Tone Mapping 已可独立声明。
-- 跨 View 可见性缓存或通用空间剔除；当前 Layer 候选已索引，但每个 View 仍独立排序并绘制被过滤后的实例。
+- 跨 View 可见性缓存或通用空间索引；当前 Layer 候选已索引并逐 View 粗剔除，但各 View 仍独立检查、排序并绘制可见实例。
 - 多窗口与多个默认 framebuffer 终端。
 - Viewport 动画、鼠标捕获策略和编辑器 Dock。

@@ -5,6 +5,7 @@ public readonly record struct SceneDrawStatistics(
     bool TimingEnabled,
     int VisibleLayerCount,
     int CandidateVisitCount,
+    int CulledInstanceCount,
     int SelectedInstanceCount,
     int DrawnInstanceCount,
     int SortComparisonCount,

@@ -437,7 +437,19 @@ public class SceneAggregate : IInstanceLayerTracker
     /// </summary>
     public void DrawActive(ISpriteBatch batch, SceneLayerFilter layerFilter)
     {
-        _ = DrawActiveCore(batch, layerFilter, measureTime: false);
+        _ = DrawActiveCore(batch, layerFilter, viewBounds: null, measureTime: false);
+    }
+
+    /// <summary>
+    /// Draws active instances while conservatively rejecting known visual bounds outside a View.
+    /// Instances without known bounds remain visible.
+    /// </summary>
+    public void DrawActive(
+        ISpriteBatch batch,
+        SceneLayerFilter layerFilter,
+        Bounds2D viewBounds)
+    {
+        _ = DrawActiveCore(batch, layerFilter, viewBounds, measureTime: false);
     }
 
     /// <summary>
@@ -447,17 +459,28 @@ public class SceneAggregate : IInstanceLayerTracker
     public SceneDrawStatistics DrawActiveMeasured(
         ISpriteBatch batch,
         SceneLayerFilter layerFilter,
-        bool measureTime = true) => DrawActiveCore(batch, layerFilter, measureTime);
+        bool measureTime = true) =>
+        DrawActiveCore(batch, layerFilter, viewBounds: null, measureTime);
+
+    /// <summary>Measured counterpart of the bounds-aware draw path.</summary>
+    public SceneDrawStatistics DrawActiveMeasured(
+        ISpriteBatch batch,
+        SceneLayerFilter layerFilter,
+        Bounds2D viewBounds,
+        bool measureTime = true) =>
+        DrawActiveCore(batch, layerFilter, viewBounds, measureTime);
 
     private SceneDrawStatistics DrawActiveCore(
         ISpriteBatch batch,
         SceneLayerFilter layerFilter,
+        Bounds2D? viewBounds,
         bool measureTime)
     {
         ArgumentNullException.ThrowIfNull(batch);
         ArgumentNullException.ThrowIfNull(layerFilter);
         int visibleLayers = 0;
         int candidateVisits = 0;
+        int culledInstances = 0;
         int selectedInstances = 0;
         int drawnInstances = 0;
         int sortComparisons = 0;
@@ -470,7 +493,12 @@ public class SceneAggregate : IInstanceLayerTracker
 
             visibleLayers++;
             long started = measureTime ? Stopwatch.GetTimestamp() : 0L;
-            candidateVisits += CaptureDrawEntries(layer.Name);
+            candidateVisits += CaptureDrawEntries(
+                batch,
+                layer.Name,
+                viewBounds,
+                out int layerCulled);
+            culledInstances += layerCulled;
             if (measureTime) traversalTicks += Stopwatch.GetTimestamp() - started;
 
             started = measureTime ? Stopwatch.GetTimestamp() : 0L;
@@ -495,6 +523,7 @@ public class SceneAggregate : IInstanceLayerTracker
             measureTime,
             visibleLayers,
             candidateVisits,
+            culledInstances,
             selectedInstances,
             drawnInstances,
             sortComparisons,
@@ -528,7 +557,7 @@ public class SceneAggregate : IInstanceLayerTracker
             var layer = _layers[i];
             if (layer.Name != layerName || !layer.IsVisible) continue;
 
-            CaptureDrawEntries(layer.Name);
+            CaptureDrawEntries(batch, layer.Name, viewBounds: null, out _);
             SortDrawEntries();
             foreach (DrawEntry entry in _drawSnapshot)
             {
@@ -905,19 +934,90 @@ public class SceneAggregate : IInstanceLayerTracker
             destination.Add(instance);
     }
 
-    private int CaptureDrawEntries(string layerName)
+    private int CaptureDrawEntries(
+        ISpriteBatch batch,
+        string layerName,
+        Bounds2D? viewBounds,
+        out int culledInstances)
     {
         _drawSnapshot.Clear();
+        culledInstances = 0;
         if (!_instancesByLayer.TryGetValue(layerName, out List<IndexedInstance>? instances))
             return 0;
 
         for (int i = 0; i < instances.Count; i++)
         {
             IndexedInstance indexed = instances[i];
-            if (indexed.Instance.IsActive)
-                _drawSnapshot.Add(new DrawEntry(indexed.Instance, indexed.Sequence));
+            GameInstance instance = indexed.Instance;
+            if (!instance.IsActive) continue;
+            if (viewBounds is { } bounds && !IsVisibleInView(batch, instance, bounds))
+            {
+                culledInstances++;
+                continue;
+            }
+            _drawSnapshot.Add(new DrawEntry(instance, indexed.Sequence));
         }
         return instances.Count;
+    }
+
+    private static bool IsVisibleInView(
+        ISpriteBatch batch,
+        GameInstance instance,
+        Bounds2D viewBounds)
+    {
+        if (instance.ViewCulling == InstanceViewCullingMode.AlwaysVisible)
+            return true;
+
+        Bounds2D localBounds;
+        if (instance.LocalDrawBounds is { } explicitBounds)
+        {
+            localBounds = explicitBounds;
+        }
+        else
+        {
+            if (instance.Sprite.IsEmpty ||
+                !batch.TryGetSpriteMetadata(instance.Sprite, out SpriteMetadata metadata))
+            {
+                return true;
+            }
+            localBounds = new Bounds2D(
+                -metadata.Origin.X,
+                -metadata.Origin.Y,
+                metadata.Size.X - metadata.Origin.X,
+                metadata.Size.Y - metadata.Origin.Y);
+        }
+
+        return viewBounds.Intersects(TransformDrawBounds(localBounds, instance.Transform));
+    }
+
+    private static Bounds2D TransformDrawBounds(Bounds2D local, Transform2D transform)
+    {
+        float cosine = MathF.Cos(transform.Rotation);
+        float sine = MathF.Sin(transform.Rotation);
+        float minX = float.PositiveInfinity;
+        float minY = float.PositiveInfinity;
+        float maxX = float.NegativeInfinity;
+        float maxY = float.NegativeInfinity;
+
+        Include(local.Left, local.Top);
+        Include(local.Right, local.Top);
+        Include(local.Right, local.Bottom);
+        Include(local.Left, local.Bottom);
+        return new Bounds2D(minX, minY, maxX, maxY);
+
+        void Include(float localX, float localY)
+        {
+            float scaledX = localX * transform.Scale.X;
+            float scaledY = localY * transform.Scale.Y;
+            float worldX =
+                scaledX * cosine + scaledY * sine + transform.Position.X;
+            float worldY =
+                -scaledX * sine + scaledY * cosine + transform.Position.Y;
+            minX = MathF.Min(minX, worldX);
+            minY = MathF.Min(minY, worldY);
+            maxX = MathF.Max(maxX, worldX);
+            maxY = MathF.Max(maxY, worldY);
+        }
     }
 
     void IInstanceLayerTracker.OnLayerChanged(

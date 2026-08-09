@@ -157,6 +157,8 @@ internal sealed class Program
             MeasureLifecycleFrames();
         if (args.Contains("--benchmark-multi-view", StringComparer.Ordinal))
             MeasureMultiViewDraws();
+        if (args.Contains("--benchmark-view-culling", StringComparer.Ordinal))
+            MeasureViewCulling();
 
         Console.WriteLine("\n=== All Phase 1.4 DDD tactical design smoke tests passed ===");
     }
@@ -777,6 +779,7 @@ internal sealed class Program
             drawScene.DrawActiveMeasured(batch, observerLayers);
         Assert(drawStatistics.VisibleLayerCount == 3 &&
                drawStatistics.CandidateVisitCount == 4 &&
+               drawStatistics.CulledInstanceCount == 0 &&
                drawStatistics.SelectedInstanceCount == 4 &&
                drawStatistics.DrawnInstanceCount == 4 &&
                drawStatistics.SortComparisonCount > 0,
@@ -796,11 +799,75 @@ internal sealed class Program
         Assert(measuredDrawAllocated == 0,
             $"Measured Scene drawing remains allocation-free ({measuredDrawAllocated:N0} B)");
 
+        var cullingScene = new SceneAggregate("ViewCulling");
+        var cullingOrder = new List<string>();
+        var cullingSprite = new SpriteRef("culling.probe");
+        cullingScene.Add(new DrawOrderProbe("inside", 0, cullingOrder)
+        {
+            Sprite = cullingSprite,
+            Position = new Vector2D(8, 8)
+        });
+        cullingScene.Add(new DrawOrderProbe("outside", 0, cullingOrder)
+        {
+            Sprite = cullingSprite,
+            Position = new Vector2D(200, 200)
+        });
+        cullingScene.Add(new DrawOrderProbe("unknown-bounds", 0, cullingOrder)
+        {
+            Position = new Vector2D(200, 200)
+        });
+        cullingScene.Add(new DrawOrderProbe("always-visible", 0, cullingOrder)
+        {
+            Sprite = cullingSprite,
+            Position = new Vector2D(200, 200),
+            ViewCulling = InstanceViewCullingMode.AlwaysVisible
+        });
+        cullingScene.Add(new DrawOrderProbe("custom-outside", 0, cullingOrder)
+        {
+            Position = new Vector2D(200, 200),
+            LocalDrawBounds = new Bounds2D(-4, -4, 4, 4)
+        });
+        cullingScene.Add(new DrawOrderProbe("rotated-inside", 0, cullingOrder)
+        {
+            Position = new Vector2D(-4, 50),
+            Rotation = MathF.PI / 2f,
+            LocalDrawBounds = new Bounds2D(0, 0, 20, 10)
+        });
+        var viewBounds = new Bounds2D(0, 0, 100, 100);
+        SceneDrawStatistics cullingStatistics = cullingScene.DrawActiveMeasured(
+            batch,
+            SceneLayerFilter.All,
+            viewBounds);
+        Assert(cullingOrder.SequenceEqual(
+                   ["inside", "unknown-bounds", "always-visible", "rotated-inside"]) &&
+               cullingStatistics.CandidateVisitCount == 6 &&
+               cullingStatistics.CulledInstanceCount == 2 &&
+               cullingStatistics.SelectedInstanceCount == 4,
+            "View bounds handle Sprite/custom bounds, rotation, unknown bounds, and opt-out draws");
+        for (int i = 0; i < 64; i++)
+        {
+            cullingOrder.Clear();
+            _ = cullingScene.DrawActiveMeasured(
+                batch, SceneLayerFilter.All, viewBounds, measureTime: false);
+        }
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+        {
+            cullingOrder.Clear();
+            _ = cullingScene.DrawActiveMeasured(
+                batch, SceneLayerFilter.All, viewBounds, measureTime: false);
+        }
+        long culledDrawAllocated =
+            GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert(culledDrawAllocated == 0,
+            $"Bounds-aware Scene drawing remains allocation-free ({culledDrawAllocated:N0} B)");
+
         Console.WriteLine("\n17. Scene lifecycle steady-state allocations");
         Console.WriteLine("   [PASS] Input + Step + Draw + DrawGUI remain at 0 B/frame after warm-up");
         Console.WriteLine("   [PASS] phase mutation visibility and stable depth ordering are preserved");
         Console.WriteLine("   [PASS] per-View Scene layer filtering remains at 0 B/frame");
         Console.WriteLine("   [PASS] LayerName changes update the indexed draw path in the same View");
+        Console.WriteLine("   [PASS] conservative per-View culling remains at 0 B/frame");
         Console.WriteLine("   [PASS] measured traversal/sort/draw diagnostics remain at 0 B/frame");
     }
 
@@ -903,6 +970,77 @@ internal sealed class Program
                 $"{observerStatistics.CandidateVisitCount:N0}, " +
                 $"sort={mainStatistics.SortComparisonCount:N0}/" +
                 $"{observerStatistics.SortComparisonCount:N0}, " +
+                $"allocated={allocated / frames:N0} B/frame");
+        }
+    }
+
+    private static void MeasureViewCulling()
+    {
+        Console.WriteLine("\n23. Per-View conservative culling benchmark");
+        var mainBounds = new Bounds2D(0, 0, 800, 600);
+        var observerBounds = new Bounds2D(1_000, 0, 1_800, 600);
+        var sprite = new SpriteRef("benchmark.culling");
+        foreach (int count in new[] { 100, 1_000, 10_000 })
+        {
+            var scene = new SceneAggregate($"ViewCulling-{count}");
+            for (int i = 0; i < count; i++)
+            {
+                int group = i % 5;
+                scene.Add(new AllocationFreeProbe(new LayerDepth(i % 8))
+                {
+                    Sprite = sprite,
+                    Position = group switch
+                    {
+                        0 => new Vector2D(100 + i % 600, 100 + i % 400),
+                        1 => new Vector2D(1_100 + i % 600, 100 + i % 400),
+                        _ => new Vector2D(5_000 + i, 5_000)
+                    }
+                });
+            }
+
+            var batch = new RecordingSpriteBatch();
+            for (int i = 0; i < 64; i++)
+            {
+                _ = scene.DrawActiveMeasured(
+                    batch, SceneLayerFilter.All, measureTime: false);
+                _ = scene.DrawActiveMeasured(
+                    batch, SceneLayerFilter.All, mainBounds, measureTime: false);
+                _ = scene.DrawActiveMeasured(
+                    batch, SceneLayerFilter.All, observerBounds, measureTime: false);
+            }
+
+            const int frames = 240;
+            long uncullTicks = 0;
+            long culledTicks = 0;
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            SceneDrawStatistics mainStatistics = default;
+            SceneDrawStatistics observerStatistics = default;
+            for (int i = 0; i < frames; i++)
+            {
+                long started = Stopwatch.GetTimestamp();
+                _ = scene.DrawActiveMeasured(
+                    batch, SceneLayerFilter.All, measureTime: false);
+                _ = scene.DrawActiveMeasured(
+                    batch, SceneLayerFilter.All, measureTime: false);
+                uncullTicks += Stopwatch.GetTimestamp() - started;
+
+                started = Stopwatch.GetTimestamp();
+                mainStatistics = scene.DrawActiveMeasured(
+                    batch, SceneLayerFilter.All, mainBounds, measureTime: false);
+                observerStatistics = scene.DrawActiveMeasured(
+                    batch, SceneLayerFilter.All, observerBounds, measureTime: false);
+                culledTicks += Stopwatch.GetTimestamp() - started;
+            }
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+            double uncullMs = uncullTicks * 1000d / Stopwatch.Frequency / frames;
+            double culledMs = culledTicks * 1000d / Stopwatch.Frequency / frames;
+            Console.WriteLine(
+                $"   {count,6:N0} instances: uncull={uncullMs,8:F4} ms, " +
+                $"culled={culledMs,8:F4} ms, drawn=" +
+                $"{mainStatistics.DrawnInstanceCount:N0}/" +
+                $"{observerStatistics.DrawnInstanceCount:N0}, rejected=" +
+                $"{mainStatistics.CulledInstanceCount:N0}/" +
+                $"{observerStatistics.CulledInstanceCount:N0}, " +
                 $"allocated={allocated / frames:N0} B/frame");
         }
     }

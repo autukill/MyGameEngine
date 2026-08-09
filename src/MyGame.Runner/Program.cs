@@ -286,6 +286,8 @@ internal static class Program {
                     $"activePasses={diagnostics.FrameStatistics.Value.ActivePasses}, " +
                     $"sceneCandidates={string.Join( '/', diagnostics.Viewports.Select(
                         view => view.SceneDraw.CandidateVisitCount ) )}, " +
+                    $"sceneCulled={string.Join( '/', diagnostics.Viewports.Select(
+                        view => view.SceneDraw.CulledInstanceCount ) )}, " +
                     $"sceneDrawn={string.Join( '/', diagnostics.Viewports.Select(
                         view => view.SceneDraw.DrawnInstanceCount ) )}, " +
                     $"sceneMs={string.Join( '/', diagnostics.Viewports.Select(

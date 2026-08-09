@@ -152,7 +152,10 @@ public sealed class StencilMaskPass : RenderPass
         _sceneShader.SetProjection(projection);
         _batch.DefaultShader = _sceneShader;
         _batch.Begin();
-        _scene.DrawActive(_batch, _layerFilter);
+        if (_camera.TryGetVisibleWorldBounds(out var viewBounds))
+            _scene.DrawActive(_batch, _layerFilter, viewBounds);
+        else
+            _scene.DrawActive(_batch, _layerFilter);
         _batch.End();
 
         DepthStencilState.None.Apply(gl);

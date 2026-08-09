@@ -47,6 +47,13 @@ internal static class Program
         var centerWorld = Vector4.Transform(new Vector4(400, 300, 0, 1), m);
         Check(MathF.Abs(centerWorld.X) < 1e-3f && MathF.Abs(centerWorld.Y) < 1e-3f,
             "Center maps to NDC (0,0)");
+        bool hasDefaultBounds = cam.TryGetVisibleWorldBounds(out var defaultBounds);
+        Check(hasDefaultBounds &&
+              MathF.Abs(defaultBounds.Left) < 1e-3f &&
+              MathF.Abs(defaultBounds.Top) < 1e-3f &&
+              MathF.Abs(defaultBounds.Right - 800f) < 1e-3f &&
+              MathF.Abs(defaultBounds.Bottom - 600f) < 1e-3f,
+            "Visible world bounds match the default Camera viewport");
 
         // 2. 平移：相机向右移 100，世界 500 应落回屏幕中心
         cam.Position = new Vector2(100, 0);
@@ -74,6 +81,11 @@ internal static class Program
         m = cam.GetViewProjectionMatrix();
         var det = m.GetDeterminant();
         Check(MathF.Abs(det) > 1e-6f, "Rotation matrix is invertible");
+        bool hasRotatedBounds = cam.TryGetVisibleWorldBounds(out var rotatedBounds);
+        Check(hasRotatedBounds &&
+              MathF.Abs(rotatedBounds.Width - 600f) < 1e-2f &&
+              MathF.Abs(rotatedBounds.Height - 800f) < 1e-2f,
+            "Rotated Camera exposes a conservative enclosing world AABB");
 
         // 5. 震屏：只影响矩阵生成，不抛异常
         cam.Rotation = 0;
@@ -85,6 +97,11 @@ internal static class Program
             "Shake is stable across all render passes in one update");
         cam.Update(0.6); // 计时归零
         Check(true, "Shake timer decays and Update() does not throw");
+
+        cam.Zoom = 0f;
+        Check(!cam.TryGetVisibleWorldBounds(out _),
+            "Non-invertible Camera fails open instead of producing invalid culling bounds");
+        cam.Zoom = 1f;
 
         // 6. ResizeViewport
         cam.ResizeViewport(1920, 1080);
