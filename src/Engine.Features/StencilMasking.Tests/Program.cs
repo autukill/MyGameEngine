@@ -29,6 +29,7 @@ internal static class Program
         TestState();
         TestTypedEffectEvents();
         TestMaskGeometry();
+        TestMaskGroupsAndSets();
         TestOwnerAggregation();
 
         Console.WriteLine();
@@ -115,7 +116,7 @@ internal static class Program
 
     private static void TestOwnerAggregation()
     {
-        Console.WriteLine("4. Shared owner aggregation policy");
+        Console.WriteLine("5. Shared owner aggregation policy");
         var key = StencilMaskEffectDescriptor.DefaultKey;
         var ownerA = InstanceId.New();
         var ownerB = InstanceId.New();
@@ -141,6 +142,69 @@ internal static class Program
         try { StencilMaskEffectPolicy.ValidateAndOrder(key, owners); }
         catch (InvalidOperationException) { conflictRejected = true; }
         Check(conflictRejected, "Owners sharing a key cannot conflict on stencil state");
+    }
+
+    private static void TestMaskGroupsAndSets()
+    {
+        Console.WriteLine("4. Explicit groups and batched geometry snapshots");
+        var group = new StencilMaskGroupRef("vision");
+        Check(group.Key == new RenderEffectKey(StencilMaskEffectDescriptor.EffectKind, "vision") &&
+              group.Output == StencilMaskEffectDescriptor.MaskOutput(group.Key),
+            "A group binds its effect key and output surface without GPU state");
+        CheckThrows<ArgumentException>(
+            () => new StencilMaskGroupRef(new RenderEffectKey("bloom", "vision")),
+            "A group rejects keys owned by another effect factory");
+
+        var initialCircle = StencilMaskGeometry.Circle(new Vector2D(10, 20), 8f);
+        var geometries = new[]
+        {
+            initialCircle,
+            StencilMaskGeometry.Circle(new Vector2D(40, 50), 12f)
+        };
+        var events = new List<GameEngine.Core.Domain.Events.IDomainEvent>();
+        var owner = new GameEngine.Core.Domain.Entities.GameInstance(
+            "vision-mask-set", Vector2D.Zero, LayerDepth.Instances);
+        owner.RequestStencilMasks(
+            group,
+            geometries,
+            StencilMaskState.Spotlight,
+            events.Add);
+        geometries[0] = StencilMaskGeometry.Circle(Vector2D.Zero, 1f);
+
+        var requested = events.OfType<RenderEffectRequestedEvent>().Single();
+        var descriptor = (StencilMaskEffectDescriptor)requested.Descriptor;
+        Check(requested.OwnerId == owner.Id && descriptor.Key == group.Key &&
+              descriptor.GeometryCount == 2 && descriptor.GetGeometry(0) == initialCircle,
+            "One owner snapshots multiple geometries into one persistent request");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => descriptor.GetGeometry(2),
+            "Geometry lookup rejects indices outside the snapshot");
+        CheckThrows<ArgumentException>(
+            () => owner.RequestStencilMasks(
+                group,
+                Array.Empty<StencilMaskGeometry>(),
+                StencilMaskState.Spotlight,
+                events.Add),
+            "An empty geometry set is rejected before raising an event");
+
+        events.Clear();
+        owner.ReleaseStencilMask(group, events.Add);
+        Check(events.Single() is RenderEffectReleasedEvent released &&
+              released.OwnerId == owner.Id && released.EffectKey == group.Key,
+            "Group release targets only the selected owner/key pair");
+
+        var owners = new Dictionary<InstanceId, IRenderEffectDescriptor>
+        {
+            [owner.Id] = descriptor,
+            [InstanceId.New()] = new StencilMaskEffectDescriptor(
+                group.Key,
+                new Vector2D(80, 90),
+                16f,
+                StencilMaskState.Spotlight)
+        };
+        var ordered = StencilMaskEffectPolicy.ValidateAndOrder(group.Key, owners);
+        Check(ordered.Sum(item => item.GeometryCount) == 3,
+            "Shared owners combine batched and single geometries in one effect group");
     }
 
     private static void TestMaskGeometry()

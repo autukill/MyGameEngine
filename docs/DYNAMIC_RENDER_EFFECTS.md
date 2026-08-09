@@ -51,19 +51,29 @@ var key = new RenderEffectKey(
 public sealed class SpotlightController : GameInstance
 {
     private readonly Action<IDomainEvent> _raiseEvent;
+    private readonly StencilMaskGroupRef _group = new("spotlight");
 
-    public override void OnCreate() => this.RequestPresentSurface(
-        StencilMaskEffectDescriptor.MaskOutput(
-            StencilMaskEffectDescriptor.DefaultKey),
-        _raiseEvent,
-        layer: 100,
-        blend: PresentationBlendMode.AlphaBlend);
+    public override void OnCreate()
+    {
+        this.RequestStencilMask(
+            _group,
+            center: Vector2D.Zero,
+            radius: 120f,
+            state: StencilMaskState.Spotlight,
+            raiseEvent: _raiseEvent);
+        this.RequestPresentSurface(
+            _group.Output,
+            _raiseEvent,
+            layer: 100,
+            blend: PresentationBlendMode.AlphaBlend);
+    }
 
     public override void OnStep(double deltaTime)
     {
         if (Input is null) return;
 
         this.RequestStencilMask(
+            _group,
             center: Input.MousePosition,
             radius: 120f,
             state: StencilMaskState.Spotlight,
@@ -73,14 +83,14 @@ public sealed class SpotlightController : GameInstance
     public override void OnDestroy()
     {
         this.ReleasePresentSurface(_raiseEvent);
-        this.ReleaseStencilMask(_raiseEvent);
+        this.ReleaseStencilMask(_group, _raiseEvent);
     }
 }
 ```
 
-`StencilMaskEffectDescriptor` 保存 Key、`StencilMaskGeometry` 和 `StencilMaskState`。Circle 的中心和半径必须为有限值，半径必须大于零；SpriteAlpha 还可保存 Sprite 帧、Transform 与 AlphaCutoff。
+`StencilMaskEffectDescriptor` 保存 Key、一至多个 `StencilMaskGeometry` 和 `StencilMaskState`。Circle 的中心和半径必须为有限值，半径必须大于零；SpriteAlpha 还可保存 Sprite 帧、Transform 与 AlphaCutoff。默认由一个同时持有 Mask 的组锚点通过 `_group.Output` 声明 Presentation；其他 owner 只贡献几何，避免出现 consumer 存活但 producer 已删除的无效依赖图。
 
-共享同一个 Stencil Key 的 owner 可以拥有不同中心和半径，但 `Mode`、`StencilRef` 和 `MaskBits` 必须一致。状态冲突会在修改 Pass 图之前失败；需要不同状态时应使用不同 Slot。
+共享同一个 Stencil Key 的 owner 可以拥有不同中心、半径或批量几何，但 `Mode`、`StencilRef` 和 `MaskBits` 必须一致。状态冲突会在修改 Pass 图之前失败；需要不同状态时应使用不同 Slot。完整管理策略见 [StencilMask 几何与分组](STENCIL_MASK_GEOMETRY.md)。
 
 ## 组合根装配
 

@@ -2,6 +2,25 @@
 
 StencilMasking 现在用 `StencilMaskGeometry` 表达不携带 GPU 对象的二值遮罩，支持真正的程序化圆形和 Sprite Alpha。领域 owner 只声明意图；Factory 解析 Sprite，专用 Shader 决定哪些 fragment 能写入 Stencil Buffer。
 
+## 显式 Mask 组
+
+`StencilMaskGroupRef` 同时提供效果 Key 和输出 Surface，是游戏代码管理遮罩的首选入口：
+
+```csharp
+var visionMasks = new StencilMaskGroupRef("vision");
+
+this.RequestStencilMask(
+    visionMasks,
+    center,
+    radius,
+    StencilMaskState.Spotlight,
+    scene.RaiseEvent);
+
+this.ReleaseStencilMask(visionMasks, scene.RaiseEvent);
+```
+
+同组 owner 共享一个 Pass、一个 RenderTarget 和一份 `StencilMaskState`。只有需要不同 Mode、StencilRef、MaskBits、输出层或独立生命周期时才创建其他 Slot。
+
 ## 圆形 Spotlight
 
 ```csharp
@@ -59,6 +78,46 @@ Factory 在修改图之前确认 Sprite 已注册。运行时通过共享 `ISpri
 
 相同 EffectKey 的多个 owner 共享一个目标和 Pass。所有圆形先批量提交，Sprite Alpha 按纹理及 cutoff 的状态变化 Flush；多个遮罩区域形成并集。共享 owner 的 `Mode`、`StencilRef` 和 `MaskBits` 必须一致。
 
+## 多 Mask 管理策略
+
+少量对象具有独立创建、失活和销毁生命周期时，让每个 `GameInstance` 成为一个 owner：
+
+```csharp
+scene.Add(new VisionEmitter(visionMasks, guardA));
+scene.Add(new VisionEmitter(visionMasks, guardB));
+scene.Add(new VisionEmitter(visionMasks, guardC));
+```
+
+同一个 owner 管理大量同生命周期形状时，使用一次批量快照，避免为每个区域创建实例和事件：
+
+```csharp
+StencilMaskGeometry[] geometry =
+[
+    StencilMaskGeometry.Circle(playerPosition, 120f),
+    StencilMaskGeometry.Circle(companionPosition, 72f),
+    StencilMaskGeometry.FromSprite(doorMask, 0f, doorTransform)
+];
+
+this.RequestStencilMasks(
+    visionMasks,
+    geometry,
+    StencilMaskState.Spotlight,
+    scene.RaiseEvent);
+```
+
+批量请求会复制一份几何快照，调用方之后可以安全复用数组。单几何请求不创建集合；inactive 实例在描述符和快照创建前直接 no-op。Pass 在 owner 更新时缓存总几何数和是否包含 SpriteAlpha，Draw 阶段不会为每个 Mask 创建临时集合。
+
+选择规则：
+
+| 场景 | 推荐 |
+| --- | --- |
+| Mask 有独立生命周期 | 同一组下多个 GameInstance owner |
+| 一批 Mask 总是一起更新/释放 | 一个 owner + `RequestStencilMasks` |
+| Inside/Outside 或 Stencil 位不同 | 不同 `StencilMaskGroupRef` |
+| 仅仅位置、半径或 Sprite 帧不同 | 保持同组 |
+
+每增加一个 owner 只增加描述符和几何绘制；每增加一个 group 才会增加完整 RenderTarget、Stencil Pass 和一次 `Scene.DrawActive` 重绘，因此应优先合组。
+
 ## 显式呈现
 
 Stencil Runtime 只发布：
@@ -67,18 +126,17 @@ Stencil Runtime 只发布：
 StencilMaskEffectDescriptor.MaskOutput(key) // RGBA8/Display
 ```
 
-需要在屏幕显示时，由 GameInstance 单独声明：
+需要在屏幕显示时，由组的“锚点 owner”声明。锚点同时拥有至少一个 Mask 和 Presentation，辅助 owner 只贡献几何：
 
 ```csharp
 this.RequestPresentSurface(
-    StencilMaskEffectDescriptor.MaskOutput(
-        StencilMaskEffectDescriptor.DefaultKey),
+    visionMasks.Output,
     scene.RaiseEvent,
     layer: 100,
     blend: PresentationBlendMode.AlphaBlend);
 ```
 
-释放或销毁时应在同一事件批次同时释放 Present 与 Stencil，避免终端继续引用已删除的生产者。
+锚点在 `OnDestroy` 的同一事件批次先释放 Present，再释放自己的 Stencil 请求；辅助 owner 只释放自己的 Stencil 请求。这样辅助 Mask 可以自由增删，同时不会留下引用已删除 Surface 的 Presentation。若锚点需要销毁，应同时结束组的呈现，或在同一批事件中把呈现所有权转交给另一个仍持有 Mask 的 owner。
 
 ## 当前边界
 

@@ -19,10 +19,11 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 动态效果装配：实例领域事件、共享 owner 集合、`ScenePipelineBuilder` 与 `RenderTargetPool`。
 - 逻辑 RenderSurface：纯值输入输出、根表面注册、稳定拓扑排序与失败原子重建。
 - HDR/LDR 呈现链：RGBA16F Scene/Bloom、ACES/Reinhard Tone Mapping、显式 Presentation 终端与独立 SceneGui。
-- Stencil 几何：专用 Shader 的真实 Circle 与 Sprite Alpha 遮罩，支持帧、原点、旋转和正负缩放。
+- Stencil 几何：显式 Mask 组、单 owner 批量快照、真实 Circle 与 Sprite Alpha，支持帧、原点、旋转和正负缩放。
 - 自动 GPU 像素回归：固定时间步、PNG 基线、容差比较以及 expected/actual/diff 诊断产物。
 - 可分发内容工具链：`gameengine-assets` .NET Tool 与内置编译器的 `buildTransitive` NuGet 包。
 - Engine Hosting：声明式启动、默认 2D 渲染预设、强类型 Scene Context、帧循环与资源清理。
+- 强类型 Content：Build 自动生成 Package、Sprite 与 Texture 逻辑引用，并在编译期诊断重名。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
 文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
@@ -136,15 +137,17 @@ dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTes
 ## Engine Hosting 快速开始
 
 ```csharp
+using MyGame.Content;
+
 using var game = GameApplication
     .Create(EngineWindowOptions.Default)
     .UseDefault2DRenderer(renderer => renderer
-        .UseContent("AssetsCompiled", "assets.json")
+        .UseContent(GameAssets.Packages.Root)
         .UseHdr(ToneMappingSettings.Default, BloomSettings.Default)
         .EnableStencilMasking())
     .ConfigureScene("MainScene", context =>
     {
-        context.Scene.Add(new Player(context.GetSprite("player.idle")));
+        context.Scene.Add(new Player(GameAssets.Sprites.PlayerIdle));
     })
     .Build();
 
@@ -179,13 +182,13 @@ var playerSprite = sprites.RegisterGrid("player", playerTexture,
 
 ```csharp
 using var manager = new ContentPackageManager(textures, sprites, packagesRoot);
-using var package = manager.Load("characters/boss/assets.json");
+using var package = manager.Load(GameAssets.Packages.Root);
 var idle = package.GetSprite("boss.idle");
 ```
 
 `assets.json` 可声明包依赖、Texture，以及 `single`、`grid`、`frames` 三种 Sprite 布局。`frames` 的每一帧都可引用不同 `TextureRef` 并指定像素裁剪区域，因此大尺寸单帧可以保留为独立图片；运行时 Sprite 引用和绘制 API 不受未来 Atlas 重映射影响。Manager 会先验证完整依赖图，再按拓扑顺序同步加载；失败只回滚本次新增资源，共享依赖在最后一个租约释放后才卸载。
 
-完整清单字段、多纹理长动画、包依赖和生命周期说明见 [Content Assets 使用指南](docs/CONTENT_ASSETS.md)。
+完整清单字段、多纹理长动画、包依赖和生命周期说明见 [Content Assets 使用指南](docs/CONTENT_ASSETS.md)；生成引用、Atlas 过滤和命名规则见[强类型 Content 引用](docs/STRONGLY_TYPED_CONTENT.md)。
 
 ## 离线 Texture Atlas
 
@@ -216,8 +219,8 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 从资产清单生成强类型 Sprite、Texture 和 Package 标识。
-2. 提供默认接入 Hosting 与内容管线的 `dotnet new` 项目模板。
+1. 提供默认接入 Hosting、强类型 Content 与内容管线的 `dotnet new` 项目模板。
+2. 增加 `gameengine doctor`，诊断 SDK、OpenGL 与内容工具链环境。
 3. 为无显示器 CI 固化软件 OpenGL 执行环境。
 4. 增加 Render Graph、Effect owner 和 RenderTarget 租约诊断快照。
 

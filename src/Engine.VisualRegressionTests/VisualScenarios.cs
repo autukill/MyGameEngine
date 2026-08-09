@@ -916,6 +916,7 @@ internal sealed class DynamicStencilFixture : IDisposable
             layer: 0,
             blend: PresentationBlendMode.Opaque));
 
+        var secondMask = StencilMaskGeometry.Circle(new Vector2D(235, 155), 58f);
         _firstOwner = useSpriteMask
             ? _scene.Add(new SpriteMaskOwner(
                 _scene.RaiseEvent,
@@ -925,10 +926,13 @@ internal sealed class DynamicStencilFixture : IDisposable
                     MathF.PI / 7f,
                     new Vector2D(2.3f, 1.7f))))
             : _scene.Add(new MaskOwner(
-                _scene.RaiseEvent, new Vector2D(90, 85), 52f));
+                _scene.RaiseEvent,
+                new Vector2D(90, 85),
+                52f,
+                twoOwners ? secondMask : null));
         if (twoOwners)
             _secondOwner = _scene.Add(new MaskOwner(
-                _scene.RaiseEvent, new Vector2D(235, 155), 58f));
+                _scene.RaiseEvent, secondMask.Center, secondMask.Radius));
 
         _camera = new Camera2D(new Vector2(width, height));
         _sceneTarget = new RenderTarget2D(gl, width, height, withDepthStencil: true);
@@ -1030,17 +1034,44 @@ internal sealed class DynamicStencilFixture : IDisposable
         private readonly Action<IDomainEvent> _raiseEvent;
         private readonly Vector2D _center;
         private readonly float _radius;
+        private readonly StencilMaskGeometry? _additionalGeometry;
 
-        public MaskOwner(Action<IDomainEvent> raiseEvent, Vector2D center, float radius)
+        public MaskOwner(
+            Action<IDomainEvent> raiseEvent,
+            Vector2D center,
+            float radius,
+            StencilMaskGeometry? additionalGeometry = null)
         {
             _raiseEvent = raiseEvent;
             _center = center;
             _radius = radius;
+            _additionalGeometry = additionalGeometry;
         }
 
         public override void OnCreate()
         {
-            this.RequestStencilMask(_center, _radius, StencilMaskState.Spotlight, _raiseEvent);
+            if (_additionalGeometry is { } additional)
+            {
+                StencilMaskGeometry[] masks =
+                [
+                    StencilMaskGeometry.Circle(_center, _radius),
+                    additional
+                ];
+                this.RequestStencilMasks(
+                    StencilMaskEffectDescriptor.DefaultGroup,
+                    masks,
+                    StencilMaskState.Spotlight,
+                    _raiseEvent);
+            }
+            else
+            {
+                this.RequestStencilMask(
+                    StencilMaskEffectDescriptor.DefaultGroup,
+                    _center,
+                    _radius,
+                    StencilMaskState.Spotlight,
+                    _raiseEvent);
+            }
             this.RequestPresentSurface(
                 StencilMaskEffectDescriptor.MaskOutput(EffectKey),
                 _raiseEvent,
@@ -1051,7 +1082,7 @@ internal sealed class DynamicStencilFixture : IDisposable
         public override void OnDestroy()
         {
             this.ReleasePresentSurface(_raiseEvent);
-            this.ReleaseStencilMask(_raiseEvent);
+            this.ReleaseStencilMask(StencilMaskEffectDescriptor.DefaultGroup, _raiseEvent);
         }
     }
 

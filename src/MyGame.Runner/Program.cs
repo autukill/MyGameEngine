@@ -5,8 +5,10 @@ using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Bloom.Domain;
+using GameEngine.Features.StencilMasking.Domain;
 using GameEngine.Features.ToneMapping.Domain;
 using GameEngine.Hosting;
+using MyGame.Runner.Content;
 
 internal static class Program {
     private static void Main( string[] args ) {
@@ -30,7 +32,7 @@ internal static class Program {
         using var game = GameApplication
             .Create( windowOptions )
             .UseDefault2DRenderer( renderer => renderer
-                .UseContent( "AssetsCompiled", "assets.json" )
+                .UseContent( GameAssets.Packages.Root )
                 .UseHdr(
                     ToneMappingSettings.Default,
                     new BloomSettings(
@@ -52,7 +54,7 @@ internal static class Program {
             new Vector4( 0.08f, 0.10f, 0.13f, 1f ) );
         scene.OnStart = () => Console.WriteLine( $"[Scene] '{scene.SceneName}' started." );
 
-        var orbitingSprite = context.GetSprite( "runner.orbiting" );
+        var orbitingSprite = GameAssets.Sprites.RunnerOrbiting;
         var center = new Vector2D(
             context.Window.Width * 0.5f,
             context.Window.Height * 0.5f );
@@ -69,7 +71,9 @@ internal static class Program {
                 orbitingSprite ) );
         }
 
+        var spotlightGroup = new StencilMaskGroupRef( "spotlight" );
         scene.Add( new SpotlightController(
+            spotlightGroup,
             scene.RaiseEvent,
             center,
             120f,

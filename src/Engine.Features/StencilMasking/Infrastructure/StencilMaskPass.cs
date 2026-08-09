@@ -24,9 +24,11 @@ public sealed class StencilMaskPass : RenderPass
     private Vector2 _directCenter;
     private float _directRadius;
     private bool _hasDirectMask;
+    private bool _hasSpriteMasks;
+    private int _maskCount;
 
     public StencilMaskState State { get; set; } = StencilMaskState.Default;
-    public int MaskCount => _masks.Length + (_hasDirectMask ? 1 : 0);
+    public int MaskCount => _maskCount + (_hasDirectMask ? 1 : 0);
     public override RenderTarget2D? Output => _output;
     public override IEnumerable<RenderTarget2D> Inputs => Array.Empty<RenderTarget2D>();
 
@@ -83,6 +85,8 @@ public sealed class StencilMaskPass : RenderPass
         _directRadius = radiusWorld;
         _hasDirectMask = true;
         _masks = Array.Empty<StencilMaskEffectDescriptor>();
+        _hasSpriteMasks = false;
+        _maskCount = 0;
     }
 
     public void UpdateMasks(IReadOnlyList<StencilMaskEffectDescriptor> masks)
@@ -94,6 +98,17 @@ public sealed class StencilMaskPass : RenderPass
         if (masks.Any(mask => mask.State != state))
             throw new ArgumentException("Shared stencil masks must use the same state.", nameof(masks));
         _masks = masks.ToArray();
+        _maskCount = 0;
+        _hasSpriteMasks = false;
+        foreach (StencilMaskEffectDescriptor mask in _masks)
+        {
+            _maskCount += mask.GeometryCount;
+            for (int i = 0; i < mask.GeometryCount; i++)
+            {
+                if (mask.GetGeometry(i).Kind == StencilMaskGeometryKind.SpriteAlpha)
+                    _hasSpriteMasks = true;
+            }
+        }
         State = state;
         _hasDirectMask = false;
     }
@@ -135,17 +150,23 @@ public sealed class StencilMaskPass : RenderPass
         {
             foreach (var mask in _masks)
             {
-                if (mask.Geometry.Kind == StencilMaskGeometryKind.Circle)
-                    DrawCircle(
-                        new Vector2(mask.Geometry.Center.X, mask.Geometry.Center.Y),
-                        mask.Geometry.Radius);
+                for (int i = 0; i < mask.GeometryCount; i++)
+                {
+                    StencilMaskGeometry geometry = mask.GetGeometry(i);
+                    if (geometry.Kind == StencilMaskGeometryKind.Circle)
+                    {
+                        DrawCircle(
+                            new Vector2(geometry.Center.X, geometry.Center.Y),
+                            geometry.Radius);
+                    }
+                }
             }
         }
         else if (_hasDirectMask)
             DrawCircle(_directCenter, _directRadius);
         _batch.End();
 
-        if (!_masks.Any(mask => mask.Geometry.Kind == StencilMaskGeometryKind.SpriteAlpha))
+        if (!_hasSpriteMasks)
             return;
 
         _maskShader.SetGeometry(StencilMaskGeometryKind.SpriteAlpha);
@@ -153,21 +174,24 @@ public sealed class StencilMaskPass : RenderPass
         float currentCutoff = float.NaN;
         foreach (var mask in _masks)
         {
-            var geometry = mask.Geometry;
-            if (geometry.Kind != StencilMaskGeometryKind.SpriteAlpha) continue;
-            if (geometry.AlphaCutoff != currentCutoff)
+            for (int i = 0; i < mask.GeometryCount; i++)
             {
-                _batch.Flush();
-                _maskShader.SetGeometry(StencilMaskGeometryKind.SpriteAlpha, geometry.AlphaCutoff);
-                currentCutoff = geometry.AlphaCutoff;
+                StencilMaskGeometry geometry = mask.GetGeometry(i);
+                if (geometry.Kind != StencilMaskGeometryKind.SpriteAlpha) continue;
+                if (geometry.AlphaCutoff != currentCutoff)
+                {
+                    _batch.Flush();
+                    _maskShader.SetGeometry(StencilMaskGeometryKind.SpriteAlpha, geometry.AlphaCutoff);
+                    currentCutoff = geometry.AlphaCutoff;
+                }
+                _batch.DrawSpriteCommand(new SpriteDrawCommand(
+                    geometry.Sprite,
+                    geometry.SubImage,
+                    new Vector2(geometry.Transform.Position.X, geometry.Transform.Position.Y),
+                    new Vector2(geometry.Transform.Scale.X, geometry.Transform.Scale.Y),
+                    geometry.Transform.Rotation,
+                    Vector4.One));
             }
-            _batch.DrawSpriteCommand(new SpriteDrawCommand(
-                geometry.Sprite,
-                geometry.SubImage,
-                new Vector2(geometry.Transform.Position.X, geometry.Transform.Position.Y),
-                new Vector2(geometry.Transform.Scale.X, geometry.Transform.Scale.Y),
-                geometry.Transform.Rotation,
-                Vector4.One));
         }
         _batch.End();
     }

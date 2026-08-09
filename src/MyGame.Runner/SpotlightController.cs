@@ -10,15 +10,15 @@ using GameEngine.Features.StencilMasking.Application;
 using GameEngine.Features.StencilMasking.Domain;
 
 /// <summary>只声明 Spotlight 意图；不持有 Pass、RenderTarget 或其他 GPU 对象。</summary>
-public sealed class SpotlightController( Action<IDomainEvent> raiseEvent, Vector2D initialCenter, float radius, Action closeWindow )
+public sealed class SpotlightController( StencilMaskGroupRef group, Action<IDomainEvent> raiseEvent, Vector2D initialCenter, float radius, Action closeWindow )
     : GameInstance {
     public override void OnCreate() {
         Request( initialCenter );
         this.RequestPresentSurface(
-            StencilMaskEffectDescriptor.MaskOutput(StencilMaskEffectDescriptor.DefaultKey),
+            group.Output,
             raiseEvent,
             layer: 100,
-            blend: PresentationBlendMode.AlphaBlend);
+            blend: PresentationBlendMode.AlphaBlend );
     }
 
     public override void OnStep( double deltaTime ) {
@@ -29,7 +29,7 @@ public sealed class SpotlightController( Action<IDomainEvent> raiseEvent, Vector
 
     public override void OnDestroy() {
         this.ReleasePresentSurface( raiseEvent );
-        this.ReleaseStencilMask( raiseEvent );
+        this.ReleaseStencilMask( group, raiseEvent );
     }
 
     public override void OnKeyDown( InputKey key ) {
@@ -37,5 +37,5 @@ public sealed class SpotlightController( Action<IDomainEvent> raiseEvent, Vector
     }
 
     private void Request( Vector2D center ) =>
-        this.RequestStencilMask( center, radius, StencilMaskState.Spotlight, raiseEvent );
+        this.RequestStencilMask( group, center, radius, StencilMaskState.Spotlight, raiseEvent );
 }

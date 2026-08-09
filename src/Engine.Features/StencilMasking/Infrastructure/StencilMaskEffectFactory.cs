@@ -112,11 +112,16 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
     {
         foreach (var descriptor in descriptors)
         {
-            var geometry = descriptor.Geometry;
-            if (geometry.Kind == StencilMaskGeometryKind.SpriteAlpha &&
-                !_sprites.TryGetMetadata(geometry.Sprite, out _))
-                throw new InvalidOperationException(
-                    $"Stencil mask Sprite '{geometry.Sprite}' is not registered.");
+            for (int i = 0; i < descriptor.GeometryCount; i++)
+            {
+                StencilMaskGeometry geometry = descriptor.GetGeometry(i);
+                if (geometry.Kind == StencilMaskGeometryKind.SpriteAlpha &&
+                    !_sprites.TryGetMetadata(geometry.Sprite, out _))
+                {
+                    throw new InvalidOperationException(
+                        $"Stencil mask Sprite '{geometry.Sprite}' is not registered.");
+                }
+            }
         }
     }
 
