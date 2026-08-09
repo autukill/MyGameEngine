@@ -287,7 +287,8 @@ public sealed class Default2DGameContext
                 placement.Width,
                 placement.Height,
                 binding.View.Target.Width,
-                binding.View.Target.Height);
+                binding.View.Target.Height,
+                binding.View.SceneLayers);
         }
         return Array.AsReadOnly(result);
     }

@@ -419,11 +419,19 @@ public class SceneAggregate
     ///   - 调用方在调用后须调用 SpriteBatch.End()
     ///   - 各 Layer 间的 GL 状态切换（Blend/Stencil）由 SceneRenderPass 在层间插入
     /// </summary>
-    public void DrawActive(ISpriteBatch batch)
+    public void DrawActive(ISpriteBatch batch) => DrawActive(batch, SceneLayerFilter.All);
+
+    /// <summary>
+    /// Draws active instances from visible layers accepted by an immutable view filter.
+    /// The filter performs no allocations during traversal.
+    /// </summary>
+    public void DrawActive(ISpriteBatch batch, SceneLayerFilter layerFilter)
     {
+        ArgumentNullException.ThrowIfNull(batch);
+        ArgumentNullException.ThrowIfNull(layerFilter);
         foreach (var layer in _layers)
         {
-            if (!layer.IsVisible) continue;
+            if (!layer.IsVisible || !layerFilter.Allows(layer.Name)) continue;
 
             CaptureDrawEntries(layer.Name);
             foreach (DrawEntry entry in _drawSnapshot)

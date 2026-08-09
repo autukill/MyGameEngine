@@ -20,6 +20,7 @@ public sealed class StencilMaskPass : RenderPass
     private readonly IShader _sceneShader;
     private readonly StencilMaskShader _maskShader;
     private readonly uint _whiteTextureHandle;
+    private readonly SceneLayerFilter _layerFilter;
     private StencilMaskEffectDescriptor[] _masks = Array.Empty<StencilMaskEffectDescriptor>();
     private Vector2 _directCenter;
     private float _directRadius;
@@ -42,7 +43,8 @@ public sealed class StencilMaskPass : RenderPass
         StencilMaskShader maskShader,
         WhiteTexture white,
         ISpriteResolver? spriteResolver = null,
-        IShaderResolver? shaderResolver = null) : base(name)
+        IShaderResolver? shaderResolver = null,
+        SceneLayerFilter? layerFilter = null) : base(name)
     {
         _scene = scene;
         _camera = camera;
@@ -56,6 +58,7 @@ public sealed class StencilMaskPass : RenderPass
         _sceneShader = sceneShader;
         _maskShader = maskShader;
         _whiteTextureHandle = white.Handle;
+        _layerFilter = layerFilter ?? SceneLayerFilter.All;
     }
 
     public StencilMaskPass(
@@ -69,7 +72,8 @@ public sealed class StencilMaskPass : RenderPass
         TextureRef whiteTexture,
         ITextureResolver textureResolver,
         ISpriteResolver? spriteResolver = null,
-        IShaderResolver? shaderResolver = null) : base(name)
+        IShaderResolver? shaderResolver = null,
+        SceneLayerFilter? layerFilter = null) : base(name)
     {
         ArgumentNullException.ThrowIfNull(textureResolver);
         if (!textureResolver.TryResolve(whiteTexture, out var resolved))
@@ -86,6 +90,7 @@ public sealed class StencilMaskPass : RenderPass
         _sceneShader = sceneShader;
         _maskShader = maskShader;
         _whiteTextureHandle = resolved.Handle;
+        _layerFilter = layerFilter ?? SceneLayerFilter.All;
     }
 
     /// <summary>保留给现有 VisualTests 的直接 API。</summary>
@@ -147,7 +152,7 @@ public sealed class StencilMaskPass : RenderPass
         _sceneShader.SetProjection(projection);
         _batch.DefaultShader = _sceneShader;
         _batch.Begin();
-        _scene.DrawActive(_batch);
+        _scene.DrawActive(_batch, _layerFilter);
         _batch.End();
 
         DepthStencilState.None.Apply(gl);

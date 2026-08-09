@@ -30,6 +30,7 @@ public sealed record RenderViewDefinition
     public ViewportFitMode Fit { get; }
     public float RenderScale { get; }
     public int Layer { get; }
+    public SceneLayerFilter SceneLayers { get; }
     internal int DeclarationOrder { get; }
 
     internal RenderViewDefinition(
@@ -38,6 +39,7 @@ public sealed record RenderViewDefinition
         ViewportFitMode fit,
         float renderScale,
         int layer,
+        SceneLayerFilter sceneLayers,
         int declarationOrder)
     {
         Ref = reference;
@@ -46,6 +48,7 @@ public sealed record RenderViewDefinition
         Fit = fit;
         RenderScale = renderScale;
         Layer = layer;
+        SceneLayers = sceneLayers;
         DeclarationOrder = declarationOrder;
     }
 }
@@ -61,6 +64,7 @@ public sealed class RenderViewLayoutBuilder
         ViewportFitMode.Stretch,
         1f,
         0,
+        SceneLayerFilter.All,
         0);
     private bool _mainConfigured;
 
@@ -68,11 +72,19 @@ public sealed class RenderViewLayoutBuilder
         ViewportRect viewport,
         float renderScale = 1f,
         ViewportFitMode fit = ViewportFitMode.Stretch,
-        int layer = 0)
+        int layer = 0,
+        SceneLayerFilter? sceneLayers = null)
     {
         if (_mainConfigured)
             throw new InvalidOperationException("The main Render View is already configured.");
-        _main = Create(RenderViewRef.Main, viewport, fit, renderScale, layer, 0);
+        _main = Create(
+            RenderViewRef.Main,
+            viewport,
+            fit,
+            renderScale,
+            layer,
+            sceneLayers ?? SceneLayerFilter.All,
+            0);
         _mainConfigured = true;
         return this;
     }
@@ -82,13 +94,21 @@ public sealed class RenderViewLayoutBuilder
         ViewportRect viewport,
         float renderScale = 1f,
         ViewportFitMode fit = ViewportFitMode.Stretch,
-        int? layer = null)
+        int? layer = null,
+        SceneLayerFilter? sceneLayers = null)
     {
         var reference = new RenderViewRef(name);
         if (!_names.Add(reference.Name))
             throw new ArgumentException($"Render View '{reference}' is already configured.", nameof(name));
         int order = _secondary.Count + 1;
-        _secondary.Add(Create(reference, viewport, fit, renderScale, layer ?? order, order));
+        _secondary.Add(Create(
+            reference,
+            viewport,
+            fit,
+            renderScale,
+            layer ?? order,
+            sceneLayers ?? SceneLayerFilter.All,
+            order));
         return this;
     }
 
@@ -125,6 +145,7 @@ public sealed class RenderViewLayoutBuilder
         ViewportFitMode fit,
         float renderScale,
         int layer,
+        SceneLayerFilter sceneLayers,
         int order)
     {
         SingleCameraViewportLayoutBuilder.ValidateViewport(viewport);
@@ -132,7 +153,8 @@ public sealed class RenderViewLayoutBuilder
         if (!float.IsFinite(renderScale) || renderScale <= 0f || renderScale > 1f)
             throw new ArgumentOutOfRangeException(
                 nameof(renderScale), "Render scale must be in (0, 1].");
-        return new RenderViewDefinition(reference, viewport, fit, renderScale, layer, order);
+        return new RenderViewDefinition(
+            reference, viewport, fit, renderScale, layer, sceneLayers, order);
     }
 }
 
@@ -148,6 +170,7 @@ public sealed class RenderView
     public ViewportFitMode Fit { get; }
     public float RenderScale { get; }
     public int Layer { get; }
+    public SceneLayerFilter SceneLayers { get; }
     public RenderSurfaceKey SceneColor { get; }
     public Vector2D RenderSize => new(_target.Width, _target.Height);
     internal RenderTarget2D Target => _target;
@@ -165,6 +188,7 @@ public sealed class RenderView
         Fit = definition.Fit;
         RenderScale = definition.RenderScale;
         Layer = definition.Layer;
+        SceneLayers = definition.SceneLayers;
         DeclarationOrder = definition.DeclarationOrder;
         SceneColor = definition.Ref == RenderViewRef.Main
             ? RenderSurfaceKey.SceneColor

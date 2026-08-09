@@ -130,4 +130,5 @@ public readonly record struct ViewportSlotDiagnostics(
     int Width,
     int Height,
     int RenderWidth,
-    int RenderHeight);
+    int RenderHeight,
+    SceneLayerFilter SceneLayers);

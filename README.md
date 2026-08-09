@@ -285,9 +285,9 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 为 Render View 增加 Layer 过滤，并用声明式小地图样例验证开发体验与额外 Draw 成本。
-2. 让每个 View 明确 Viewport、RenderScale、RenderSurface、resize 和可选后处理所有权。
-3. 保持唯一 Presentation 屏幕终端，并用 VisualTests 验证双视图成本和释放。
+1. 为次级 Render View 增加显式效果策略，并让配置直接暴露额外 Pass、RT 与显存成本。
+2. 在已有每 View Layer 过滤基础上评估跨 View 可见性缓存，先测量再决定是否引入通用剔除。
+3. 保持唯一 Presentation 屏幕终端，并用 VisualTests 验证双视图效果成本、resize 和释放。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
 

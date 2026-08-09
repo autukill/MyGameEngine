@@ -73,10 +73,16 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 .UseDefault2DRenderer(renderer => renderer
     .UseRenderViews(views => views
         .ConfigureMain(ViewportRect.LeftHalf)
-        .Add("observer", ViewportRect.RightHalf, renderScale: 0.75f)))
+        .Add(
+            "observer",
+            ViewportRect.RightHalf,
+            renderScale: 0.75f,
+            sceneLayers: SceneLayerFilter.Exclude("MainOnly"))))
 ```
 
-每个 View 重绘 Scene 并拥有独立 Camera 与 SceneColor。`context.Camera` 仍是 `RenderViewRef.Main`；其他 Camera 通过 `context.GetRenderView(...)` 获取。`PresentViewSurface` 只把自定义 Surface 送入指定 View 的槽位。
+每个 View 重绘 Scene 并拥有独立 Camera、SceneColor 与不可变 `SceneLayerFilter`。`Include(...)` 只绘制具名层，`Exclude(...)` 绘制除此之外的可见层，省略时为 `SceneLayerFilter.All`。过滤只作用于 `GameInstance` Layer；Scene 的清屏色和 Background Sprite 仍是每个 View 的共同背景。名单在装配时复制并拒绝空名称或重复项，逐帧查询不会分配。
+
+`context.Camera` 仍是 `RenderViewRef.Main`；其他 Camera 通过 `context.GetRenderView(...)` 获取。`PresentViewSurface` 只把自定义 Surface 送入指定 View 的槽位。主 View 的 Stencil 场景重绘使用同一份 Layer 过滤，避免遮罩输出重新带回已排除实例。
 
 `UseHdr/EnableStencilMasking` 在多 Render View 模式下只作用于 `main`，动态目标按主 View 的内部尺寸创建；次级 View 保持轻量 RGBA8/Display，不复制效果链。自定义主 View Stencil 输出使用 `PresentViewSurface(RenderViewRef.Main, ...)`。`UseRenderViews` 与 `UseSingleCameraViewports` 互斥，前者表示重绘，后者表示复用同一次渲染。
 
@@ -149,7 +155,7 @@ Shader
 ## 当前边界
 
 - v1 只提供单窗口和 OpenGL 默认 2D Runtime；已支持 Scene 目录/切换，但没有 Scene 栈或后台加载。
-- 支持单 Camera 渲染一次并呈现到多个 Viewport；真正多 Camera 仍在后续阶段。
+- 支持单 Camera 多呈现槽位，以及带独立 Camera、RenderScale 和 Scene Layer 过滤的多 Render View；次级 View 后处理策略仍在后续阶段。
 - Host 不自动注册未启用的可选 Feature；请求缺失 Factory 会沿用 Builder 的明确诊断。
 - 内容路径相对 `AppContext.BaseDirectory` 解析；绝对路径视为开发者显式选择。
 - 高级用户可以继续不使用 Hosting，直接组合现有底层模块。

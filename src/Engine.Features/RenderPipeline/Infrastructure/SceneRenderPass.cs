@@ -24,6 +24,7 @@ public sealed class SceneRenderPass : RenderPass
     private readonly SceneAggregate _scene;
     private readonly Camera2D _camera;
     private readonly RenderTarget2D? _target;
+    private readonly SceneLayerFilter _layerFilter;
 
     public override RenderTarget2D? Output => _target;
     public override IEnumerable<RenderTarget2D> Inputs => Array.Empty<RenderTarget2D>();
@@ -33,13 +34,15 @@ public sealed class SceneRenderPass : RenderPass
         GL gl,
         SceneAggregate scene,
         Camera2D camera,
-        RenderTarget2D? target = null)
+        RenderTarget2D? target = null,
+        SceneLayerFilter? layerFilter = null)
         : base(name)
     {
         _gl = gl;
         _scene = scene;
         _camera = camera;
         _target = target;
+        _layerFilter = layerFilter ?? SceneLayerFilter.All;
     }
 
     public override void Execute(in RenderPassContext ctx)
@@ -65,7 +68,7 @@ public sealed class SceneRenderPass : RenderPass
 
         // 4. 调用 SceneAggregate.DrawActive（Layer 感知版——按层分组遍历实例）
         ctx.Batch.Begin();
-        _scene.DrawActive(ctx.Batch);
+        _scene.DrawActive(ctx.Batch, _layerFilter);
         ctx.Batch.End();
     }
 

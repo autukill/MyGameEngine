@@ -709,9 +709,32 @@ internal sealed class Program
         Assert(order.SequenceEqual(["back", "equal-first", "equal-second", "front"]),
             "Draw keeps descending depth and stable insertion order for equal depths");
 
+        drawScene.AddLayer("MainOnly", -100);
+        drawScene.Add(new DrawOrderProbe("main-only", 0, order) { LayerName = "MainOnly" });
+        order.Clear();
+        var observerLayers = SceneLayerFilter.Exclude("MainOnly");
+        drawScene.DrawActive(batch, observerLayers);
+        Assert(order.SequenceEqual(["back", "equal-first", "equal-second", "front"]),
+            "Render View layer filters exclude named layers without changing draw order");
+        for (int i = 0; i < 64; i++)
+        {
+            order.Clear();
+            drawScene.DrawActive(batch, observerLayers);
+        }
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+        {
+            order.Clear();
+            drawScene.DrawActive(batch, observerLayers);
+        }
+        long filteredDrawAllocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert(filteredDrawAllocated == 0,
+            $"Filtered Scene drawing remains allocation-free ({filteredDrawAllocated:N0} B)");
+
         Console.WriteLine("\n17. Scene lifecycle steady-state allocations");
         Console.WriteLine("   [PASS] Input + Step + Draw + DrawGUI remain at 0 B/frame after warm-up");
         Console.WriteLine("   [PASS] phase mutation visibility and stable depth ordering are preserved");
+        Console.WriteLine("   [PASS] per-View Scene layer filtering remains at 0 B/frame");
     }
 
     private static void RunLifecycleFrame(

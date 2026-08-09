@@ -15,6 +15,8 @@ using GameEngine.Hosting;
 using MyGame.Runner.Content;
 
 internal static class Program {
+    private const string MainOnlyLayer = "MainOnly";
+
     private static void Main( string[] args ) {
         bool smoke = args.Contains( "--smoke", StringComparer.Ordinal );
         bool consoleDiagnostics = args.Contains( "--diagnostics", StringComparer.Ordinal );
@@ -88,7 +90,11 @@ internal static class Program {
         if ( splitCameras ) {
             renderer.UseRenderViews( views => views
                 .ConfigureMain( ViewportRect.LeftHalf )
-                .Add( "observer", ViewportRect.RightHalf, renderScale: 0.75f ) );
+                .Add(
+                    "observer",
+                    ViewportRect.RightHalf,
+                    renderScale: 0.75f,
+                    sceneLayers: SceneLayerFilter.Exclude( MainOnlyLayer ) ) );
         }
         if ( mirroredViewports ) {
             renderer.UseSingleCameraViewports( views => views
@@ -146,14 +152,17 @@ internal static class Program {
             new Vector4( 1.0f, 0.3f, 0.3f, 1.0f ), new Vector4( 0.3f, 1.0f, 0.3f, 1.0f ), new Vector4( 0.3f, 0.5f, 1.0f, 1.0f ),
             new Vector4( 1.0f, 1.0f, 0.3f, 1.0f )
         };
+        if ( splitCameras ) scene.AddLayer( MainOnlyLayer, -100 );
         for (int i = 0; i < colors.Length; i++) {
-            scene.Add( new OrbitingSprite(
+            var sprite = new OrbitingSprite(
                 center,
                 200f,
                 i * MathF.PI / 2f,
                 colors[i],
                 orbitingSprite,
-                orbitMaterial ) );
+                orbitMaterial );
+            if ( splitCameras && i == 0 ) sprite.LayerName = MainOnlyLayer;
+            scene.Add( sprite );
         }
 
         var spotlightGroup = new StencilMaskGroupRef( "spotlight" );
@@ -209,7 +218,9 @@ internal static class Program {
                          left.View != RenderViewRef.Main ||
                          !context.TryScreenToView( rightPoint, out ViewportHit right ) ||
                          right.View != new RenderViewRef( "observer" ) ||
-                         diagnostics.Viewports[1].RenderWidth >= diagnostics.Viewports[0].RenderWidth ) {
+                         diagnostics.Viewports[1].RenderWidth >= diagnostics.Viewports[0].RenderWidth ||
+                         diagnostics.Viewports[0].SceneLayers.IsAll == false ||
+                         diagnostics.Viewports[1].SceneLayers.Allows( MainOnlyLayer ) ) {
                         throw new InvalidOperationException(
                             "Multi-Camera Viewport mapping or RenderScale diagnostics are invalid." );
                     }

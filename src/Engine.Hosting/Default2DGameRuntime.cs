@@ -236,6 +236,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                     ViewportFitMode.Stretch,
                     1f,
                     0,
+                    SceneLayerFilter.All,
                     0)
             });
         for (int i = 0; i < viewDefinitions.Count; i++)
@@ -276,7 +277,8 @@ internal sealed class Default2DGameRuntime : IDisposable
                 gl,
                 _scene,
                 view.Camera,
-                view.Target));
+                view.Target,
+                view.SceneLayers));
         }
         if (_guiTarget is not null)
         {
@@ -315,7 +317,8 @@ internal sealed class Default2DGameRuntime : IDisposable
                 stencilWhite,
                 _textures,
                 _sprites,
-                _shaders));
+                _shaders,
+                _renderViews[0].SceneLayers));
         }
         if (renderer.Bloom is not null)
             _builder.RegisterFactory(new BloomEffectFactory(

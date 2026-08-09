@@ -1,6 +1,7 @@
 namespace GameEngine.Hosting.Tests;
 
 using GameEngine.Core.Domain.Events;
+using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.ValueObjects;
@@ -92,15 +93,23 @@ internal static class Program
         var renderViews = GameApplication.Create()
             .UseDefault2DRenderer(renderer => renderer.UseRenderViews(views => views
                 .ConfigureMain(ViewportRect.LeftHalf)
-                .Add("player.two", ViewportRect.RightHalf, renderScale: 0.5f)))
+                .Add(
+                    "player.two",
+                    ViewportRect.RightHalf,
+                    renderScale: 0.5f,
+                    sceneLayers: SceneLayerFilter.Exclude("MainOnly"))))
             .ConfigureScene("Split", _ => { })
             .BuildPlan();
         Check(renderViews.Renderer.MultipleRenderViewsEnabled &&
               renderViews.Renderer.RenderViews is { Count: 2 } definitions &&
               definitions[0].Ref == RenderViewRef.Main &&
               definitions[1].Ref == new RenderViewRef("player.two") &&
-              definitions[1].RenderScale == 0.5f,
-            "Render View plans freeze the primary and independently scaled secondary Camera views");
+              definitions[1].RenderScale == 0.5f &&
+              definitions[0].SceneLayers.IsAll &&
+              definitions[1].SceneLayers.IsExclusive &&
+              !definitions[1].SceneLayers.Allows("MainOnly") &&
+              definitions[1].SceneLayers.Allows(SceneAggregate.LayerNameInstances),
+            "Render View plans freeze Camera scale and allocation-free Scene layer selection");
         Check(RenderViewLayoutBuilder.ResolveRenderSize(
                   ViewportRect.RightHalf, 0.5f, 801, 601) == (200, 301),
             "Render View size combines shared-edge Viewport rounding and RenderScale deterministically");
@@ -147,6 +156,9 @@ internal static class Program
             () => new Default2DRendererOptions().UseRenderViews(views => views
                 .Add("small", ViewportRect.RightHalf, renderScale: 0f)),
             "Render View scale must remain in the supported range");
+        CheckThrows<ArgumentException>(
+            () => SceneLayerFilter.Include("Actors", "Actors"),
+            "Duplicate Scene layer selections are rejected during configuration");
         CheckThrows<InvalidOperationException>(
             () => new Default2DRendererOptions()
                 .UseSingleCameraViewports(views => views.Add("main", ViewportRect.FullScreen))

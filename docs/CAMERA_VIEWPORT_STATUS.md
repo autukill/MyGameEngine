@@ -65,7 +65,11 @@ Scene + Stencil + Bloom + Tone Mapping  （一次）
 .UseDefault2DRenderer(renderer => renderer
     .UseRenderViews(views => views
         .ConfigureMain(ViewportRect.LeftHalf)
-        .Add("player.two", ViewportRect.RightHalf, renderScale: 0.75f)))
+        .Add(
+            "player.two",
+            ViewportRect.RightHalf,
+            renderScale: 0.75f,
+            sceneLayers: SceneLayerFilter.Include("Instances", "Effects"))))
 ```
 
 `main` 保持为 `context.Camera`；额外 View 通过 `context.GetRenderView(new RenderViewRef("player.two"))` 取得。每个 `RenderView` 拥有独立 Camera、SceneColor 根 Surface、SceneRenderPass、RenderScale 和 Viewport，但不公开其 RenderTarget。resize 会按槽位像素尺寸与 RenderScale 同步 Camera 和目标。
@@ -76,7 +80,9 @@ second.Camera.Position = new Vector2(800, 0);
 second.Camera.Zoom = 0.75f;
 ```
 
-`ViewportHit.View` 会标识命中的 Render View，坐标通过该 View 自己的 Camera 与源分辨率反算。诊断同时报告呈现像素矩形和 `RenderWidth/RenderHeight`。
+`SceneLayerFilter.Include(...)` 适合只显示世界或小地图层，`Exclude(...)` 适合隐藏主视图专属装饰；默认 `All` 保持兼容行为。它组合现有 `SceneLayerConfig.IsVisible`：层必须同时全局可见且被 View 允许才会绘制。Background 不属于 Instance Layer，因此不会被过滤。过滤检查与绘制保持零稳态分配，但每个 View 仍会独立遍历并绘制其可见实例。
+
+`ViewportHit.View` 会标识命中的 Render View，坐标通过该 View 自己的 Camera 与源分辨率反算。诊断同时报告呈现像素矩形、`RenderWidth/RenderHeight` 和 `SceneLayers`。
 
 当前多 Camera 策略：
 
@@ -86,13 +92,13 @@ second.Camera.Zoom = 0.75f;
 - resize 按 Viewport 与 RenderScale 重建目标。
 - 诊断明确列出每个 View 的 Pass、RT 显存和 Draw Call 成本。
 - `UseRenderViews` 与 `UseSingleCameraViewports` 互斥，避免“重绘”和“镜像呈现”语义混淆。
-- Runner `--split-cameras` 验证“主 HDR + Stencil / 次级 LDR”；当前为 7 Pass、3 个根目标和 5 个主 View 尺寸动态租约。
+- Runner `--split-cameras` 验证“主 HDR + Stencil + 全部层 / 次级 LDR + 排除 MainOnly”；当前为 7 Pass、3 个根目标和 5 个主 View 尺寸动态租约。
 
 ## 后续阶段
 
-### 阶段 3：每 View Layer 与显式效果策略
+### 阶段 3：显式效果策略
 
-主效果边界已经稳定。下一步增加 Layer 过滤，并把当前“全局效果仅属于 main”的规则逐步显式化；次级 View 是否启用 Tone Mapping 等效果应由配置声明，不能隐式复制。此时再讨论共享后处理、可见性缓存等性能优化。
+每 View Layer 过滤已经完成。下一步把当前“全局效果仅属于 main”的规则逐步显式化；次级 View 是否启用 Tone Mapping 等效果应由配置声明，不能隐式复制。此时再讨论共享后处理、跨 View 可见性缓存等性能优化。
 
 ### 阶段 4：高级终端
 
@@ -101,6 +107,6 @@ second.Camera.Zoom = 0.75f;
 ## 当前明确不支持
 
 - 次级 View 的 HDR、Bloom、Stencil 或独立后处理链；当前这些效果明确只属于 main。
-- 每 View Layer 过滤；当前所有 View 都重绘同一组活跃 Scene 实例。
+- 跨 View 可见性缓存或通用空间剔除；当前每个 View 独立遍历并绘制被 Layer 过滤后的实例。
 - 多窗口与多个默认 framebuffer 终端。
 - Viewport 动画、鼠标捕获策略和编辑器 Dock。
