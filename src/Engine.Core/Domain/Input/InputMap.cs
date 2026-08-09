@@ -12,6 +12,10 @@ public sealed class InputMap
     private static readonly Dictionary<InputAxis2DRef, DigitalAxis2DBinding[]> NoAxes = [];
     private readonly IReadOnlyDictionary<InputActionRef, InputKey[]> _actions;
     private readonly IReadOnlyDictionary<InputAxis2DRef, DigitalAxis2DBinding[]> _axes;
+    private readonly InputActionRef[] _actionRefs;
+    private readonly InputAxis2DRef[] _axis2DRefs;
+    private readonly Dictionary<InputActionRef, int> _actionIndices;
+    private readonly Dictionary<InputAxis2DRef, int> _axis2DIndices;
     private readonly bool _strict;
 
     public static InputMap Empty { get; } = new(NoActions, NoAxes, strict: false);
@@ -19,6 +23,8 @@ public sealed class InputMap
     public int ActionCount => _actions.Count;
     public int Axis2DCount => _axes.Count;
     public bool IsEmpty => ActionCount == 0 && Axis2DCount == 0;
+    internal ReadOnlySpan<InputActionRef> ActionRefs => _actionRefs;
+    internal ReadOnlySpan<InputAxis2DRef> Axis2DRefs => _axis2DRefs;
 
     internal InputMap(
         IReadOnlyDictionary<InputActionRef, InputKey[]> actions,
@@ -28,6 +34,12 @@ public sealed class InputMap
         _actions = actions;
         _axes = axes;
         _strict = strict;
+        _actionRefs = actions.Keys.OrderBy(static item => item.Name, StringComparer.Ordinal).ToArray();
+        _axis2DRefs = axes.Keys.OrderBy(static item => item.Name, StringComparer.Ordinal).ToArray();
+        _actionIndices = new Dictionary<InputActionRef, int>(_actionRefs.Length);
+        _axis2DIndices = new Dictionary<InputAxis2DRef, int>(_axis2DRefs.Length);
+        for (int i = 0; i < _actionRefs.Length; i++) _actionIndices.Add(_actionRefs[i], i);
+        for (int i = 0; i < _axis2DRefs.Length; i++) _axis2DIndices.Add(_axis2DRefs[i], i);
     }
 
     public bool IsActionDefined(InputActionRef action) =>
@@ -41,6 +53,7 @@ public sealed class InputMap
         ArgumentNullException.ThrowIfNull(input);
         InputKey[]? keys = RequireAction(action);
         if (keys is null) return false;
+        if (input is ILogicalInputProvider logical) return logical.ActionDown(action);
         for (int i = 0; i < keys.Length; i++)
         {
             if (input.IsKeyDown(keys[i])) return true;
@@ -53,6 +66,7 @@ public sealed class InputMap
         ArgumentNullException.ThrowIfNull(input);
         InputKey[]? keys = RequireAction(action);
         if (keys is null) return false;
+        if (input is ILogicalInputProvider logical) return logical.ActionPressed(action);
         for (int i = 0; i < keys.Length; i++)
         {
             if (input.WasKeyPressed(keys[i])) return true;
@@ -65,6 +79,7 @@ public sealed class InputMap
         ArgumentNullException.ThrowIfNull(input);
         InputKey[]? keys = RequireAction(action);
         if (keys is null) return false;
+        if (input is ILogicalInputProvider logical) return logical.ActionReleased(action);
         for (int i = 0; i < keys.Length; i++)
         {
             if (input.WasKeyReleased(keys[i])) return true;
@@ -77,6 +92,7 @@ public sealed class InputMap
         ArgumentNullException.ThrowIfNull(input);
         DigitalAxis2DBinding[]? bindings = RequireAxis(axis);
         if (bindings is null) return Vector2D.Zero;
+        if (input is ILogicalInputProvider logical) return logical.Axis2D(axis);
 
         float x = 0f;
         float y = 0f;
@@ -109,6 +125,45 @@ public sealed class InputMap
         if (_strict)
             throw new KeyNotFoundException($"Input axis '{axis}' is not configured.");
         return null;
+    }
+
+    internal int GetActionIndex(InputActionRef action) =>
+        _actionIndices.TryGetValue(action, out int index)
+            ? index
+            : throw new KeyNotFoundException($"Input action '{action}' is not configured.");
+
+    internal int GetAxis2DIndex(InputAxis2DRef axis) =>
+        _axis2DIndices.TryGetValue(axis, out int index)
+            ? index
+            : throw new KeyNotFoundException($"Input axis '{axis}' is not configured.");
+
+    internal bool HasSameLogicalSchema(
+        ReadOnlySpan<InputActionRef> actions,
+        ReadOnlySpan<InputAxis2DRef> axes)
+    {
+        if (!_actionRefs.AsSpan().SequenceEqual(actions) ||
+            !_axis2DRefs.AsSpan().SequenceEqual(axes)) return false;
+        return true;
+    }
+
+    internal void CaptureLogicalFrame(
+        IInputProvider input,
+        Span<LogicalInputActionState> actionStates,
+        Span<Vector2D> axes)
+    {
+        if (actionStates.Length != _actionRefs.Length || axes.Length != _axis2DRefs.Length)
+            throw new ArgumentException("Logical input frame storage does not match the InputMap.");
+        for (int i = 0; i < _actionRefs.Length; i++)
+        {
+            InputActionRef action = _actionRefs[i];
+            LogicalInputActionState state = LogicalInputActionState.None;
+            if (ActionDown(input, action)) state |= LogicalInputActionState.Down;
+            if (ActionPressed(input, action)) state |= LogicalInputActionState.Pressed;
+            if (ActionReleased(input, action)) state |= LogicalInputActionState.Released;
+            actionStates[i] = state;
+        }
+        for (int i = 0; i < _axis2DRefs.Length; i++)
+            axes[i] = Axis2D(input, _axis2DRefs[i]);
     }
 
 }

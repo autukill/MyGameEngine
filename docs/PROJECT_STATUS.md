@@ -71,6 +71,7 @@
 - `GameplayHealth` 以有限 float、上下界钳制和零分配 `GameplayHealthChange` 提供通用生命值；`IHasGameplayHealth` 与 Tag 组合区分身份和能力，AirplaneShooter 与 Asteroids 均以 `BecameDepleted` 驱动一次性死亡结果。
 - `InstanceRef<T>` 以 Version 7 `InstanceId` 提供强类型弱引用；Scene 与实例 Context 对称支持 O(1) Resolve 和类型安全 Destroy，遵循 Spawn/Destroy 提交、inactive 与 persistent 的现有语义。
 - `SimulationClock` 为同一 Step 提供共享 Tick、缩放/非缩放 delta 与累计时间，暂停时只冻结 Gameplay 轴且跨 Scene 保留；`GameplayRandom` 固定 PCG32 v1 bit sequence，支持无偏范围、概率、几何、Choose/Shuffle 和状态恢复，稳态 0 B。
+- `LogicalInputRecorder/Recording/Playback` 按模拟 Tick 冻结 Action held/edge、Axis2D 与 fixed delta；Hosting 以 `RecordLogicalInput/ReplayLogicalInput` 装配，要求 delta 逐位一致、协议匹配和完整 Tick 1 流，回放查询保持 0 B。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
 - Hosting 第二阶段多 Camera 已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Runner `--split-cameras` 验证两台真实 Camera。
 - 多 View 效果策略已显式化：主 View 由 `UseHdr` 配置；次级 View 默认 Direct，也可独立选择 HDR + Tone Mapping 与可选 Bloom。配置报告额外 Pass/租约，工厂按输入 Surface 尺寸创建目标，次级 View 不承担未声明成本。
@@ -100,7 +101,7 @@
 4. 已完成 Layer 过滤、小地图式样例、显式效果成本、Scene Draw 分项诊断、Layer/Depth 有序索引、保守 Camera 可见性剔除，以及独立 Camera 跟随/Dead Zone/边界/震屏控制器。
 5. 已把静态跟随策略接入声明式 RenderView 配置，同时保留 Gameplay 运行时换目标的出口。
 6. 已建立独立多 View 稳定基准；本机 10,000 实例、双 View、剔除路径约 `0.431 ms` 且 `0 B/frame`，不足以证明跨 View 缓存值得引入，当前明确保留简单逐 View 检查。
-7. 多 Camera/View 当前里程碑闭环；Gameplay Authoring 已继续落地 Cooldown、Health/Damage、Instance Ref 与确定性 Clock/Random。下一项进入逻辑输入 Tick 录制/回放，再评估状态 Hash；Gameplay Signal 暂只验证需求。
+7. 多 Camera/View 当前里程碑闭环；Gameplay Authoring 已继续落地 Cooldown、Health/Damage、Instance Ref、确定性 Clock/Random 和逻辑输入 Tick 录制/回放。下一项进入稳定状态 Hash 与首次分叉诊断；Gameplay Signal 暂只验证需求。
 
 ## 已知限制
 

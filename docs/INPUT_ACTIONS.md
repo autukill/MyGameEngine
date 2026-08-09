@@ -104,3 +104,7 @@ if (grounded.IsOpen && jump.TryConsume())
 v1 负责键盘到逻辑 Action/数字 Axis 的映射，并提供实例级输入缓冲；暂不包括手柄、模拟轴、组合键、运行时改键和玩家槽位。稳定的逻辑引用已经为这些能力建立边界，后续扩展不应改变普通玩法代码。
 
 可运行示例见 [Airplane Shooter](../playgrounds/AirplaneShooter/README.md) 和 [Asteroids](../playgrounds/Asteroids/README.md)。
+
+## 确定性录制与回放
+
+固定 Tick 下可以通过 `RecordLogicalInput(recorder)` 捕获逻辑 Action/Axis，通过 `ReplayLogicalInput(recording)` 回放。物理键位和绑定声明顺序可以变化，但逻辑名称与 Action/Axis 种类必须一致；原始 Key/Mouse 查询不进入回放协议。完整用法、失败边界和当前限制见[逻辑输入 Tick 录制与回放](LOGICAL_INPUT_REPLAY.md)。

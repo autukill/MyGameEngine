@@ -31,6 +31,7 @@ internal static class Program
         TestBuilderPlans();
         TestBuilderValidation();
         TestLogicalInputMap();
+        TestLogicalInputRecordingAndPlayback();
         TestGameplayCooldown();
         TestGameplayHealth();
         TestInstanceReferences();
@@ -369,6 +370,230 @@ internal static class Program
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         Check(allocated == 0,
             $"Input buffer and grace-period updates remain allocation-free ({allocated:N0} B)");
+    }
+
+    private static void TestLogicalInputRecordingAndPlayback()
+    {
+        Console.WriteLine("3b. Tick logical input recording and playback");
+        var fire = new InputActionRef("player.fire");
+        var dash = new InputActionRef("player.dash");
+        var move = new InputAxis2DRef("player.move");
+        double fixedDelta = 1d / 60d;
+        InputMap map = new InputMapBuilder()
+            .BindAction(fire, InputKey.Space)
+            .BindAxis2D(move, InputKey.A, InputKey.D, InputKey.W, InputKey.S)
+            .BindAction(dash, InputKey.Shift)
+            .Build();
+        var physical = new MappedInputProbe();
+        var recorder = new LogicalInputRecorder(initialFrameCapacity: 2);
+        recorder.Prepare(map, fixedDelta);
+
+        physical.Down.Add(InputKey.Space);
+        physical.Pressed.Add(InputKey.Space);
+        physical.Down.Add(InputKey.D);
+        physical.Down.Add(InputKey.W);
+        recorder.BeginStep(1, map, physical);
+
+        physical.Down.Clear();
+        physical.Pressed.Clear();
+        physical.Released.Add(InputKey.Space);
+        physical.Down.Add(InputKey.Shift);
+        physical.Pressed.Add(InputKey.Shift);
+        recorder.BeginStep(2, map, physical);
+
+        LogicalInputRecording recording = recorder.Snapshot();
+        Check(recording.FormatVersion == 1 &&
+              recording.FixedDeltaSeconds == fixedDelta &&
+              recording.FrameCount == 2 &&
+              recording.FirstStepIndex == 1 &&
+              recording.LastStepIndex == 2 &&
+              recording.Actions.Span.SequenceEqual(
+                  new[] { dash, fire }) &&
+              recording.Axes2D.Span.SequenceEqual(new[] { move }),
+            "Recording freezes a versioned, name-sorted logical schema and Tick range");
+
+        var playback = new LogicalInputPlayback(recording, map);
+        Check(!map.ActionDown(playback, fire) && map.Axis2D(playback, move) == Vector2D.Zero,
+            "Playback exposes neutral logical input before the first simulation Tick");
+        playback.BeginStep(1);
+        Check(map.ActionDown(playback, fire) &&
+              map.ActionPressed(playback, fire) &&
+              !map.ActionReleased(playback, fire) &&
+              !map.ActionDown(playback, dash) &&
+              map.Axis2D(playback, move) == new Vector2D(1, -1),
+            "Playback reproduces Action edges, held state, and Axis values for Tick one");
+        playback.BeginStep(2);
+        Check(!map.ActionDown(playback, fire) &&
+              !map.ActionPressed(playback, fire) &&
+              map.ActionReleased(playback, fire) &&
+              map.ActionDown(playback, dash) &&
+              map.ActionPressed(playback, dash) &&
+              map.Axis2D(playback, move) == Vector2D.Zero &&
+              playback.IsComplete,
+            "Playback reproduces the next Tick and reports exact stream completion");
+
+        CheckThrows<InvalidOperationException>(
+            () => playback.BeginStep(3),
+            "Playback fails when the simulation requests a missing Tick");
+        CheckThrows<InvalidOperationException>(
+            () => playback.IsKeyDown(InputKey.Space),
+            "Replay mode rejects physical key queries instead of silently diverging");
+        CheckThrows<InvalidOperationException>(
+            () => recorder.BeginStep(4, map, physical),
+            "Recorder rejects a non-contiguous simulation Tick");
+
+        InputMap equivalentMap = new InputMapBuilder()
+            .BindAxis2D(move, InputKey.Left, InputKey.Right, InputKey.Up, InputKey.Down)
+            .BindAction(dash, InputKey.Control)
+            .BindAction(fire, InputKey.Enter)
+            .Build();
+        recording.ValidateAgainst(equivalentMap);
+        Check(true,
+            "Recordings depend on logical names and kinds rather than physical bindings/order");
+        InputMap incompatibleMap = new InputMapBuilder()
+            .BindAction(fire, InputKey.Space)
+            .Build();
+        CheckThrows<InvalidOperationException>(
+            () => recording.ValidateAgainst(incompatibleMap),
+            "Playback rejects an incompatible logical InputMap schema");
+
+        int RunDeterministicSession()
+        {
+            var session = new LogicalInputPlayback(recording, equivalentMap);
+            var random = new GameplayRandom(0xC0FFEEUL);
+            int state = 0;
+            for (ulong tick = 1; tick <= 2; tick++)
+            {
+                session.BeginStep(tick);
+                if (equivalentMap.ActionPressed(session, fire))
+                    state += random.Range(10, 100);
+                if (equivalentMap.ActionPressed(session, dash))
+                    state -= random.Range(1, 10);
+                Vector2D axis = equivalentMap.Axis2D(session, move);
+                state += (int)(axis.X * 100f) + (int)(axis.Y * 10f);
+            }
+            return state;
+        }
+        Check(RunDeterministicSession() == RunDeterministicSession(),
+            "The same seed and logical Tick stream produce the same gameplay result");
+
+        var fixedOptions = EngineWindowOptions.Default.WithFixedUpdateRate(60d);
+        var recordingPlan = GameApplication.Create(fixedOptions)
+            .ConfigureInput(input => input.BindAction(fire, InputKey.Space))
+            .RecordLogicalInput(new LogicalInputRecorder())
+            .UseDefault2DRenderer()
+            .ConfigureScene("Record", _ => { })
+            .BuildPlan();
+        Check(recordingPlan.InputRecorder is not null && recordingPlan.InputPlayback is null,
+            "Hosting plan freezes an explicit logical input recording mode");
+        var playbackPlan = GameApplication.Create(fixedOptions)
+            .ConfigureInput(input => input
+                .BindAction(fire, InputKey.Enter)
+                .BindAction(dash, InputKey.Control)
+                .BindAxis2D(move, InputKey.Left, InputKey.Right, InputKey.Up, InputKey.Down))
+            .ReplayLogicalInput(recording)
+            .UseDefault2DRenderer()
+            .ConfigureScene("Replay", _ => { })
+            .BuildPlan();
+        Check(playbackPlan.InputRecorder is null &&
+              ReferenceEquals(playbackPlan.InputPlayback, recording),
+            "Hosting plan accepts playback across equivalent physical bindings");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create()
+                .ConfigureInput(input => input.BindAction(fire, InputKey.Space))
+                .RecordLogicalInput(new LogicalInputRecorder())
+                .UseDefault2DRenderer()
+                .ConfigureScene("NoFixedDelta", _ => { })
+                .BuildPlan(),
+            "Hosting requires a fixed delta before recording logical input");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create(
+                    EngineWindowOptions.Default.WithFixedUpdateRate(30d))
+                .ConfigureInput(input => input
+                    .BindAction(fire, InputKey.Enter)
+                    .BindAction(dash, InputKey.Control)
+                    .BindAxis2D(move, InputKey.Left, InputKey.Right, InputKey.Up, InputKey.Down))
+                .ReplayLogicalInput(recording)
+                .UseDefault2DRenderer()
+                .ConfigureScene("WrongDelta", _ => { })
+                .BuildPlan(),
+            "Hosting rejects playback under a different fixed delta");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create(fixedOptions)
+                .RecordLogicalInput(new LogicalInputRecorder())
+                .UseDefault2DRenderer()
+                .ConfigureScene("NoMap", _ => { })
+                .BuildPlan(),
+            "Hosting requires a configured logical InputMap before recording");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create(fixedOptions)
+                .RecordLogicalInput(new LogicalInputRecorder())
+                .ReplayLogicalInput(recording),
+            "Hosting rejects simultaneous recording and playback modes");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create(fixedOptions)
+                .ConfigureInput(input => input
+                    .BindAction(fire, InputKey.Space)
+                    .BindAction(dash, InputKey.Shift)
+                    .BindAxis2D(move, InputKey.A, InputKey.D, InputKey.W, InputKey.S))
+                .RecordLogicalInput(recorder)
+                .UseDefault2DRenderer()
+                .ConfigureScene("UsedRecorder", _ => { })
+                .BuildPlan(),
+            "Hosting rejects a Recorder that already owns captured frames");
+
+        var emptyRecorder = new LogicalInputRecorder();
+        emptyRecorder.Prepare(map, fixedDelta);
+        LogicalInputRecording emptyRecording = emptyRecorder.Snapshot();
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create(fixedOptions)
+                .ConfigureInput(input => input
+                    .BindAction(fire, InputKey.Space)
+                    .BindAction(dash, InputKey.Shift)
+                    .BindAxis2D(move, InputKey.A, InputKey.D, InputKey.W, InputKey.S))
+                .ReplayLogicalInput(emptyRecording)
+                .UseDefault2DRenderer()
+                .ConfigureScene("EmptyReplay", _ => { })
+                .BuildPlan(),
+            "Hosting rejects an empty playback stream");
+
+        var partialRecorder = new LogicalInputRecorder();
+        partialRecorder.BeginStep(42, map, physical);
+        LogicalInputRecording partialRecording = partialRecorder.Snapshot();
+        Check(partialRecording.FirstStepIndex == 42,
+            "Manual recording supports a positive partial-session first Tick");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create(fixedOptions)
+                .ConfigureInput(input => input
+                    .BindAction(fire, InputKey.Space)
+                    .BindAction(dash, InputKey.Shift)
+                    .BindAxis2D(move, InputKey.A, InputKey.D, InputKey.W, InputKey.S))
+                .ReplayLogicalInput(partialRecording)
+                .UseDefault2DRenderer()
+                .ConfigureScene("PartialReplay", _ => { })
+                .BuildPlan(),
+            "Hosting full-session playback must begin at simulation Tick one");
+
+        var queryPlayback = new LogicalInputPlayback(recording, map);
+        queryPlayback.BeginStep(1);
+        for (int i = 0; i < 64; i++)
+        {
+            _ = map.ActionDown(queryPlayback, fire);
+            _ = map.ActionPressed(queryPlayback, fire);
+            _ = map.ActionReleased(queryPlayback, fire);
+            _ = map.Axis2D(queryPlayback, move);
+        }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            _ = map.ActionDown(queryPlayback, fire);
+            _ = map.ActionPressed(queryPlayback, fire);
+            _ = map.ActionReleased(queryPlayback, fire);
+            _ = map.Axis2D(queryPlayback, move);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Playback logical queries remain allocation-free ({allocated:N0} B)");
     }
 
     private static void TestGameplayTags()

@@ -4,6 +4,7 @@ using System.Numerics;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
@@ -48,6 +49,8 @@ internal sealed class Default2DGameRuntime : IDisposable
     private ShaderHotReloadCoordinator? _shaderHotReload;
     private SceneNavigator _scenes = null!;
     private readonly List<RenderView> _renderViews = [];
+    private LogicalInputRecorder? _inputRecorder;
+    private LogicalInputPlayback? _inputPlayback;
     private bool _disposed;
 
     public Default2DGameContext Context { get; private set; } = null!;
@@ -84,7 +87,15 @@ internal sealed class Default2DGameRuntime : IDisposable
 
     public void Step(double deltaTime)
     {
-        _scene!.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
+        ulong nextStepIndex = _scene!.Clock.StepIndex == ulong.MaxValue
+            ? throw new InvalidOperationException("Simulation Step index overflowed.")
+            : _scene.Clock.StepIndex + 1UL;
+        if (_inputRecorder is not null)
+            _inputRecorder.BeginStep(nextStepIndex, _plan.InputMap, _window.Input);
+        else if (_inputPlayback is not null)
+            _inputPlayback.BeginStep(nextStepIndex);
+        else
+            _scene.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
         _scene.PerformStep(deltaTime);
         for (int i = 0; i < _renderViews.Count; i++)
             _renderViews[i].Camera.Update(deltaTime);
@@ -221,7 +232,21 @@ internal sealed class Default2DGameRuntime : IDisposable
             ViewportWidth = width,
             ViewportHeight = height
         };
-        _scene.SetInput(_window.Input);
+        if (_plan.InputRecorder is { } recorder)
+        {
+            recorder.Prepare(_plan.InputMap, _plan.WindowOptions.FixedDeltaTime!.Value);
+            _inputRecorder = recorder;
+            _scene.SetInput(recorder);
+        }
+        else if (_plan.InputPlayback is { } recording)
+        {
+            _inputPlayback = new LogicalInputPlayback(recording, _plan.InputMap);
+            _scene.SetInput(_inputPlayback);
+        }
+        else
+        {
+            _scene.SetInput(_window.Input);
+        }
         _scene.SetInputMap(_plan.InputMap);
         _scene.SetSprites(_sprites);
         _scene.SetInstanceFactory(_plan.Instances);

@@ -15,6 +15,8 @@ public sealed class GameApplicationBuilder
     private bool _instancesConfigured;
     private InputMap _inputMap = InputMap.Empty;
     private bool _inputConfigured;
+    private LogicalInputRecorder? _inputRecorder;
+    private LogicalInputRecording? _inputPlayback;
 
     internal GameApplicationBuilder(EngineWindowOptions windowOptions)
     {
@@ -112,6 +114,24 @@ public sealed class GameApplicationBuilder
         return this;
     }
 
+    /// <summary>Records one logical Action/Axis snapshot for every fixed simulation Step.</summary>
+    public GameApplicationBuilder RecordLogicalInput(LogicalInputRecorder recorder)
+    {
+        ArgumentNullException.ThrowIfNull(recorder);
+        RequireInputReplayNotConfigured();
+        _inputRecorder = recorder;
+        return this;
+    }
+
+    /// <summary>Replays logical Action/Axis snapshots without reading physical gameplay input.</summary>
+    public GameApplicationBuilder ReplayLogicalInput(LogicalInputRecording recording)
+    {
+        ArgumentNullException.ThrowIfNull(recording);
+        RequireInputReplayNotConfigured();
+        _inputPlayback = recording;
+        return this;
+    }
+
     public GameApplication Build() => new(BuildPlan());
 
     internal GameApplicationPlan BuildPlan()
@@ -137,6 +157,40 @@ public sealed class GameApplicationBuilder
                                             _windowOptions.FrameStatistics is null
             ? _windowOptions.WithFrameStatistics()
             : _windowOptions;
+        if (_inputRecorder is not null || _inputPlayback is not null)
+        {
+            if (_inputMap.IsEmpty)
+                throw new InvalidOperationException(
+                    "Logical input recording and playback require ConfigureInput.");
+            if (windowOptions.FixedDeltaTime is not { } fixedDeltaTime ||
+                !double.IsFinite(fixedDeltaTime) || fixedDeltaTime <= 0d)
+            {
+                throw new InvalidOperationException(
+                    "Logical input recording and playback require a fixed delta. " +
+                    "Configure EngineWindowOptions with WithFixedUpdateRate.");
+            }
+            if (_inputRecorder is { FrameCount: > 0 })
+                throw new InvalidOperationException(
+                    "Hosting requires a fresh LogicalInputRecorder with no captured frames.");
+            if (_inputPlayback is { FrameCount: 0 })
+                throw new InvalidOperationException(
+                    "Logical input playback requires at least one recorded frame.");
+            if (_inputPlayback is { FirstStepIndex: not 1 })
+                throw new InvalidOperationException(
+                    "Hosting logical input playback must begin at simulation Step 1.");
+            if (_inputPlayback is { FixedDeltaSeconds: null })
+                throw new InvalidOperationException(
+                    "Hosting logical input playback requires recorded fixed delta metadata.");
+            if (_inputPlayback is { FixedDeltaSeconds: { } recordedDelta } &&
+                BitConverter.DoubleToInt64Bits(recordedDelta) !=
+                BitConverter.DoubleToInt64Bits(fixedDeltaTime))
+            {
+                throw new InvalidOperationException(
+                    $"Logical input playback fixed delta {recordedDelta:R} does not match " +
+                    $"the configured value {fixedDeltaTime:R}.");
+            }
+            _inputPlayback?.ValidateAgainst(_inputMap);
+        }
         var scenes = new ReadOnlyDictionary<string, ISceneDefinition>(
             new Dictionary<string, ISceneDefinition>(_scenes, StringComparer.Ordinal));
         return new GameApplicationPlan(
@@ -145,7 +199,16 @@ public sealed class GameApplicationBuilder
             initial,
             scenes,
             _instances.Build(),
-            _inputMap);
+            _inputMap,
+            _inputRecorder,
+            _inputPlayback);
+    }
+
+    private void RequireInputReplayNotConfigured()
+    {
+        if (_inputRecorder is not null || _inputPlayback is not null)
+            throw new InvalidOperationException(
+                "Logical input recording or playback is already configured.");
     }
 }
 
@@ -155,7 +218,9 @@ internal sealed record GameApplicationPlan(
     ISceneActivation InitialSceneActivation,
     IReadOnlyDictionary<string, ISceneDefinition> Scenes,
     IInstanceFactory Instances,
-    InputMap InputMap)
+    InputMap InputMap,
+    LogicalInputRecorder? InputRecorder,
+    LogicalInputRecording? InputPlayback)
 {
     public SceneRef InitialScene => InitialSceneActivation.Scene;
     public string SceneName => InitialScene.Name;

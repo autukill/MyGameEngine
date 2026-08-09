@@ -7,7 +7,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 ## 当前能力
 
 - GMS 风格实例生命周期：Create、Begin/Step/End Step、Begin/Draw/End Draw、Draw GUI、Key Down/Up、Destroy。
-- Gameplay Authoring：直接变换、逻辑输入、时间原语、Health/Damage、Instance Ref、确定性 Clock/Random、实例级生命周期、轻量 Behavior 与稳定帧边界。
+- Gameplay Authoring：直接变换、逻辑输入、时间原语、Health/Damage、Instance Ref、确定性 Clock/Random、Tick 输入录制回放、实例级生命周期、轻量 Behavior 与稳定帧边界。
 - Gameplay Motion：21 种无状态 Easing、标量/位置/颜色/最短角 Tween，以及限速和半衰期平滑追踪。
 - Gameplay Time：Gameplay/Unscaled 时间域、owner/key 暂停、单一 TimeScale；暂停冻结逻辑但继续渲染和安全帧边界。
 - Gameplay Runtime：Scene Input/Step/Draw/DrawGUI 使用可复用快照，实例规模预热后保持零托管分配，并保留确定性阶段边界。
@@ -15,7 +15,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Gameplay Query：保留便利结果数组，同时提供可复用 Buffer、强类型 Gameplay Tag 过滤、无集合计数和按真实 Step 聚合的可选查询统计。
 - Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
-- 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件；不可变逻辑 Action/Axis 把玩法意图与 WASD、方向键等物理绑定分离。
+- 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件；不可变逻辑 Action/Axis 把玩法意图与物理绑定分离，并支持固定 Tick 内存录制与无设备回放。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
 - 类型化 Shader 材质：逻辑 `MaterialRef`、多材质共享 Program、参数 Revision 批处理与热替换自动重放。
 - Shader 契约诊断：GL 反射校验材质 Uniform 名称/类型/数组，编译错误携带源码路径、行号与原始驱动日志。
@@ -286,7 +286,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 ## 下一阶段
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
-2. 继续确定性 Gameplay Authoring：Clock/Random 已落地，下一项按 Tick 录制和回放逻辑 Action/Axis，随后增加状态 Hash 与首次分叉诊断；Gameplay Signal 继续等待真实一对多用例。
+2. 继续确定性 Gameplay Authoring：Clock/Random 与按 Tick 的逻辑 Action/Axis 录制回放已落地，下一项增加稳定状态 Hash 与首次分叉诊断；Gameplay Signal 继续等待真实一对多用例。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
 
