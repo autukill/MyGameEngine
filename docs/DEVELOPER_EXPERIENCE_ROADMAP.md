@@ -73,6 +73,7 @@ GameAssets.Packages.SharedPrimitives
 - `InputActionBuffer` 与 `GameplayGracePeriod` 提供显式捕获/消费、暂停感知和零分配的预输入与条件宽限，不把跳跃、冷却等玩法规则塞入输入系统。
 - 强类型 `GameplayTag` 与 Find/Collision/Area/Radius 对称重载已让横切玩法身份脱离继承树；类型和单 Tag 可组合，Buffer 路径保持 0 B，不提前维护 Tag 索引。
 - 轻量 `GameplayBehavior<TInstance>` 提供强类型 Owner、冻结装配、确定性生命周期和暂停感知调度；`LifetimeBehavior` 已替代两个 Playground 的重复子弹 Alarm，稳态分发保持 0 B。
+- 技能与 Buff 已完成需求分析：推荐独立 Abilities 切片，以固定 BuffContainer/SkillBook 管理动态 Runtime，先验证 Buff 叠层、来源和安全修改，再实现 Skill 提交与游戏专属 Executor；不提前引入万能 Effect DSL 或通用 RPG 属性系统。详见[技能与 Buff 功能设计思考](SKILLS_AND_BUFFS_DESIGN.md)。
 - Scene 注入实例级 `IGameplayContext`，提供 `Spawn/DestroySelf/Destroy/Find`，不引入全局 Service Locator。
 - Gameplay Spawn/Destroy 在 End Step 后按请求顺序确定性提交；新实例下一帧 Step，待销毁实例完成当前 End Step。
 - `AlarmId`、`SetAlarm/CancelAlarm/OnAlarm` 提供无协程依赖的轻量计时。

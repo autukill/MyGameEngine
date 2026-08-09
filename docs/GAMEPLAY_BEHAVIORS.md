@@ -25,7 +25,7 @@ UseBehavior(new WorldWrapBehavior(worldBounds));
 
 ### 战斗状态
 
-短暂无敌、受击闪烁、中毒、燃烧、减速和自动回血可以由 Behavior 管理持续时间，并在开始/结束时添加或移除 `GameplayTag`。只有其他对象确实需要查询该状态时，才应把内部状态暴露为 Tag。
+短暂无敌、受击闪烁、中毒、燃烧、减速和自动回血需要动态应用、刷新、叠层或驱散时，不应为每个状态动态添加 Behavior；推荐固定装配一个 BuffContainer Behavior 管理内部 Runtime。完整推演见[技能与 Buff 功能设计思考](SKILLS_AND_BUFFS_DESIGN.md)。只有其他对象确实需要查询该状态时，才应把内部状态暴露为 Tag。
 
 ### 简单自动行为
 
