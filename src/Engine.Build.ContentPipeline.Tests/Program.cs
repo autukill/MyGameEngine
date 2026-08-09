@@ -87,25 +87,31 @@ internal static class Program
         string consumer = Path.Combine(workspace, "consumer project with spaces");
         Directory.CreateDirectory(consumer);
         CopyDirectory(sourceRoot, Path.Combine(consumer, "Assets"));
-        File.WriteAllText(Path.Combine(consumer, "Program.cs"),
-            "System.Console.WriteLine(\"content pipeline consumer\");\n");
+        File.WriteAllText(Path.Combine(consumer, "Program.cs"), ConsumerProgram);
+        File.WriteAllText(Path.Combine(consumer, "EngineReferenceStubs.cs"), EngineReferenceStubs);
         File.WriteAllText(
             Path.Combine(consumer, "Consumer.csproj"),
             ConsumerProject.Replace("$PACKAGE_VERSION$", version, StringComparison.Ordinal));
 
+        string consumerPackages = Path.Combine(workspace, "consumer packages");
         RunDotNet(consumer,
-            "restore", "Consumer.csproj", "--configfile", nugetConfig, "--no-cache");
+            "restore", "Consumer.csproj", "--configfile", nugetConfig, "--no-cache",
+            "--packages", consumerPackages);
         ProcessResult firstBuild = RunDotNet(consumer,
             "build", "Consumer.csproj", "--no-restore");
         string debugAssets = Path.Combine(consumer, "bin", "Debug", "net10.0", "AssetsCompiled");
         Check(firstBuild.Output.Contains("Build status: Built", StringComparison.Ordinal) &&
-              File.Exists(Path.Combine(debugAssets, "assets.json")),
-            "PackageReference automatically compiles and copies Debug runtime content");
+              firstBuild.Output.Contains("Generated content references:", StringComparison.Ordinal) &&
+              File.Exists(Path.Combine(debugAssets, "assets.json")) &&
+              File.Exists(Path.Combine(
+                  consumer, "obj", "Debug", "net10.0", "GameEngine.Content.g.cs")),
+            "PackageReference compiles runtime content and strongly typed references");
 
         ProcessResult cachedBuild = RunDotNet(consumer,
             "build", "Consumer.csproj", "--no-restore");
-        Check(cachedBuild.Output.Contains("Build status: UpToDate", StringComparison.Ordinal),
-            "A second consumer build reuses the content fingerprint cache");
+        Check(cachedBuild.Output.Contains("Build status: UpToDate", StringComparison.Ordinal) &&
+              cachedBuild.Output.Contains("Reference status: UpToDate", StringComparison.Ordinal),
+            "A second consumer build reuses content and generated-reference outputs");
 
         RunDotNet(consumer,
             "build", "Consumer.csproj", "--configuration", "Release", "--no-restore");
@@ -118,8 +124,9 @@ internal static class Program
             "publish", "Consumer.csproj", "--configuration", "Release",
             "--no-restore", "--output", publish);
         Check(File.Exists(Path.Combine(publish, "AssetsCompiled", "assets.json")) &&
-              !File.Exists(Path.Combine(publish, "AssetsCompiled", ".mygame-assets.json")),
-            "Publish includes runtime assets and excludes compiler ownership metadata");
+              !File.Exists(Path.Combine(publish, "AssetsCompiled", ".mygame-assets.json")) &&
+              !File.Exists(Path.Combine(publish, "GameEngine.Content.g.cs")),
+            "Publish includes runtime assets and excludes build metadata and generated source");
 
         ProcessResult invalidMode = RunDotNet(
             consumer,
@@ -288,6 +295,7 @@ internal static class Program
           <PropertyGroup>
             <OutputType>Exe</OutputType>
             <TargetFramework>net10.0</TargetFramework>
+            <RootNamespace>Consumer</RootNamespace>
             <GameEngineContentPackagesRoot>$(MSBuildProjectDirectory)\Assets</GameEngineContentPackagesRoot>
             <GameEngineContentManifest>assets.json</GameEngineContentManifest>
           </PropertyGroup>
@@ -297,6 +305,27 @@ internal static class Program
                               PrivateAssets="all" />
           </ItemGroup>
         </Project>
+        """;
+
+    private const string ConsumerProgram = """
+        using Consumer.Content;
+
+        System.Console.WriteLine(GameAssets.Packages.Root.Id);
+        System.Console.WriteLine(GameAssets.Textures.PackageWhite.Name);
+        System.Console.WriteLine(GameAssets.Sprites.PackageWhite.Name);
+        """;
+
+    private const string EngineReferenceStubs = """
+        namespace GameEngine.Core.Domain.ValueObjects
+        {
+            public readonly record struct TextureRef(string Name);
+            public readonly record struct SpriteRef(string Name);
+        }
+
+        namespace GameEngine.Features.ContentAssets.Domain
+        {
+            public readonly record struct ContentPackageRef(string Id, string Manifest);
+        }
         """;
 
     private const string AssetManifest = """

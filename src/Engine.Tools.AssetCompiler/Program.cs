@@ -4,6 +4,9 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--generate-references")
+            return GenerateReferences(args);
+
         if (args.Length is < 3 or > 4)
         {
             Console.Error.WriteLine(
@@ -32,6 +35,40 @@ internal static class Program
             Console.WriteLine($"Passthrough frames: {result.PassthroughFrameCount}");
             Console.WriteLine($"Fingerprint: {result.InputFingerprint}");
             return result.Status == ContentBuildStatus.Stale ? 3 : 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+    }
+
+    private static int GenerateReferences(string[] args)
+    {
+        if (args.Length != 6)
+        {
+            Console.Error.WriteLine(
+                "Usage: GameEngineAssetCompiler --generate-references " +
+                "<compiled-packages-root> <manifest-relative-path> <output.cs> " +
+                "<namespace> <root-class-name>");
+            return 2;
+        }
+
+        try
+        {
+            ContentReferenceGenerationResult result = new ContentReferenceCodeGenerator().Generate(
+                new ContentReferenceGenerationRequest(
+                    args[1],
+                    args[2],
+                    args[3],
+                    args[4],
+                    args[5]));
+            Console.WriteLine($"Generated content references: {result.OutputFile}");
+            Console.WriteLine($"Reference status: {(result.Changed ? "Updated" : "UpToDate")}");
+            Console.WriteLine($"Packages: {result.PackageCount}");
+            Console.WriteLine($"Textures: {result.TextureCount}");
+            Console.WriteLine($"Sprites: {result.SpriteCount}");
+            return 0;
         }
         catch (Exception ex)
         {

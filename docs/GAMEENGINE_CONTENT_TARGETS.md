@@ -1,10 +1,11 @@
 # `GameEngine.Content.targets` 解读
 
-[`build/GameEngine.Content.targets`](../build/GameEngine.Content.targets) 是游戏项目与 `Engine.Tools.AssetCompiler` 之间的 MSBuild 适配层。它不实现图片解码、Atlas 排布或内容指纹，而是负责以下三件事：
+[`build/GameEngine.Content.targets`](../build/GameEngine.Content.targets) 是游戏项目与 `Engine.Tools.AssetCompiler` 之间的 MSBuild 适配层。它不实现图片解码、Atlas 排布或内容指纹，而是负责以下四件事：
 
 1. 在 C# 编译前调用资产编译器。
-2. 将编译后的标准内容包复制到程序输出目录。
-3. 将同一批运行时资产加入 `dotnet publish` 的发布文件列表。
+2. 从编译后的 Manifest 图生成并编译强类型逻辑引用。
+3. 将编译后的标准内容包复制到程序输出目录。
+4. 将同一批运行时资产加入 `dotnet publish` 的发布文件列表。
 
 内容是否需要重建由 AssetCompiler 的包级 SHA-256 指纹判断，而不是由 MSBuild 的文件时间戳判断。
 
@@ -58,6 +59,10 @@
 | `GameEngineContentBuildMode` | `incremental` | 编译模式：`incremental`、`rebuild` 或 `check`。非法值会在调用编译器前失败。 |
 | `GameEngineContentOutput` | `obj/<Configuration>/<TargetFramework>/CompiledAssets` | 编译缓存与标准运行时包的生成目录。 |
 | `GameEngineContentOutputSubdirectory` | `AssetsCompiled` | `bin` 和 Publish 目录中的运行时资产子目录。 |
+| `GameEngineContentGenerateReferences` | `true` | 是否生成并编译强类型引用。 |
+| `GameEngineContentGeneratedNamespace` | `$(RootNamespace).Content` | 生成代码命名空间。 |
+| `GameEngineContentGeneratedClass` | `GameAssets` | 生成的根容器类型名。 |
+| `GameEngineContentGeneratedFile` | `obj/<Configuration>/<TargetFramework>/GameEngine.Content.g.cs` | 生成文件位置。 |
 | `GameEngineAssetCompilerDll` | NuGet 包内编译器；源码模式为仓库 `bin` 输出 | 要执行的编译器 DLL，可显式覆盖。 |
 | `GameEngineDotNetHost` | `$(DotNetHostPath)` 或 `dotnet` | 启动框架依赖编译器的 dotnet host。 |
 
@@ -75,6 +80,8 @@ ResolveProjectReferences
 CompileGameEngineContent
   ├─ 检查编译器 DLL
   ├─ 执行 AssetCompiler --incremental
+  ├─ 从编译产物执行 --generate-references
+  ├─ 将 GameEngine.Content.g.cs 加入 Compile
   ├─ 枚举运行时产物
   └─ 刷新 bin/.../AssetsCompiled
         │
@@ -101,6 +108,19 @@ dotnet <GameEngineAssetCompilerDll> --<GameEngineContentBuildMode> `
 ```
 
 AssetCompiler 会解析完整依赖图，并根据 manifest、图片内容、依赖指纹和编译器版本决定哪些包需要重建。Target 每次都可以安全调用它；缓存命中时不会重写产物或元数据。
+
+随后 Target 执行：
+
+```powershell
+dotnet <GameEngineAssetCompilerDll> --generate-references `
+  <GameEngineContentOutput> `
+  <GameEngineContentManifest> `
+  <GameEngineContentGeneratedFile> `
+  <GameEngineContentGeneratedNamespace> `
+  <GameEngineContentGeneratedClass>
+```
+
+生成器读取编译后的运行时 Manifest，因此不会公开已被 Atlas 移除的源 Texture 或内部 Atlas 页。输出未变化时保留文件时间戳；详细规则见[强类型 Content 引用](STRONGLY_TYPED_CONTENT.md)。
 
 ## 从 `obj` 到 `bin`
 

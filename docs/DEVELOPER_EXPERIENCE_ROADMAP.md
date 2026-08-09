@@ -17,17 +17,19 @@
 
 验收结果：Runner 已使用 Hosting API，不再维护静态 GPU 字段或窗口回调；默认预设保留 Spotlight、HDR Bloom、Tone Mapping、resize、ESC 和关闭释放行为。配置验证、默认 owner 事件顺序与逆序资源清理已有无窗口测试。
 
-## 阶段 2：强类型 Content 访问
+## 阶段 2：强类型 Content 访问（已实现）
 
 从 `assets.json` 或编译产物生成稳定的 C# 标识：
 
 ```csharp
-Sprites.PlayerIdle
-Textures.WorldTiles
-Packages.SharedPrimitives
+GameAssets.Sprites.PlayerIdle
+GameAssets.Textures.WorldTiles
+GameAssets.Packages.SharedPrimitives
 ```
 
-目标是把资源拼写错误从运行时提前到编译期。生成器只产生逻辑 `SpriteRef`、`TextureRef` 和包 ID，不包含 GPU 句柄，也不改变 ContentPackageManager 的生命周期。
+目标是把资源拼写错误从运行时提前到编译期。生成器只产生逻辑 `SpriteRef`、`TextureRef` 和 `ContentPackageRef`，不包含 GPU 句柄，也不改变 ContentPackageManager 的生命周期。
+
+验收结果：AssetCompiler 从编译后的 Manifest 依赖图生成确定性 `.g.cs`；已打入 Atlas 的源 Texture 与内部 Atlas 页不会泄漏为公开引用，标识符冲突在构建期失败。Runner 已使用 `GameAssets.Packages.Root` 和 `GameAssets.Sprites.RunnerOrbiting`，Hosting 会校验包 ID。
 
 ## 阶段 3：项目模板与命令行体验
 

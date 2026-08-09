@@ -141,7 +141,11 @@ internal static class Program
             using var textures = new TextureLibrary(backend);
             var sprites = new SpriteLibrary(textures);
             using var manager = new ContentPackageManager(textures, sprites, root);
-            using var package = manager.Load("assets.json");
+            CheckThrows<InvalidDataException>(() => manager.Load(
+                    new ContentPackageRef("unexpected.assets", "assets.json")),
+                "A typed package reference validates its expected package id before loading");
+            using var package = manager.Load(
+                new ContentPackageRef("multi.assets", "assets.json"));
 
             var sprite = package.GetSprite("multi.sprite");
             sprites.TryResolve(sprite, 0, out var first);

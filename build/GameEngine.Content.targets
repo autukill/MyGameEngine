@@ -4,6 +4,9 @@
     <GameEngineContentBuildMode Condition="'$(GameEngineContentBuildMode)' == ''">incremental</GameEngineContentBuildMode>
     <GameEngineContentOutputSubdirectory Condition="'$(GameEngineContentOutputSubdirectory)' == ''">AssetsCompiled</GameEngineContentOutputSubdirectory>
     <GameEngineContentOutput Condition="'$(GameEngineContentOutput)' == ''">$(MSBuildProjectDirectory)\obj\$(Configuration)\$(TargetFramework)\CompiledAssets</GameEngineContentOutput>
+    <GameEngineContentGenerateReferences Condition="'$(GameEngineContentGenerateReferences)' == ''">true</GameEngineContentGenerateReferences>
+    <GameEngineContentGeneratedClass Condition="'$(GameEngineContentGeneratedClass)' == ''">GameAssets</GameEngineContentGeneratedClass>
+    <GameEngineContentGeneratedFile Condition="'$(GameEngineContentGeneratedFile)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/GameEngine.Content.g.cs'))</GameEngineContentGeneratedFile>
     <GameEngineAssetCompilerDll Condition="'$(GameEngineAssetCompilerDll)' == '' and '$(GameEngineContentPackageRoot)' != ''">$([System.IO.Path]::GetFullPath('$(GameEngineContentPackageRoot)\tools\net10.0\any\GameEngineAssetCompiler.dll'))</GameEngineAssetCompilerDll>
     <GameEngineAssetCompilerDll Condition="'$(GameEngineAssetCompilerDll)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\src\Engine.Tools.AssetCompiler\bin\$(Configuration)\net10.0\GameEngineAssetCompiler.dll'))</GameEngineAssetCompilerDll>
     <GameEngineDotNetHost Condition="'$(GameEngineDotNetHost)' == '' and '$(DotNetHostPath)' != ''">$(DotNetHostPath)</GameEngineDotNetHost>
@@ -14,12 +17,29 @@
           AfterTargets="ResolveProjectReferences"
           BeforeTargets="CoreCompile"
           Condition="'$(GameEngineContentPackagesRoot)' != ''">
+    <PropertyGroup>
+      <GameEngineContentGeneratedNamespace Condition="'$(GameEngineContentGeneratedNamespace)' == '' and '$(RootNamespace)' != ''">$(RootNamespace).Content</GameEngineContentGeneratedNamespace>
+      <GameEngineContentGeneratedNamespace Condition="'$(GameEngineContentGeneratedNamespace)' == ''">$(AssemblyName).Content</GameEngineContentGeneratedNamespace>
+    </PropertyGroup>
     <Error Condition="!Exists('$(GameEngineAssetCompilerDll)')"
            Text="GameEngine AssetCompiler was not built: $(GameEngineAssetCompilerDll)" />
     <Error Condition="'$(GameEngineContentBuildMode)' != 'incremental' and '$(GameEngineContentBuildMode)' != 'rebuild' and '$(GameEngineContentBuildMode)' != 'check'"
            Text="GameEngineContentBuildMode must be incremental, rebuild, or check; actual: $(GameEngineContentBuildMode)" />
+    <Error Condition="'$(GameEngineContentGenerateReferences)' != 'true' and '$(GameEngineContentGenerateReferences)' != 'false'"
+           Text="GameEngineContentGenerateReferences must be true or false; actual: $(GameEngineContentGenerateReferences)" />
     <Exec Command="&quot;$(GameEngineDotNetHost)&quot; &quot;$(GameEngineAssetCompilerDll)&quot; --$(GameEngineContentBuildMode) &quot;$(GameEngineContentPackagesRoot)&quot; &quot;$(GameEngineContentManifest)&quot; &quot;$(GameEngineContentOutput)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Exec Condition="'$(GameEngineContentGenerateReferences)' == 'true'"
+          Command="&quot;$(GameEngineDotNetHost)&quot; &quot;$(GameEngineAssetCompilerDll)&quot; --generate-references &quot;$(GameEngineContentOutput)&quot; &quot;$(GameEngineContentManifest)&quot; &quot;$(GameEngineContentGeneratedFile)&quot; &quot;$(GameEngineContentGeneratedNamespace)&quot; &quot;$(GameEngineContentGeneratedClass)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+
+    <ItemGroup Condition="'$(GameEngineContentGenerateReferences)' == 'true'">
+      <Compile Include="$(GameEngineContentGeneratedFile)"
+               AutoGen="true"
+               DesignTime="true"
+               Visible="false" />
+      <FileWrites Include="$(GameEngineContentGeneratedFile)" />
+    </ItemGroup>
 
     <ItemGroup>
       <_GameEngineCompiledAsset Remove="@(_GameEngineCompiledAsset)" />

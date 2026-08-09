@@ -59,6 +59,8 @@ internal static class Program
                   File.Exists(Path.Combine(firstOutput, "shared", "white.png")),
                 "Dependency packages are copied into the compiled packages root");
 
+            VerifyStronglyTypedReferences(firstOutput, workspace);
+
             var backend = new FakeTextureBackend();
             using var textures = new TextureLibrary(backend);
             var sprites = new SpriteLibrary(textures);
@@ -86,9 +88,55 @@ internal static class Program
         }
     }
 
+    private static void VerifyStronglyTypedReferences(string compiledRoot, string workspace)
+    {
+        Console.WriteLine("2. Strongly typed runtime references");
+        string output = Path.Combine(workspace, "generated", "GameEngine.Content.g.cs");
+        var generator = new ContentReferenceCodeGenerator();
+        var request = new ContentReferenceGenerationRequest(
+            compiledRoot,
+            "assets.json",
+            output,
+            "Compiler.Sample.Content");
+
+        ContentReferenceGenerationResult first = generator.Generate(request);
+        DateTime firstWrite = File.GetLastWriteTimeUtc(output);
+        ContentReferenceGenerationResult cached = generator.Generate(request);
+        string source = File.ReadAllText(output);
+        Check(first.Changed && !cached.Changed && File.GetLastWriteTimeUtc(output) == firstWrite,
+            "Unchanged generated references preserve the file timestamp");
+        Check(first.PackageCount == 2 && first.TextureCount == 2 && first.SpriteCount == 2 &&
+              source.Contains("ContentPackageRef Root = new(\"compiler.assets\", \"assets.json\")", StringComparison.Ordinal) &&
+              source.Contains("ContentPackageRef CompilerShared", StringComparison.Ordinal),
+            "Root and dependency package references are generated from the compiled graph");
+        Check(source.Contains("TextureRef CompilerLarge", StringComparison.Ordinal) &&
+              source.Contains("TextureRef CompilerWhite", StringComparison.Ordinal) &&
+              !source.Contains("CompilerSheet", StringComparison.Ordinal) &&
+              !source.Contains("__atlas.", StringComparison.Ordinal),
+            "Only public runtime Textures are exposed across the Atlas boundary");
+        Check(source.Contains("SpriteRef CompilerGrid", StringComparison.Ordinal) &&
+              source.Contains("SpriteRef CompilerLarge", StringComparison.Ordinal),
+            "Compiled Sprite names remain stable typed references");
+        CheckThrows<InvalidDataException>(() => generator.Generate(request with
+            {
+                OutputFile = Path.Combine(compiledRoot, "GameEngine.Content.g.cs")
+            }),
+            "Generated source cannot overwrite files inside the compiled package root");
+
+        string collisionRoot = Path.Combine(workspace, "collision");
+        Directory.CreateDirectory(collisionRoot);
+        File.WriteAllText(Path.Combine(collisionRoot, "assets.json"), CollisionManifest);
+        CheckThrows<InvalidDataException>(() => generator.Generate(request with
+            {
+                CompiledPackagesRoot = collisionRoot,
+                OutputFile = Path.Combine(collisionRoot, "collision.g.cs")
+            }),
+            "Ambiguous normalized C# identifiers fail with a build-time diagnostic");
+    }
+
     private static void VerifyIncrementalPipeline(string source, string workspace)
     {
-        Console.WriteLine("2. Incremental graph build, check mode, and failure safety");
+        Console.WriteLine("3. Incremental graph build, check mode, and failure safety");
         string output = Path.Combine(workspace, "incremental");
         var pipeline = new ContentBuildPipeline();
         var request = new ContentBuildRequest(source, "assets.json", output);
@@ -257,6 +305,19 @@ internal static class Program
           "dependencies": [],
           "textures": [
             { "name": "compiler.white", "path": "white.png", "sampling": "smooth" }
+          ],
+          "sprites": []
+        }
+        """;
+
+    private const string CollisionManifest = """
+        {
+          "schemaVersion": 1,
+          "id": "collision.assets",
+          "dependencies": [],
+          "textures": [
+            { "name": "foo-bar", "path": "first.png" },
+            { "name": "foo.bar", "path": "second.png" }
           ],
           "sprites": []
         }

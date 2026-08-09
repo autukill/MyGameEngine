@@ -56,13 +56,26 @@ public sealed class ContentPackageManager : IDisposable
 
     public int LoadedPackageCount => _packagesById.Count;
 
-    public LoadedContentPackage Load(string rootRelativeManifestPath)
+    public LoadedContentPackage Load(string rootRelativeManifestPath) =>
+        LoadCore(rootRelativeManifestPath, expectedId: null);
+
+    public LoadedContentPackage Load(ContentPackageRef package) =>
+        LoadCore(package.Manifest, package.Id);
+
+    private LoadedContentPackage LoadCore(string rootRelativeManifestPath, string? expectedId)
     {
         ThrowIfDisposed();
         string rootPath = ResolveUnderRoot(_packagesRoot, rootRelativeManifestPath, "Manifest");
 
         if (_packagesByPath.TryGetValue(rootPath, out var cached))
         {
+            if (expectedId is not null &&
+                !StringComparer.Ordinal.Equals(expectedId, cached.Id))
+            {
+                throw new InvalidDataException(
+                    $"Content package reference expected '{expectedId}', but manifest " +
+                    $"'{rootRelativeManifestPath}' contains '{cached.Id}'.");
+            }
             checked { cached.ReferenceCount++; }
             return new LoadedContentPackage(this, cached.Id);
         }
@@ -70,7 +83,7 @@ public sealed class ContentPackageManager : IDisposable
         var nodesByPath = new Dictionary<string, GraphNode>(PathComparer);
         var nodesById = new Dictionary<string, GraphNode>(StringComparer.Ordinal);
         var visiting = new HashSet<string>(PathComparer);
-        GraphNode root = ReadGraph(rootPath, null, nodesByPath, nodesById, visiting);
+        GraphNode root = ReadGraph(rootPath, expectedId, nodesByPath, nodesById, visiting);
         ValidateGraphBeforeLoading(nodesById.Values);
 
         PackageState state = Acquire(root);

@@ -5,14 +5,15 @@
 ## 最小 LDR 游戏
 
 ```csharp
+using MyGame.Content;
+
 using var game = GameApplication
     .Create(EngineWindowOptions.Default)
     .UseDefault2DRenderer(renderer => renderer
-        .UseContent("AssetsCompiled", "assets.json"))
+        .UseContent(GameAssets.Packages.Root))
     .ConfigureScene("MainScene", context =>
     {
-        var player = context.GetSprite("player.idle");
-        context.Scene.Add(new Player(player));
+        context.Scene.Add(new Player(GameAssets.Sprites.PlayerIdle));
     })
     .Build();
 
@@ -25,7 +26,7 @@ game.Run();
 
 ```csharp
 .UseDefault2DRenderer(renderer => renderer
-    .UseContent("AssetsCompiled", "assets.json")
+    .UseContent(GameAssets.Packages.Root)
     .UseHdr(
         ToneMappingSettings.Default,
         new BloomSettings(
@@ -38,6 +39,8 @@ game.Run();
 ```
 
 `UseHdr` 把 SceneColor 改为 RGBA16F/Linear，并由内置 owner 声明 Tone Mapping 与最终 Presentation。传入 Bloom 设置时，同一 owner 先声明 HDR Bloom，再让 Tone Mapping 消费 Glow。`EnableStencilMasking` 注册专用 Shader 与 Factory，但具体遮罩仍由游戏中的 GameInstance 请求。
+
+`UseContent(ContentPackageRef)` 默认从 `AssetsCompiled` 加载，并校验生成引用中的包 ID。需要动态路径时仍可使用 `UseContent(packagesRoot, manifestPath)`；强类型生成规则见[强类型 Content 引用](STRONGLY_TYPED_CONTENT.md)。
 
 SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()`，避免创建对应 RenderTarget 和 Pass。
 

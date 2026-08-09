@@ -158,7 +158,9 @@ internal sealed class Default2DGameRuntime : IDisposable
                 _textures,
                 _sprites,
                 packagesRoot));
-            content = _resources.Add(contentManager.Load(renderer.ContentManifest!));
+            content = _resources.Add(renderer.ContentPackage is { } package
+                ? contentManager.Load(package)
+                : contentManager.Load(renderer.ContentManifest!));
         }
 
         _scene = new SceneAggregate(_plan.SceneName)

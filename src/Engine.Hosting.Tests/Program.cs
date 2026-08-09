@@ -3,6 +3,7 @@ namespace GameEngine.Hosting.Tests;
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Bloom.Domain;
+using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.ToneMapping.Domain;
@@ -30,9 +31,10 @@ internal static class Program
         Console.WriteLine("1. Immutable application plans");
         var bloom = new BloomSettings(0.4f, 1.4f, 1f, 2, BloomResolution.Half);
         var tone = new ToneMappingSettings(ToneMappingOperator.Aces, 0.5f, 2.2f);
+        var package = new ContentPackageRef("game.assets", "game/assets.json");
         var plan = GameApplication.Create(new EngineWindowOptions(Title: "Hosting Test"))
             .UseDefault2DRenderer(renderer => renderer
-                .UseContent("AssetsCompiled", "game/assets.json")
+                .UseContent(package)
                 .UseHdr(tone, bloom)
                 .EnableStencilMasking())
             .ConfigureScene("Main", _ => { })
@@ -42,6 +44,7 @@ internal static class Program
               plan.SceneName == "Main" &&
               plan.Renderer.ContentPackagesRoot == "AssetsCompiled" &&
               plan.Renderer.ContentManifest == "game/assets.json" &&
+              plan.Renderer.ContentPackage == package &&
               plan.Renderer.HdrEnabled &&
               plan.Renderer.Bloom == bloom &&
               plan.Renderer.ToneMapping == tone &&
