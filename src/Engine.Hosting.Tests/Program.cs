@@ -33,6 +33,7 @@ internal static class Program
         TestLogicalInputMap();
         TestGameplayCooldown();
         TestGameplayHealth();
+        TestInstanceReferences();
         TestGameplayTags();
         TestGameplayBehaviors();
         TestSceneCatalogAndPrefabs();
@@ -447,6 +448,73 @@ internal static class Program
         scene.Destroy(nearEnemy.Id);
         Check(scene.CountInstances<TaggedProbe>(enemy) == 2,
             "Destroyed tagged instances disappear from later queries");
+    }
+
+    private static void TestInstanceReferences()
+    {
+        Console.WriteLine("3d. Strongly typed instance references");
+        var scene = new SceneAggregate("InstanceReferences");
+        var target = new HostingPrefabProbe(new Vector2D(4f, 5f));
+        scene.Add(target);
+        InstanceRef<HostingPrefabProbe> reference = target.ToInstanceRef();
+
+        Check(!reference.IsEmpty && reference.Id == target.Id &&
+              ReferenceEquals(scene.Resolve(reference), target),
+            "Instance creates a weak strongly typed reference that resolves in its Scene");
+        Check(scene.Resolve(InstanceRef<HostingPrefabProbe>.Empty) is null &&
+              scene.Resolve(default(InstanceRef<HostingPrefabProbe>)) is null,
+            "Empty and default references resolve safely to null");
+
+        var forgedType = new InstanceRef<CountingOwner>(target.Id);
+        scene.Destroy(forgedType);
+        Check(scene.Resolve(forgedType) is null && ReferenceEquals(scene.Resolve(reference), target),
+            "A forged mismatched generic type cannot resolve or destroy the target");
+
+        target.SetActive(false, scene.RaiseEvent);
+        Check(ReferenceEquals(scene.Resolve(reference), target),
+            "Inactive committed instances remain addressable");
+
+        var frameProbe = new InstanceRefLifecycleProbe();
+        scene.Add(frameProbe);
+        scene.PerformStep(1d / 60d);
+        Check(!frameProbe.ResolvedBeforeSpawnCommit &&
+              scene.Resolve(frameProbe.SpawnedReference) is not null,
+            "Queued Spawn references become visible only after End Step commit");
+        scene.PerformStep(1d / 60d);
+        Check(frameProbe.ResolvedAfterDestroyRequest &&
+              scene.Resolve(frameProbe.SpawnedReference) is null,
+            "Queued Destroy references remain visible during the Step and expire after commit");
+
+        var transitionScene = new SceneAggregate("BeforeTransition");
+        var persistent = new HostingPrefabProbe(Vector2D.Zero) { IsPersistent = true };
+        var transient = new HostingPrefabProbe(Vector2D.Zero);
+        InstanceRef<HostingPrefabProbe> persistentRef = persistent.ToInstanceRef();
+        InstanceRef<HostingPrefabProbe> transientRef = transient.ToInstanceRef();
+        transitionScene.Add(persistent);
+        transitionScene.Add(transient);
+        transitionScene.Start();
+        transitionScene.TransitionTo("AfterTransition");
+        Check(ReferenceEquals(transitionScene.Resolve(persistentRef), persistent) &&
+              transitionScene.Resolve(transientRef) is null,
+            "Scene transitions retain persistent references and invalidate transient ones");
+
+        var replacement = new HostingPrefabProbe(Vector2D.Zero);
+        transitionScene.Add(replacement);
+        Check(transitionScene.Resolve(transientRef) is null &&
+              replacement.ToInstanceRef() != transientRef,
+            "A removed reference never aliases a later instance of the same type");
+
+        for (int i = 0; i < 64; i++)
+            _ = transitionScene.Resolve(persistentRef);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            _ = transitionScene.Resolve(persistentRef);
+            _ = persistent.ToInstanceRef();
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Reference creation and dictionary resolution remain allocation-free ({allocated:N0} B)");
     }
 
     private static void TestGameplayHealth()
@@ -1280,6 +1348,31 @@ internal static class Program
     private sealed class HostingPrefabProbe : GameInstance
     {
         public HostingPrefabProbe(Vector2D position) => Position = position;
+    }
+
+    private sealed class InstanceRefLifecycleProbe : GameInstance
+    {
+        private int _steps;
+
+        public InstanceRef<HostingPrefabProbe> SpawnedReference { get; private set; }
+        public bool ResolvedBeforeSpawnCommit { get; private set; }
+        public bool ResolvedAfterDestroyRequest { get; private set; }
+
+        public override void OnStep(double deltaTime)
+        {
+            _steps++;
+            if (_steps == 1)
+            {
+                HostingPrefabProbe spawned = Spawn(
+                    new HostingPrefabProbe(new Vector2D(8f, 9f)));
+                SpawnedReference = spawned.ToInstanceRef();
+                ResolvedBeforeSpawnCommit = Resolve(SpawnedReference) is not null;
+                return;
+            }
+            if (_steps != 2) return;
+            Destroy(SpawnedReference);
+            ResolvedAfterDestroyRequest = Resolve(SpawnedReference) is not null;
+        }
     }
 
     private sealed class TaggedProbe : GameInstance

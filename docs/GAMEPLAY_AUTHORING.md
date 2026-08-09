@@ -35,12 +35,15 @@ Scene 会为已添加或已排队生成的实例注入窄化 `IGameplayContext`�
 - `Spawn(instance)`
 - `DestroySelf()` / `Destroy(instance)`
 - `FindById(id)`
+- `Resolve(InstanceRef<T>)` / `Destroy(InstanceRef<T>)`
 - `FindFirst<T>()` / `FindAll<T>()`
 - `CountInstances<T>()`
 - `FindAll/Collisions/QueryArea/QueryRadius(..., GameplayQueryBuffer<T>)`
 - `Find/Count/Collision/Area/Radius<T>(GameplayTag, ...)` 类型与横切身份组合过滤
 
 Context 只暴露实例生命周期和查询，不暴露 Window、RenderPipeline、ShaderLibrary 或全局服务容器。脱离 Scene 的实例调用这些操作会收到明确异常。
+
+跨 Step 保存目标、Owner 或召唤者时使用 `InstanceRef<T>`，通过 `ToInstanceRef()` 创建并在使用点 `Resolve`。它只保存 ID，不延长目标生命周期；Spawn/Destroy、inactive、persistent 与 Scene 切换完全沿用现有帧边界。详见 [强类型 Instance 引用](INSTANCE_REFERENCES.md)。
 
 `GameplayTag` 让敌人、可受伤对象、拾取物等身份不再依赖单一继承树；实例用 `AddTag/RemoveTag/HasTag` 管理身份，查询继续复用现有 Buffer 和遥测。完整语义见 [Gameplay Tags](GAMEPLAY_TAGS.md)。
 

@@ -245,6 +245,13 @@ public class SceneAggregate : IInstanceDrawTracker
         RaiseEvent(new InstanceDestroyedEvent(id, instance.ObjectTypeName));
     }
 
+    /// <summary>Immediately destroys a committed instance only when its typed reference resolves.</summary>
+    public void Destroy<T>(InstanceRef<T> reference) where T : GameInstance
+    {
+        if (Resolve(reference) is not null)
+            Destroy(reference.Id);
+    }
+
     // ============ Scene 生命周期 ============
 
     /// <summary>
@@ -619,6 +626,15 @@ public class SceneAggregate : IInstanceDrawTracker
 
     public GameInstance? FindById(InstanceId id) =>
         _instances.TryGetValue(id, out var i) ? i : null;
+
+    /// <summary>Resolves a weak typed reference against the current committed Scene state.</summary>
+    public T? Resolve<T>(InstanceRef<T> reference) where T : GameInstance
+    {
+        if (reference.IsEmpty) return null;
+        return _instances.TryGetValue(reference.Id, out GameInstance? instance)
+            ? instance as T
+            : null;
+    }
 
     public IEnumerable<GameInstance> FindByType(string objectTypeName) =>
         _instances.Values.Where(i => i.ObjectTypeName == objectTypeName);
@@ -1582,7 +1598,16 @@ public class SceneAggregate : IInstanceDrawTracker
 
         public void Destroy(InstanceId id) => owner.QueueDestroy(id);
 
+        public void Destroy<T>(InstanceRef<T> reference) where T : GameInstance
+        {
+            if (owner.Resolve(reference) is not null)
+                owner.QueueDestroy(reference.Id);
+        }
+
         public GameInstance? FindById(InstanceId id) => owner.FindById(id);
+
+        public T? Resolve<T>(InstanceRef<T> reference) where T : GameInstance =>
+            owner.Resolve(reference);
 
         public T? FindFirst<T>() where T : GameInstance => owner.FindFirst<T>();
 

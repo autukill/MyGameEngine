@@ -14,7 +14,9 @@ public interface IGameplayContext
     T Spawn<T>(PrefabRef<T> prefab, Vector2D position) where T : GameInstance;
     T Spawn<T, TArgs>(PrefabRef<T, TArgs> prefab, in TArgs args) where T : GameInstance;
     void Destroy(InstanceId id);
+    void Destroy<T>(InstanceRef<T> reference) where T : GameInstance;
     GameInstance? FindById(InstanceId id);
+    T? Resolve<T>(InstanceRef<T> reference) where T : GameInstance;
     T? FindFirst<T>() where T : GameInstance;
     T? FindFirst<T>(GameplayTag tag) where T : GameInstance;
     IReadOnlyList<T> FindAll<T>() where T : GameInstance;

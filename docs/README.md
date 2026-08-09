@@ -13,6 +13,7 @@
 - [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)：移动、旋转推进、射击冷却、参数化 Prefab、Alarm、碰撞和 Scene 重启配方。
 - [Gameplay Cooldown](GAMEPLAY_COOLDOWN.md)：owner-local 冷却的 ready/use/progress、输入缓冲组合与暂停时间域语义。
 - [Gameplay Health 与 Damage](GAMEPLAY_HEALTH.md)：生命钳制、零分配变化结果、一次性耗尽/复活转换和 Tag + capability 组合。
+- [强类型 Instance 引用](INSTANCE_REFERENCES.md)：跨帧弱引用、O(1) 解析、类型安全销毁和 Scene 生命周期语义。
 - [Gameplay 空间查询基准](GAMEPLAY_QUERY_PERFORMANCE.md)：线性扫描测量方法、当前基线和 Spatial Hash 引入条件。
 - [Camera 与 Viewport 当前边界](CAMERA_VIEWPORT_STATUS.md)：单主视图现状、底层多视图能力和声明式 View 后续边界。
 - [Camera 跟随、Dead Zone、边界与震屏](CAMERA_FOLLOWING.md)：每 View 独立控制器、平滑参数、世界约束和可叠加震屏请求。

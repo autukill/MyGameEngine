@@ -382,7 +382,13 @@ public class GameInstance
         RequireGameplay().Destroy(instance.Id);
     }
 
+    protected void Destroy<T>(InstanceRef<T> reference) where T : GameInstance =>
+        RequireGameplay().Destroy(reference);
+
     protected GameInstance? FindById(InstanceId id) => RequireGameplay().FindById(id);
+
+    protected T? Resolve<T>(InstanceRef<T> reference) where T : GameInstance =>
+        RequireGameplay().Resolve(reference);
 
     protected T? FindFirst<T>() where T : GameInstance => RequireGameplay().FindFirst<T>();
 

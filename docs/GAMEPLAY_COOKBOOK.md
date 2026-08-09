@@ -123,6 +123,22 @@ public override void OnStep(double dt) => states.Update(dt);
 
 在当前状态回调中调用 `states.ChangeTo(EnemyState.Active)`。旧 Step 会先结束，再执行 Exit/Enter；新状态从下一次 Update 开始 Step。状态持续时间直接读取 `states.Elapsed`，无需为每个状态额外维护计时字段。需要重新进入当前状态时使用 `Restart()`，不要依赖同状态切换的隐式副作用。
 
+## 跨帧追踪实例
+
+不要为了追踪目标而长期保存裸 `GameInstance` 对象。使用弱、强类型引用，在每次需要时解析：
+
+```csharp
+private readonly InstanceRef<PlayerShip> target;
+
+public override void OnStep(double deltaTime)
+{
+    if (Resolve(target) is { } player)
+        MoveToward(player.Position, deltaTime);
+}
+```
+
+目标销毁或离开 Scene 后 `Resolve` 返回 `null`；inactive 和 persistent 实例遵循正常 Scene 生命周期。完整帧边界见 [强类型 Instance 引用](INSTANCE_REFERENCES.md)。
+
 ## 碰撞响应
 
 当碰撞只关心玩法身份而非具体实现类型时，集中定义 Tag：

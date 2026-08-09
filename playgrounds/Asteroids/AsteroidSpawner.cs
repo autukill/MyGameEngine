@@ -11,11 +11,16 @@ public sealed class AsteroidSpawner : GameInstance
     private static readonly AlarmId SpawnTimer = new("spawn");
 
     private readonly Random _random = new(unchecked((int)0xA57E201D));
+    private readonly InstanceRef<PlayerShip> _target;
     private readonly float _worldWidth;
     private readonly float _worldHeight;
 
-    public AsteroidSpawner(float worldWidth, float worldHeight)
+    public AsteroidSpawner(
+        InstanceRef<PlayerShip> target,
+        float worldWidth,
+        float worldHeight)
     {
+        _target = target;
         _worldWidth = worldWidth;
         _worldHeight = worldHeight;
     }
@@ -34,14 +39,15 @@ public sealed class AsteroidSpawner : GameInstance
             float y = horizontalEdge
                 ? (_random.Next(2) == 0 ? -30f : _worldHeight + 30f)
                 : _random.NextSingle() * _worldHeight;
-            Vector2D towardCenter = new Vector2D(
-                _worldWidth * 0.5f - x,
-                _worldHeight * 0.5f - y).Normalize();
+            Vector2D targetPosition = Resolve(_target)?.Position ?? new Vector2D(
+                _worldWidth * 0.5f,
+                _worldHeight * 0.5f);
+            Vector2D towardTarget = (targetPosition - new Vector2D(x, y)).Normalize();
             float speed = 55f + _random.NextSingle() * 75f;
             float radius = 16f + _random.NextSingle() * 18f;
             var spawn = new AsteroidSpawnArgs(
                 new Vector2D(x, y),
-                towardCenter * speed,
+                towardTarget * speed,
                 radius,
                 _worldWidth,
                 _worldHeight);
