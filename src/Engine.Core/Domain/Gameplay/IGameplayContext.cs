@@ -9,6 +9,7 @@ using GameEngine.Core.Domain.ValueObjects;
 /// </summary>
 public interface IGameplayContext
 {
+    GameplayTimeController Time { get; }
     T Spawn<T>(T instance) where T : GameInstance;
     T Spawn<T>(PrefabRef<T> prefab, Vector2D position) where T : GameInstance;
     T Spawn<T, TArgs>(PrefabRef<T, TArgs> prefab, in TArgs args) where T : GameInstance;
@@ -22,4 +23,8 @@ public interface IGameplayContext
     IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius) where T : GameInstance;
     void RequestScene(SceneRef scene);
     void RequestScene<TArgs>(SceneRef<TArgs> scene, in TArgs args) where TArgs : struct;
+    void PauseGameplay(GameInstance owner, GameplayPauseKey key);
+    void ResumeGameplay(GameInstance owner, GameplayPauseKey key);
+    void ToggleGameplayPause(GameInstance owner, GameplayPauseKey key);
+    void ReleaseGameplayPauses(GameInstance owner);
 }

@@ -24,6 +24,8 @@ public override void OnStep(double deltaTime)
 
 需要有限时长插值、摄像机/对象平滑跟随或固定速度追踪时，使用无状态 `Easing`、`Tween` 和 `Motion`。时间参数直接接受 `OnStep` 的 `double deltaTime`，不需要 Gameplay 类每帧强转；完整选择与示例见[缓动、插值与平滑运动](EASING_TWEEN_MOTION.md)。
 
+`GameplayTimeController` 提供 `(0, 8]` 时间缩放和 owner-aware 暂停；普通实例默认使用 Gameplay 时间，解除暂停等控制器把 `TimeMode` 设为 `Unscaled`。暂停时 Gameplay Step、Alarm、动画和输入边沿冻结，Draw、帧边界提交与 Unscaled 控制器继续。详见 [Gameplay 暂停、时间缩放与回溯方向](GAMEPLAY_TIME_CONTROL.md)。
+
 ## 实例级 Gameplay Context
 
 Scene 会为已添加或已排队生成的实例注入窄化 `IGameplayContext`。`GameInstance` 子类通过以下 protected API 使用它：

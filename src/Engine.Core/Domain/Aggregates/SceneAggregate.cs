@@ -75,6 +75,7 @@ public class SceneAggregate
     public IReadOnlyCollection<GameInstance> AllInstances => _instances.Values.ToList();
     public IEnumerable<GameInstance> ActiveInstances => _instances.Values.Where(i => i.IsActive);
     public int InstanceCount => _instances.Count;
+    public GameplayTimeController Time { get; } = new();
 
     // ============ Scene 级生命周期 Hook（委托） ============
 
@@ -218,6 +219,7 @@ public class SceneAggregate
     {
         if (!_instances.TryGetValue(id, out var instance)) return;
         instance.OnDestroy();
+        Time.ReleaseOwner(id);
         _instances.Remove(id);
         instance.DetachGameplayContext(_gameplay);
         RaiseEvent(new InstanceDestroyedEvent(id, instance.ObjectTypeName));
@@ -285,47 +287,50 @@ public class SceneAggregate
     public void PerformStep(double deltaTime)
     {
         if (!_hasStarted) Start();
+        GameplayTimeSnapshot time = Time.BeginFrame(deltaTime);
 
-        OnBeforeStep?.Invoke(deltaTime);
+        if (!time.IsPaused)
+            OnBeforeStep?.Invoke(time.DeltaTime);
 
-        // Lightweight alarms fire before Begin Step. Inactive instances remain paused.
+        // Lightweight alarms fire before Begin Step in each Instance's selected time domain.
         foreach (var instance in _instances.Values.ToList())
         {
-            if (instance.IsActive)
-                instance.AdvanceAlarms(deltaTime);
+            if (ShouldUpdate(instance, time))
+                instance.AdvanceAlarms(DeltaFor(instance, time));
         }
 
         // GMS Begin Step：所有活跃实例先执行（输入预处理/状态缓存）
         foreach (var instance in _instances.Values.ToList())
         {
-            if (instance.IsActive)
-                instance.OnBeginStep(deltaTime);
+            if (ShouldUpdate(instance, time))
+                instance.OnBeginStep(DeltaFor(instance, time));
         }
 
         // GMS Step：主游戏逻辑
         foreach (var instance in _instances.Values.ToList())
         {
-            if (instance.IsActive)
-                instance.OnStep(deltaTime);
+            if (ShouldUpdate(instance, time))
+                instance.OnStep(DeltaFor(instance, time));
         }
 
         // GMS End Step：校验/后处理
         foreach (var instance in _instances.Values.ToList())
         {
-            if (instance.IsActive)
-                instance.OnEndStep(deltaTime);
+            if (ShouldUpdate(instance, time))
+                instance.OnEndStep(DeltaFor(instance, time));
         }
 
         // Sprite 动画在所有 End Step 完成后统一推进，Draw 阶段读取新帧。
         foreach (var instance in _instances.Values.ToList())
         {
-            if (instance.IsActive)
-                instance.AdvanceSpriteAnimation(deltaTime);
+            if (ShouldUpdate(instance, time))
+                instance.AdvanceSpriteAnimation(DeltaFor(instance, time));
         }
 
         ApplyPendingMutations();
 
-        OnAfterStep?.Invoke(deltaTime);
+        if (!time.IsPaused)
+            OnAfterStep?.Invoke(time.DeltaTime);
     }
 
     /// <summary>
@@ -338,7 +343,7 @@ public class SceneAggregate
         {
             foreach (var instance in _instances.Values.ToList())
             {
-                if (!instance.IsActive) continue;
+                if (!CanReceiveInput(instance)) continue;
                 for (int i = 0; i < keysPressed.Count; i++)
                     instance.OnKeyDown(keysPressed[i]);
             }
@@ -348,7 +353,7 @@ public class SceneAggregate
         {
             foreach (var instance in _instances.Values.ToList())
             {
-                if (!instance.IsActive) continue;
+                if (!CanReceiveInput(instance)) continue;
                 for (int i = 0; i < keysReleased.Count; i++)
                     instance.OnKeyUp(keysReleased[i]);
             }
@@ -595,12 +600,25 @@ public class SceneAggregate
         foreach (var instance in nonPersistent)
         {
             instance.OnDestroy();
+            Time.ReleaseOwner(instance.Id);
             _instances.Remove(instance.Id);
             instance.DetachGameplayContext(_gameplay);
             RaiseEvent(new InstanceDestroyedEvent(instance.Id, instance.ObjectTypeName));
         }
+        Time.ResetSceneState();
         ClearPendingMutations();
     }
+
+    private bool CanReceiveInput(GameInstance instance) =>
+        instance.IsActive && (!Time.IsPaused || instance.TimeMode == InstanceTimeMode.Unscaled);
+
+    private static bool ShouldUpdate(GameInstance instance, GameplayTimeSnapshot time) =>
+        instance.IsActive && (!time.IsPaused || instance.TimeMode == InstanceTimeMode.Unscaled);
+
+    private static double DeltaFor(GameInstance instance, GameplayTimeSnapshot time) =>
+        instance.TimeMode == InstanceTimeMode.Unscaled
+            ? time.UnscaledDeltaTime
+            : time.DeltaTime;
 
     private T QueueSpawn<T>(T instance) where T : GameInstance
     {
@@ -691,6 +709,8 @@ public class SceneAggregate
 
     private sealed class SceneGameplayContext(SceneAggregate owner) : IGameplayContext
     {
+        public GameplayTimeController Time => owner.Time;
+
         public T Spawn<T>(T instance) where T : GameInstance => owner.QueueSpawn(instance);
 
         public T Spawn<T>(PrefabRef<T> prefab, Vector2D position) where T : GameInstance =>
@@ -739,6 +759,35 @@ public class SceneAggregate
                 throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
             (owner._sceneSwitchRequester ?? throw new InvalidOperationException(
                 "Scene switching is not configured for this Scene.")).Request(scene, args);
+        }
+
+        public void PauseGameplay(GameInstance instance, GameplayPauseKey key)
+        {
+            RequireOwner(instance);
+            owner.Time.Pause(instance.Id, key);
+        }
+
+        public void ResumeGameplay(GameInstance instance, GameplayPauseKey key)
+        {
+            RequireOwner(instance);
+            owner.Time.Resume(instance.Id, key);
+        }
+
+        public void ToggleGameplayPause(GameInstance instance, GameplayPauseKey key)
+        {
+            RequireOwner(instance);
+            owner.Time.Toggle(instance.Id, key);
+        }
+
+        public void ReleaseGameplayPauses(GameInstance instance)
+        {
+            RequireOwner(instance);
+            owner.Time.ReleaseOwner(instance.Id);
+        }
+
+        private static void RequireOwner(GameInstance instance)
+        {
+            ArgumentNullException.ThrowIfNull(instance);
         }
     }
 

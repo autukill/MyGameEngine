@@ -23,6 +23,7 @@ public enum InputKey
     E,
     R,
     F,
+    P,
     M,
     B,
 

@@ -9,6 +9,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - GMS 风格实例生命周期：Create、Begin/Step/End Step、Begin/Draw/End Draw、Draw GUI、Key Down/Up、Destroy。
 - Gameplay Authoring：直接 Position/Rotation/Scale、非空输入便利 API、实例级 Spawn/Destroy/Find、确定性帧边界提交与轻量 Alarm。
 - Gameplay Motion：21 种无状态 Easing、标量/位置/颜色/最短角 Tween，以及限速和半衰期平滑追踪。
+- Gameplay Time：Gameplay/Unscaled 时间域、owner/key 暂停、单一 TimeScale；暂停冻结逻辑但继续渲染和安全帧边界。
 - Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件。
@@ -121,7 +122,7 @@ dotnet run --project playgrounds/AirplaneShooter/AirplaneShooter.csproj
 
 使用方向键或 `WASD` 移动飞机，按住空格连续发射子弹。示例完整展示 Hosting、强类型 Content、输入、`Spawn` 和 `Alarm`，详见 [Airplane Shooter Playground](playgrounds/AirplaneShooter/README.md)。
 
-第二个 Gameplay 样例使用旋转推进、`PrefabRef<T, TArgs>`、Alarm 敌人生成、Circle 碰撞和 GameOver Scene 重启：
+第二个 Gameplay 样例使用旋转推进、`PrefabRef<T, TArgs>`、Alarm 敌人生成、Circle 碰撞、强类型 GameOver 参数和 `P` 键无 UI 暂停：
 
 ```bash
 dotnet run --project playgrounds/Asteroids/Asteroids.csproj

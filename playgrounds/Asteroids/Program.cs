@@ -48,6 +48,7 @@ internal static class Program
                 context.Scene.Add(new AsteroidSpawner(
                     context.Window.Width,
                     context.Window.Height));
+                context.Scene.Add(new PauseController());
                 if (smoke)
                     context.Scene.Add(new SmokeJourney(
                         GameScenes.GameOver,
@@ -71,6 +72,7 @@ internal static class Program
 
     private sealed class SmokeJourney : GameInstance
     {
+        private static readonly GameplayPauseKey SmokePause = new("asteroids.smoke-pause");
         private readonly SceneRef<GameOverArgs> _next;
         private readonly GameOverArgs _args;
         private readonly Action _close;
@@ -82,13 +84,16 @@ internal static class Program
             _args = args;
             _close = close;
             IsPersistent = true;
+            TimeMode = InstanceTimeMode.Unscaled;
         }
 
         public override void OnStep(double deltaTime)
         {
             _steps++;
-            if (_steps == 3) SwitchScene(_next, _args);
-            if (_steps >= 7) _close();
+            if (_steps == 2) PauseGameplay(SmokePause);
+            if (_steps == 4) ResumeGameplay(SmokePause);
+            if (_steps == 5) SwitchScene(_next, _args);
+            if (_steps >= 9) _close();
         }
     }
 }

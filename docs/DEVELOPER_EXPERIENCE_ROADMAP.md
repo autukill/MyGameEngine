@@ -84,7 +84,7 @@ GameAssets.Packages.SharedPrimitives
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：明确 Gameplay 暂停策略 → 降低 SceneAggregate 生命周期遍历分配 → 根据真实游戏遥测复核 Spatial Hash。无状态 Easing/Tween/Motion 与强类型 Scene 参数已经落地。当前 1,000 Collider 基线约 0.0201 ms/查询，不提前引入索引。逐帧多区域与 Sprite 异形碰撞的需求已记录在 [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)，但碰撞细化不是当前主要矛盾。暂不进入 UI、完整协程或物理系统。
+下一步优先级：降低 SceneAggregate 生命周期遍历分配 → 根据真实游戏遥测复核 Spatial Hash。Gameplay/Unscaled 时间域、owner/key 暂停与单一 TimeScale 已经落地，暂停及可选回溯边界见 [Gameplay 暂停、时间缩放与回溯方向](GAMEPLAY_TIME_CONTROL.md)。无状态 Easing/Tween/Motion 与强类型 Scene 参数也已落地。当前 1,000 Collider 基线约 0.0201 ms/查询，不提前引入索引。逐帧多区域与 Sprite 异形碰撞的需求已记录在 [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)，但碰撞细化不是当前主要矛盾。暂不进入 UI、完整协程或物理系统。
 
 ## 设计约束
 

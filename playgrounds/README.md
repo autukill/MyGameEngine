@@ -5,4 +5,4 @@
 | 项目 | 内容 |
 |---|---|
 | [AirplaneShooter](AirplaneShooter/README.md) | 键盘移动飞机、按住空格发射子弹，展示输入、Spawn、Alarm 和声明式 Sprite 资产。 |
-| [Asteroids](Asteroids/README.md) | 旋转推进、参数化 Prefab、Alarm 生成、Circle 碰撞和 GameOver Scene 重启。 |
+| [Asteroids](Asteroids/README.md) | 旋转推进、参数化 Prefab、Circle 碰撞、强类型 GameOver 参数及无 UI 暂停。 |

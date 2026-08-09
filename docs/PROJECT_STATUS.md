@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 47 个 .NET 项目、仓库共 229 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 47 个 .NET 项目、仓库共 231 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -62,6 +62,7 @@
 - `playgrounds/Asteroids` 验证旋转推进、参数化 Laser/Asteroid、Alarm 周期生成、Circle 碰撞和 Main/GameOver 重启；Gameplay Cookbook 已提炼两套 Playground 的常见配方。
 - 可选 Release 空间查询基准覆盖 100/1,000/10,000 Collider；本机 1,000 Collider 约 0.0201 ms/查询，暂不引入 Spatial Hash。
 - `Easing` 提供 21 种归一化曲线；`Tween` 支持标量、位置、颜色和最短弧度角；`Motion` 提供限速追踪与帧率无关的半衰期平滑，全部为无状态零分配 API。
+- `GameplayTimeController` 提供 Gameplay/Unscaled 时间域、owner/key 暂停、`(0,8]` TimeScale 和帧快照；暂停冻结默认实例的 Step/Alarm/动画/输入但继续 Draw，Asteroids 以 `P` 键无 UI 验证。
 
 ## 仍在演进
 
@@ -75,9 +76,9 @@
 
 ## 下一里程碑：Scene 参数与生命周期分配收口
 
-1. 定义 Gameplay 暂停策略，分别说明 Step/Alarm、Input、Draw、动态效果和 persistent 实例行为，不先引入 UI Pause Menu。
-2. 收敛 SceneAggregate Step/Draw 的 `ToList`、LINQ 和排序分配，不改变当前帧边界语义。
-3. 继续用真实 Playground 遥测复核空间查询；只有累计查询进入帧预算 5% 以上才引入 Spatial Hash。
+1. 收敛 SceneAggregate Step/Draw 的 `ToList`、LINQ 和排序分配，不改变当前帧边界及暂停时间域语义。
+2. 继续用真实 Playground 遥测复核空间查询；只有累计查询进入帧预算 5% 以上才引入 Spatial Hash。
+3. 时间回溯保持可选 Playground 实验方向，不通过负 delta 或反向执行普通 Step 实现。
 
 ## 已知限制
 

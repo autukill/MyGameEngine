@@ -32,6 +32,7 @@ public sealed class Default2DGameContext
     public RenderTargetPool RenderTargets { get; }
     public SceneNavigator Scenes { get; }
     public IInstanceFactory Instances { get; }
+    public GameplayTimeController Time => Scene.Time;
 
     internal Default2DGameContext(
         EngineWindow window,

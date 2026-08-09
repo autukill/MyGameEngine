@@ -8,6 +8,7 @@
 - [Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)：Hosting、强类型资产、项目模板、诊断与热重载演进顺序。
 - [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)：实例变换、输入、Spawn/Destroy/Find、帧边界语义与轻量 Alarm。
 - [缓动、插值与平滑运动](EASING_TWEEN_MOTION.md)：Easing 曲线、有限时长 Tween、最短弧度角和与帧率无关的 Motion。
+- [Gameplay 暂停、时间缩放与回溯方向](GAMEPLAY_TIME_CONTROL.md)：无 UI 时间域、Pause owner 生命周期、调度语义及可选快照回溯边界。
 - [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)：声明式 Scene 切换、类型安全实例工厂、Box/Circle 与区域/半径查询。
 - [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)：移动、旋转推进、射击冷却、参数化 Prefab、Alarm、碰撞和 Scene 重启配方。
 - [Gameplay 空间查询基准](GAMEPLAY_QUERY_PERFORMANCE.md)：线性扫描测量方法、当前基线和 Spatial Hash 引入条件。

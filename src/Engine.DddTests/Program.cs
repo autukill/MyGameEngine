@@ -147,6 +147,7 @@ internal sealed class Program
         VerifyGameplayAuthoringExperience();
         VerifyPrefabCollisionAndSceneTransition();
         VerifyEasingTweenAndMotion();
+        VerifyGameplayTimeControl();
         if (args.Contains("--benchmark-spatial", StringComparer.Ordinal))
             MeasureSpatialQueries();
 
@@ -503,9 +504,101 @@ internal sealed class Program
         Console.WriteLine("   [PASS] bounded movement + composable half-life damping");
     }
 
+    private static void VerifyGameplayTimeControl()
+    {
+        var scene = new SceneAggregate("GameplayTime");
+        scene.SetSprites(new FakeSpriteResolver());
+        int beforeSteps = 0;
+        int afterSteps = 0;
+        scene.OnBeforeStep = _ => beforeSteps++;
+        scene.OnAfterStep = _ => afterSteps++;
+        var gameplay = scene.Add(new TimeProbe(InstanceTimeMode.Gameplay));
+        var unscaled = scene.Add(new TimeProbe(InstanceTimeMode.Unscaled));
+
+        scene.Time.TimeScale = .5d;
+        scene.PerformInput([InputKey.P], []);
+        scene.PerformStep(.5d);
+        Assert(gameplay.Steps == 1 && Nearly((float)gameplay.LastDelta, .25f) &&
+               unscaled.Steps == 1 && Nearly((float)unscaled.LastDelta, .5f),
+            "Gameplay time is scaled while Unscaled instances receive real update delta");
+        Assert(gameplay.AlarmCount == 0 && unscaled.AlarmCount == 1 &&
+               Nearly(gameplay.ImageIndex, 1f) && Nearly(unscaled.ImageIndex, 2f),
+            "Alarm and Sprite animation advance in each Instance's selected time domain");
+        Assert(gameplay.KeyEvents == 1 && unscaled.KeyEvents == 1 &&
+               beforeSteps == 1 && afterSteps == 1,
+            "Running gameplay dispatches input edges and Scene gameplay hooks normally");
+
+        GameplayPauseKey focus = new("test.focus");
+        GameplayPauseKey playerPause = new("test.player");
+        scene.Time.Pause(focus);
+        scene.Time.Pause(playerPause);
+        scene.Time.Pause(playerPause);
+        Assert(scene.Time.IsPaused && scene.Time.PauseRequestCount == 2,
+            "External pause keys are independent and duplicate requests are idempotent");
+
+        scene.PerformInput([InputKey.P], []);
+        scene.PerformStep(.5d);
+        var batch = new RecordingSpriteBatch();
+        scene.DrawActive(batch);
+        Assert(gameplay.Steps == 1 && gameplay.AlarmCount == 0 &&
+               Nearly(gameplay.ImageIndex, 1f) && gameplay.KeyEvents == 1,
+            "Paused Gameplay skips Step, Alarm, animation, and input edges entirely");
+        Assert(unscaled.Steps == 2 && unscaled.AlarmCount == 1 &&
+               Nearly(unscaled.ImageIndex, 0f) && unscaled.KeyEvents == 2,
+            "Unscaled instances continue Step, animation loops, and input while paused");
+        Assert(gameplay.Draws == 1 && unscaled.Draws == 1 &&
+               beforeSteps == 1 && afterSteps == 1,
+            "Draw continues while paused and Scene gameplay hooks remain frozen");
+
+        scene.Time.Resume(focus);
+        Assert(scene.Time.IsPaused, "Releasing one external owner does not resume another");
+        scene.Time.Resume(playerPause);
+        scene.PerformStep(.5d);
+        Assert(!scene.Time.IsPaused && gameplay.Steps == 2 && gameplay.AlarmCount == 1 &&
+               scene.Time.Current == new GameplayTimeSnapshot(.5d, .25d, .5d, false),
+            "Last pause release resumes scaled gameplay with an explicit time snapshot");
+
+        GameplayPauseKey owned = new("test.instance-owner");
+        var firstOwner = scene.Add(new TimeProbe(InstanceTimeMode.Unscaled));
+        var secondOwner = scene.Add(new TimeProbe(InstanceTimeMode.Unscaled));
+        firstOwner.HoldPause(owned);
+        secondOwner.HoldPause(owned);
+        firstOwner.ReleasePause(owned);
+        Assert(scene.Time.IsPaused && scene.Time.PauseRequestCount == 1,
+            "Instance pause ownership distinguishes identical keys from different owners");
+        secondOwner.SetActive(false, scene.RaiseEvent);
+        Assert(!scene.Time.IsPaused && scene.Time.PauseRequestCount == 0,
+            "Deactivating an owner automatically releases its pause requests");
+        firstOwner.HoldPause(owned);
+        scene.Destroy(firstOwner.Id);
+        Assert(!scene.Time.IsPaused,
+            "Destroying an owner automatically releases its pause requests");
+
+        scene.Time.Pause(focus);
+        unscaled.HoldPause(owned);
+        scene.Start();
+        scene.TransitionTo("GameplayTime.Next");
+        Assert(scene.Time.IsPaused && scene.Time.PauseRequestCount == 1 &&
+               scene.Time.TimeScale == 1d,
+            "Scene transitions clear Scene-owned time state but retain external pause reasons");
+        scene.Time.Resume(focus);
+
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => scene.Time.TimeScale = 0d,
+            "Time scale zero is not an alias for pause");
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => scene.Time.TimeScale = 8.1d,
+            "Time scale rejects values above the supported range");
+
+        Console.WriteLine("\n16. Gameplay pause and time domains");
+        Console.WriteLine("   [PASS] scaled Gameplay + real-time Unscaled scheduling");
+        Console.WriteLine("   [PASS] paused Step/Alarm/animation/input + continuing Draw");
+        Console.WriteLine("   [PASS] owner-aware pause cleanup + Scene/Host scope boundary");
+    }
+
     private static void MeasureSpatialQueries()
     {
-        Console.WriteLine("\n16. Spatial query benchmark (linear scan)");
+        Console.WriteLine("\n17. Spatial query benchmark (linear scan)");
         foreach (int count in new[] { 100, 1_000, 10_000 })
         {
             var scene = new SceneAggregate($"Spatial-{count}");
@@ -749,6 +842,47 @@ internal sealed class Program
             Position = position;
             Collider = CollisionShape2D.Circle(4f);
         }
+    }
+
+    private sealed class TimeProbe : GameInstance
+    {
+        private static readonly AlarmId TickAlarm = new("time-probe.tick");
+
+        public int Steps { get; private set; }
+        public int AlarmCount { get; private set; }
+        public int KeyEvents { get; private set; }
+        public int Draws { get; private set; }
+        public double LastDelta { get; private set; }
+
+        public TimeProbe(InstanceTimeMode timeMode)
+        {
+            TimeMode = timeMode;
+            Sprite = new SpriteRef("time-probe");
+        }
+
+        public override void OnCreate() => SetAlarm(TickAlarm, .4d);
+
+        public override void OnStep(double deltaTime)
+        {
+            Steps++;
+            LastDelta = deltaTime;
+        }
+
+        public override void OnAlarm(AlarmId alarm)
+        {
+            if (alarm == TickAlarm) AlarmCount++;
+        }
+
+        public override void OnKeyDown(InputKey key) => KeyEvents++;
+
+        public override void OnDraw(ISpriteBatch batch)
+        {
+            Draws++;
+            base.OnDraw(batch);
+        }
+
+        public void HoldPause(GameplayPauseKey key) => PauseGameplay(key);
+        public void ReleasePause(GameplayPauseKey key) => ResumeGameplay(key);
     }
 
     private sealed class RecordingSpriteBatch : ISpriteBatch

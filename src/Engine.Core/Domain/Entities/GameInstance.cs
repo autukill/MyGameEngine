@@ -74,6 +74,9 @@ public class GameInstance
     /// <summary>持久标记（场景切换时是否保留，对应 GMS persistent=true）</summary>
     public bool IsPersistent { get; set; }
 
+    /// <summary>Controls whether Step, Alarm, and Sprite animation use Gameplay or real time.</summary>
+    public InstanceTimeMode TimeMode { get; set; } = InstanceTimeMode.Gameplay;
+
     /// <summary>精灵引用（对应 GMS 的 sprite_index）</summary>
     public SpriteRef Sprite { get; set; } = SpriteRef.Empty;
 
@@ -121,6 +124,9 @@ public class GameInstance
 
     /// <summary>True after the instance has been added or queued for a Scene.</summary>
     protected bool HasGameplayContext => _gameplay is not null;
+
+    /// <summary>Most recent Scene time snapshot; default before this Instance joins a Scene.</summary>
+    protected GameplayTimeSnapshot GameplayTime => _gameplay?.Time.Current ?? default;
 
     /// <summary>Sprite 元数据/帧解析器，由 SceneAggregate 注入。</summary>
     public ISpriteResolver? SpriteResolver { get; set; }
@@ -269,6 +275,15 @@ public class GameInstance
     protected void SwitchScene<TArgs>(SceneRef<TArgs> scene, in TArgs args)
         where TArgs : struct => RequireGameplay().RequestScene(scene, args);
 
+    protected void PauseGameplay(GameplayPauseKey key) =>
+        RequireGameplay().PauseGameplay(this, key);
+
+    protected void ResumeGameplay(GameplayPauseKey key) =>
+        RequireGameplay().ResumeGameplay(this, key);
+
+    protected void ToggleGameplayPause(GameplayPauseKey key) =>
+        RequireGameplay().ToggleGameplayPause(this, key);
+
     public void SetAlarm(AlarmId alarm, double seconds)
     {
         if (alarm.IsEmpty)
@@ -364,6 +379,7 @@ public class GameInstance
     {
         if (IsActive == active) return;
         IsActive = active;
+        if (!active) _gameplay?.ReleaseGameplayPauses(this);
         raiseEvent(new InstanceActivationChangedEvent(Id, active));
     }
 
