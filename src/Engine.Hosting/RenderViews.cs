@@ -33,6 +33,7 @@ public sealed record RenderViewDefinition
     public int Layer { get; }
     public SceneLayerFilter SceneLayers { get; }
     public RenderViewEffects Effects { get; }
+    public CameraFollowSettings? CameraFollow { get; }
     internal int DeclarationOrder { get; }
 
     internal RenderViewDefinition(
@@ -43,6 +44,7 @@ public sealed record RenderViewDefinition
         int layer,
         SceneLayerFilter sceneLayers,
         RenderViewEffects effects,
+        CameraFollowSettings? cameraFollow,
         int declarationOrder)
     {
         Ref = reference;
@@ -53,6 +55,7 @@ public sealed record RenderViewDefinition
         Layer = layer;
         SceneLayers = sceneLayers;
         Effects = effects;
+        CameraFollow = cameraFollow;
         DeclarationOrder = declarationOrder;
     }
 }
@@ -70,6 +73,7 @@ public sealed class RenderViewLayoutBuilder
         0,
         SceneLayerFilter.All,
         RenderViewEffects.Direct,
+        null,
         0);
     private bool _mainConfigured;
 
@@ -78,7 +82,8 @@ public sealed class RenderViewLayoutBuilder
         float renderScale = 1f,
         ViewportFitMode fit = ViewportFitMode.Stretch,
         int layer = 0,
-        SceneLayerFilter? sceneLayers = null)
+        SceneLayerFilter? sceneLayers = null,
+        CameraFollowSettings? cameraFollow = null)
     {
         if (_mainConfigured)
             throw new InvalidOperationException("The main Render View is already configured.");
@@ -90,6 +95,7 @@ public sealed class RenderViewLayoutBuilder
             layer,
             sceneLayers ?? SceneLayerFilter.All,
             RenderViewEffects.Direct,
+            cameraFollow,
             0);
         _mainConfigured = true;
         return this;
@@ -102,7 +108,8 @@ public sealed class RenderViewLayoutBuilder
         ViewportFitMode fit = ViewportFitMode.Stretch,
         int? layer = null,
         SceneLayerFilter? sceneLayers = null,
-        RenderViewEffects? effects = null)
+        RenderViewEffects? effects = null,
+        CameraFollowSettings? cameraFollow = null)
     {
         var reference = new RenderViewRef(name);
         if (!_names.Add(reference.Name))
@@ -116,6 +123,7 @@ public sealed class RenderViewLayoutBuilder
             layer ?? order,
             sceneLayers ?? SceneLayerFilter.All,
             effects ?? RenderViewEffects.Direct,
+            cameraFollow,
             order));
         return this;
     }
@@ -155,6 +163,7 @@ public sealed class RenderViewLayoutBuilder
         int layer,
         SceneLayerFilter sceneLayers,
         RenderViewEffects effects,
+        CameraFollowSettings? cameraFollow,
         int order)
     {
         SingleCameraViewportLayoutBuilder.ValidateViewport(viewport);
@@ -163,7 +172,15 @@ public sealed class RenderViewLayoutBuilder
             throw new ArgumentOutOfRangeException(
                 nameof(renderScale), "Render scale must be in (0, 1].");
         return new RenderViewDefinition(
-            reference, viewport, fit, renderScale, layer, sceneLayers, effects, order);
+            reference,
+            viewport,
+            fit,
+            renderScale,
+            layer,
+            sceneLayers,
+            effects,
+            cameraFollow,
+            order);
     }
 
     internal static RenderViewDefinition WithEffects(
@@ -176,6 +193,7 @@ public sealed class RenderViewLayoutBuilder
             definition.Layer,
             definition.SceneLayers,
             effects,
+            definition.CameraFollow,
             definition.DeclarationOrder);
 }
 
@@ -188,6 +206,7 @@ public sealed class RenderView
     public RenderViewRef Ref { get; }
     public ViewportSlotRef Slot { get; }
     public Camera2D Camera { get; }
+    public CameraFollowController? CameraFollow { get; }
     public ViewportRect Viewport { get; }
     public ViewportFitMode Fit { get; }
     public float RenderScale { get; }
@@ -209,6 +228,9 @@ public sealed class RenderView
         Ref = definition.Ref;
         Slot = definition.Slot;
         Camera = camera;
+        CameraFollow = definition.CameraFollow is { } settings
+            ? new CameraFollowController(camera, settings)
+            : null;
         Viewport = definition.Viewport;
         Fit = definition.Fit;
         RenderScale = definition.RenderScale;
@@ -225,6 +247,11 @@ public sealed class RenderView
             : SceneColor;
         _target = target;
     }
+
+    /// <summary>Returns the declaratively configured follow controller for this View.</summary>
+    public CameraFollowController RequireCameraFollow() => CameraFollow ??
+        throw new InvalidOperationException(
+            $"Render View '{Ref}' does not declare a Camera follow policy.");
 
     internal void AttachScenePass(SceneRenderPass scenePass)
     {

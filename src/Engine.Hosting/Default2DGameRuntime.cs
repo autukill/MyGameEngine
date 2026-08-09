@@ -238,6 +238,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                     0,
                     SceneLayerFilter.All,
                     renderer.MainEffects,
+                    null,
                     0)
             });
         for (int i = 0; i < viewDefinitions.Count; i++)

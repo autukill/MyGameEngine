@@ -72,18 +72,26 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 ```csharp
 .UseDefault2DRenderer(renderer => renderer
     .UseRenderViews(views => views
-        .ConfigureMain(ViewportRect.LeftHalf)
+        .ConfigureMain(
+            ViewportRect.LeftHalf,
+            cameraFollow: CameraFollowSettings.Default)
         .Add(
             "observer",
             ViewportRect.RightHalf,
             renderScale: 0.75f,
             sceneLayers: SceneLayerFilter.Exclude("MainOnly"),
-            effects: RenderViewEffects.Hdr(ToneMappingSettings.Default))))
+            effects: RenderViewEffects.Hdr(ToneMappingSettings.Default),
+            cameraFollow: new CameraFollowSettings(
+                anchor: new Vector2(0.5f),
+                deadZoneSize: new Vector2(320, 180),
+                halfLifeSeconds: 0.25f))))
 ```
 
 每个 View 重绘 Scene 并拥有独立 Camera、SceneColor 与不可变 `SceneLayerFilter`。`Include(...)` 只绘制具名层，`Exclude(...)` 绘制除此之外的可见层，省略时为 `SceneLayerFilter.All`。过滤只作用于 `GameInstance` Layer；Scene 的清屏色和 Background Sprite 仍是每个 View 的共同背景。名单在装配时复制并拒绝空名称或重复项，逐帧查询不会分配。
 
 `context.Camera` 仍是 `RenderViewRef.Main`；其他 Camera 通过 `context.GetRenderView(...)` 获取。`PresentViewSurface` 只把自定义 Surface 送入指定 View 的槽位。主 View 的 Stencil 场景重绘使用同一份 Layer 过滤，避免遮罩输出重新带回已排除实例。
+
+`cameraFollow` 是可选静态策略。声明后通过 `context.GetCameraFollow(viewRef)` 或 `view.RequireCameraFollow()` 取得该 View 唯一的 `CameraFollowController`；Gameplay 在自己的 Step 中传入当前目标。目标不进入不可变 Hosting Plan，因此 Scene 切换、锁定目标切换和暂停策略都不会被渲染配置反向控制。未声明时不创建控制器，也没有额外运行时成本。
 
 `UseHdr(...)` 继续配置 `main`；次级 View 默认使用 `RenderViewEffects.Direct`，只有在 `.Add(..., effects: ...)` 中显式选择时才创建独立后处理链。`RenderViewEffects.Hdr(toneMapping)` 创建 HDR SceneColor 与 Tone Mapping；再传入 Bloom 设置才增加 Bloom。每条效果链用 View 名称作为稳定 Effect Slot，并按该 View 自己的 RenderScale 尺寸租赁目标。`RenderView.DisplayColor` 始终指向可安全呈现的 Display Surface。
 
@@ -99,7 +107,7 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 
 Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后执行。Context 提供：
 
-- `Scene`、主 `Camera`、`RenderViews/GetRenderView` 和当前 `Window`。
+- `Scene`、主 `Camera`、`RenderViews/GetRenderView/GetCameraFollow` 和当前 `Window`。
 - `Viewports`、`TryScreenToView/TryScreenToWorld` 与 `CaptureViewportDiagnostics()`，用于布局感知的输入和诊断。
 - `Textures`、`Sprites` 与可选 `Content` 包租约。
 - `GetTexture/GetSprite` 便利方法；未配置 Content 时给出明确异常。

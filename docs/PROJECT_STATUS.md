@@ -73,7 +73,7 @@
 - 每 View `SceneDrawStatistics` 已接入 Render 诊断：候选访问、选中/绘制、排序比较始终零分配计数，启用 Frame Statistics 后增加遍历/排序/绘制耗时。Scene 已用运行时同步的 Layer 索引消除“层数 × 全场景”重复扫描，且保留同帧切层和稳定 Depth 排序语义；10,000 实例双 View 本机样本由约 1.536 ms 降至 1.185 ms。
 - 每个 Render View 已在绘制前执行保守 Camera 可见性剔除：默认从 Sprite Size/Origin 推导，支持自定义 `LocalDrawBounds` 与 `AlwaysVisible` 退出，未知边界 fail-open；旋转、缩放、负缩放与震屏均按实际绘制边界处理。10,000 实例、每 View 可见 20% 的样本把 Draw 回调由 20,000 次降至 4,000 次；无 GPU 假 Batch 的边界检查成本约 0.10 ms，保持 0 B/frame。
 - Layer 索引现已在实例加入、切层和改 Depth 时维护稳定有序关系，普通 View Draw 不再重复排序；相同 Depth 保持 Scene 加入顺序，同帧后续 Layer 仍能看到变更。10,000 实例双 View 本机调度由 Layer 索引阶段约 1.185 ms 进一步降至 0.470 ms，排序比较为 0/0。
-- Camera 开发体验第一切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；控制器按 Camera 独立创建，适配多 Render View。
+- Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；`UseRenderViews` 可声明每个 View 的静态跟随策略，Hosting 惰性创建控制器，Gameplay 仍显式提供和切换运行时目标。
 
 ## 仍在演进
 
@@ -90,7 +90,8 @@
 1. 已完成单 Camera 多呈现槽位与 Fit/输入映射。
 2. 已完成多 Render View 的独立 Camera、Scene Surface、RenderScale、resize 与 Presentation 装配。
 3. 已允许主 View 使用 HDR/Stencil，并让次级 View 显式选择 Direct 或独立 HDR/Bloom/Tone Mapping；效果租约跟随各自输入 Surface 尺寸。
-4. 已完成 Layer 过滤、小地图式样例、显式效果成本、Scene Draw 分项诊断、Layer/Depth 有序索引、保守 Camera 可见性剔除，以及独立 Camera 跟随/Dead Zone/边界/震屏控制器。下一步把常用跟随策略接入声明式 RenderView 配置，同时保留玩法代码运行时换目标的出口。
+4. 已完成 Layer 过滤、小地图式样例、显式效果成本、Scene Draw 分项诊断、Layer/Depth 有序索引、保守 Camera 可见性剔除，以及独立 Camera 跟随/Dead Zone/边界/震屏控制器。
+5. 已把静态跟随策略接入声明式 RenderView 配置，同时保留 Gameplay 运行时换目标的出口。下一步用多 View 稳定基准验证当前调度成本，再决定是否需要跨 View 可见性缓存。
 
 ## 已知限制
 

@@ -9,6 +9,7 @@ using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.Bloom.Domain;
+using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Presentation.Domain;
@@ -90,15 +91,20 @@ internal static class Program
               multiViewport.Renderer.ResolvedViewports[1].Fit == ViewportFitMode.Contain,
             "Declarative Viewports preserve order and receive stable default layers");
 
+        var follow = new CameraFollowSettings(
+            anchor: new System.Numerics.Vector2(0.4f, 0.5f),
+            deadZoneSize: new System.Numerics.Vector2(160, 90),
+            halfLifeSeconds: 0.15f);
         var renderViews = GameApplication.Create()
             .UseDefault2DRenderer(renderer => renderer.UseRenderViews(views => views
-                .ConfigureMain(ViewportRect.LeftHalf)
+                .ConfigureMain(ViewportRect.LeftHalf, cameraFollow: follow)
                 .Add(
                     "player.two",
                     ViewportRect.RightHalf,
                     renderScale: 0.5f,
                     sceneLayers: SceneLayerFilter.Exclude("MainOnly"),
-                    effects: RenderViewEffects.Hdr(ToneMappingSettings.Default))))
+                    effects: RenderViewEffects.Hdr(ToneMappingSettings.Default),
+                    cameraFollow: CameraFollowSettings.Default)))
             .ConfigureScene("Split", _ => { })
             .BuildPlan();
         Check(renderViews.Renderer.MultipleRenderViewsEnabled &&
@@ -108,6 +114,8 @@ internal static class Program
               definitions[1].RenderScale == 0.5f &&
               definitions[0].SceneLayers.IsAll &&
               definitions[0].Effects == RenderViewEffects.Direct &&
+              definitions[0].CameraFollow == follow &&
+              definitions[1].CameraFollow == CameraFollowSettings.Default &&
               definitions[1].SceneLayers.IsExclusive &&
               !definitions[1].SceneLayers.Allows("MainOnly") &&
               definitions[1].SceneLayers.Allows(SceneAggregate.LayerNameInstances) &&
@@ -190,8 +198,9 @@ internal static class Program
             .ToPlan();
         primaryEffects.Validate();
         Check(primaryEffects.MultipleRenderViewsEnabled && primaryEffects.HdrEnabled &&
-              primaryEffects.StencilMaskingEnabled,
-            "Primary HDR/Bloom/Stencil can coexist with lightweight secondary LDR Views");
+              primaryEffects.StencilMaskingEnabled &&
+              primaryEffects.RenderViews!.All(view => view.CameraFollow is null),
+            "Primary HDR/Bloom/Stencil can coexist with lazy secondary LDR Views");
     }
 
     private static void TestSceneCatalogAndPrefabs()

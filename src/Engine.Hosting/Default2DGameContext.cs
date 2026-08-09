@@ -184,6 +184,10 @@ public sealed class Default2DGameContext
         throw new KeyNotFoundException($"Render View '{view}' is not configured.");
     }
 
+    /// <summary>Gets the follow controller declared for a Render View.</summary>
+    public CameraFollowController GetCameraFollow(RenderViewRef view) =>
+        GetRenderView(view).RequireCameraFollow();
+
     /// <summary>显式捕获当前 Pass、Surface、Effect owner 与临时目标租约。</summary>
     public Default2DRenderDiagnostics CaptureRenderDiagnostics()
     {

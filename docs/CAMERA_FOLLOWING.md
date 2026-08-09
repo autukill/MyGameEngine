@@ -24,6 +24,37 @@ follow.Update(player, deltaTime);
 
 `Update` 也接受 `System.Numerics.Vector2`，适合跟随两名玩家的中点、Boss 房间中心或由玩法计算出的预测位置，不要求目标一定是 GameInstance。
 
+## 声明式 Render View 策略
+
+固定的跟随参数可以和 Render View 一起声明，Hosting 会为该 View 创建且仅创建一个控制器：
+
+```csharp
+.UseDefault2DRenderer(renderer => renderer.UseRenderViews(views => views
+    .ConfigureMain(
+        ViewportRect.LeftHalf,
+        cameraFollow: new CameraFollowSettings(
+            anchor: new Vector2(0.4f, 0.5f),
+            deadZoneSize: new Vector2(160, 90),
+            halfLifeSeconds: 0.12f,
+            worldBounds: new Bounds2D(0, 0, 4_096, 2_304)))
+    .Add(
+        "observer",
+        ViewportRect.RightHalf,
+        cameraFollow: CameraFollowSettings.Default)))
+```
+
+Scene 装配和玩法 Step 只负责动态目标：
+
+```csharp
+CameraFollowController follow = context.GetCameraFollow(RenderViewRef.Main);
+follow.SnapTo(player);
+
+// 由玩家、状态机或玩法控制器在 Step 中调用。
+follow.Update(player, deltaTime);
+```
+
+也可通过 `view.RequireCameraFollow()` 取得同一个控制器。未声明策略时，这两个严格入口会给出明确异常；需要可选探测时读取 `view.CameraFollow`。配置计划只保存值类型 `CameraFollowSettings`，不会保存 `GameInstance`、委托或 Scene 引用，因此 Scene 切换与运行时换目标仍由玩法代码掌握。
+
 ## 参数语义
 
 - `Anchor` 是 Viewport 内 `[0,1]` 的归一化位置。`(0.5,0.5)` 居中，`(0.35,0.5)` 可给角色前方留出更多画面。
@@ -35,7 +66,7 @@ Anchor 和边界计算使用无震屏的稳定 Camera 变换，支持 Zoom 与 R
 
 ## 多 Camera
 
-每个 Render View 创建自己的控制器：
+不使用声明式策略时，也可以由 Scene 组合根为每个 Render View 手动创建控制器：
 
 ```csharp
 var playerOne = new CameraFollowController(
@@ -68,5 +99,5 @@ follow.AddShake(magnitude: 8f, durationSeconds: 0.4f);  // 同帧爆炸
 - Dead Zone 当前是轴对齐的 Viewport 像素矩形，不提供前瞻速度、轨道或多目标自动缩放。
 - WorldBounds 使用旋转后 View 的保守世界 AABB，保证不会露出边界外区域，但旋转较大时可移动范围会更小。
 - Controller 不决定暂停策略。暂停时不调用 `Update` 即冻结跟随；仍可单独调用 `AddShake`。
-- 本切片不把目标写进声明式 Scene/RenderView 清单；动态换目标仍由玩法代码掌握。
+- 声明式 RenderView 只保存静态跟随参数，不保存目标；动态换目标仍由玩法代码掌握。
 - `Update`、约束和震屏混合在预热后保持 0 B/frame。

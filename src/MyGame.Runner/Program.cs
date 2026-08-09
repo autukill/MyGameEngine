@@ -89,14 +89,21 @@ internal static class Program {
                     BloomResolution.Half ) )
             .EnableStencilMasking();
         if ( splitCameras ) {
+            var cameraFollow = new CameraFollowSettings(
+                anchor: new Vector2( 0.5f ),
+                deadZoneSize: Vector2.Zero,
+                halfLifeSeconds: 0f );
             renderer.UseRenderViews( views => views
-                .ConfigureMain( ViewportRect.LeftHalf )
+                .ConfigureMain(
+                    ViewportRect.LeftHalf,
+                    cameraFollow: cameraFollow )
                 .Add(
                     "observer",
                     ViewportRect.RightHalf,
                     renderScale: 0.75f,
                     sceneLayers: SceneLayerFilter.Exclude( MainOnlyLayer ),
-                    effects: RenderViewEffects.Hdr( ToneMappingSettings.Default ) ) );
+                    effects: RenderViewEffects.Hdr( ToneMappingSettings.Default ),
+                    cameraFollow: cameraFollow ) );
         }
         if ( mirroredViewports ) {
             renderer.UseSingleCameraViewports( views => views
@@ -196,13 +203,7 @@ internal static class Program {
         Vector2D center,
         float zoom ) {
         view.Camera.Zoom = zoom;
-        new CameraFollowController(
-            view.Camera,
-            new CameraFollowSettings(
-                anchor: new Vector2( 0.5f ),
-                deadZoneSize: Vector2.Zero,
-                halfLifeSeconds: 0f ) )
-            .SnapTo( new Vector2( center.X, center.Y ) );
+        view.RequireCameraFollow().SnapTo( new Vector2( center.X, center.Y ) );
     }
 
     private sealed class SmokeExitController(
