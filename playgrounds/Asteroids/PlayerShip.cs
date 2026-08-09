@@ -19,6 +19,8 @@ public sealed class PlayerShip : GameInstance
     private readonly float _worldHeight;
     private Vector2D _velocity;
     private float _fireCooldown;
+    private double _survivalSeconds;
+    private int _shotsFired;
 
     public PlayerShip(SpriteRef sprite, Vector2D position, float worldWidth, float worldHeight)
     {
@@ -31,6 +33,7 @@ public sealed class PlayerShip : GameInstance
 
     public override void OnStep(double deltaTime)
     {
+        _survivalSeconds += deltaTime;
         float dt = (float)deltaTime;
         float turn = (KeyDown(InputKey.Right) || KeyDown(InputKey.D) ? 1f : 0f) -
                      (KeyDown(InputKey.Left) || KeyDown(InputKey.A) ? 1f : 0f);
@@ -50,11 +53,12 @@ public sealed class PlayerShip : GameInstance
                 Position + forward * 38f,
                 _velocity + forward * LaserSpeed);
             Spawn(LaserPrefab, spawn);
+            _shotsFired++;
             _fireCooldown = FireInterval;
         }
 
         if (FirstCollision<Asteroid>() is not null)
-            SwitchScene(GameScenes.GameOver);
+            SwitchScene(GameScenes.GameOver, new GameOverArgs(_survivalSeconds, _shotsFired));
     }
 
     private Vector2D Forward() => new(MathF.Sin(Rotation), -MathF.Cos(Rotation));

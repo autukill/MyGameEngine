@@ -98,13 +98,15 @@ Destroy 在当前 Step 结束后提交，因此对象仍能安全完成当前回
 
 ```csharp
 if (FirstCollision<Asteroid>() is not null)
-    SwitchScene(GameScenes.GameOver);
+    SwitchScene(
+        GameScenes.GameOver,
+        new GameOverArgs(score, survivalSeconds));
 
 if (KeyPressed(InputKey.Enter))
     SwitchScene(GameScenes.Main);
 ```
 
-Scene 请求在 Step 后提交。普通实例销毁，新定义重新创建；只有明确设置 `IsPersistent = true` 的实例跨 Scene 保留。
+`GameScenes.GameOver` 是 `SceneRef<GameOverArgs>`，其注册函数直接获得强类型快照。Scene 请求在 Step 后提交；普通实例销毁，新定义重新创建，只有明确设置 `IsPersistent = true` 的实例跨 Scene 保留。无数据切换继续使用普通 `SceneRef`。
 
 ## 世界边缘环绕
 

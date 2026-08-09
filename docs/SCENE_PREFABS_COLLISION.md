@@ -36,6 +36,46 @@ using var game = GameApplication.Create()
 
 当前实现复用同一个 `SceneAggregate`、Camera、RenderPipeline 和 GPU 根资源，因此 Scene 切换不重建 OpenGL Runtime。`SceneId` 在一次应用运行期内保持稳定，`SceneName` 表示当前逻辑定义。
 
+### 强类型 Scene 参数
+
+需要把结算数据、关卡入口或生成配置交给下一个 Scene 时，使用参数化引用，不需要全局变量或无类型字典：
+
+```csharp
+public readonly record struct GameOverArgs(int Score, double SurvivalSeconds);
+
+public static class GameScenes
+{
+    public static readonly SceneRef Main = new("Main");
+    public static readonly SceneRef<GameOverArgs> GameOver = new("GameOver");
+}
+
+builder.AddScene(GameScenes.GameOver, (context, args) =>
+{
+    context.Scene.Add(new GameOverMarker(args.Score, args.SurvivalSeconds));
+});
+
+// GameInstance 内部：
+SwitchScene(GameScenes.GameOver, new GameOverArgs(score, survivalSeconds));
+```
+
+参数类型必须是 struct，推荐使用 `readonly record struct`。请求时参数会被复制到 Hosting 的待切换 activation，因此调用方随后修改自己的局部变量不会改变已经排队的数据。`AddScene` 配置函数只在安全切换边界接收该快照；如果 Scene 后续仍需要数据，应由配置函数显式传给新实例。
+
+类型化 Scene 也可以作为启动 Scene：
+
+```csharp
+builder
+    .AddScene(GameScenes.GameOver, (context, args) => ConfigureGameOver(context, args))
+    .StartScene(GameScenes.GameOver, new GameOverArgs(1200, 42.5));
+```
+
+固定规则：
+
+- 同一逻辑名称只能注册一次，不能同时注册为无参和有参 Scene。
+- 有参 Scene 必须通过匹配的 `SceneRef<TArgs>` 激活；使用 `Untyped` 视图请求它会在 Scene 状态变化前失败。
+- 同一帧重复请求相同目标和相等参数是幂等的；参数不同则视为冲突并报错。
+- 请求当前 Scene 仍是 no-op，不隐式实现 reload。
+- 参数不会保存为全局“当前 Scene 参数”，也不会自动注入跨 Scene 保留的 persistent 实例。
+
 ## 类型安全 Instance Factory / Prefab
 
 Prefab 是组合根中的纯实例工厂，不拥有 Texture、Shader、GL Handle 或服务容器：
@@ -67,7 +107,7 @@ instances.Register(Bullet,
     (in BulletArgs args) => new Bullet(sprite, args));
 ```
 
-`Spawn(Bullet, args)` 保持实例和参数类型的编译期关联；struct 参数通过 `in` 路径传递，不装箱，也不需要无类型属性字典。
+`Spawn(Bullet, args)` 保持实例和参数类型的编译期关联；struct 参数通过 `in` 路径传递，不装箱，也不需要无类型属性字典。Prefab 高频生成仍采用零装箱路径；Scene 切换频率很低，Hosting 会为待切换 activation 创建一个内部对象来保存不同参数类型，但不会把类型擦除暴露给 Gameplay API。
 
 ## Collider 与空间查询
 

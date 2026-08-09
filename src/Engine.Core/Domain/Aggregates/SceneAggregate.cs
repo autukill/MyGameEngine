@@ -69,7 +69,7 @@ public class SceneAggregate
     private IInputProvider? _input;
     private ISpriteResolver? _sprites;
     private IInstanceFactory _instanceFactory = new InstanceFactory().Build();
-    private Action<SceneRef>? _requestScene;
+    private ISceneSwitchRequester? _sceneSwitchRequester;
 
     public IReadOnlyCollection<IDomainEvent> UncommittedEvents => _uncommittedEvents.AsReadOnly();
     public IReadOnlyCollection<GameInstance> AllInstances => _instances.Values.ToList();
@@ -375,8 +375,15 @@ public class SceneAggregate
         _instanceFactory = instanceFactory ?? throw new ArgumentNullException(nameof(instanceFactory));
 
     /// <summary>Sets the Hosting-owned safe-boundary Scene switch requester.</summary>
-    public void SetSceneSwitchRequester(Action<SceneRef>? requestScene) =>
-        _requestScene = requestScene;
+    public void SetSceneSwitchRequester(ISceneSwitchRequester? requester) =>
+        _sceneSwitchRequester = requester;
+
+    /// <summary>
+    /// Compatibility adapter for advanced untyped composition roots. Typed Scene requests require
+    /// an ISceneSwitchRequester implementation.
+    /// </summary>
+    public void SetSceneSwitchRequester(Action<SceneRef>? requester) =>
+        _sceneSwitchRequester = requester is null ? null : new UntypedSceneSwitchRequester(requester);
 
     /// <summary>
     /// GMS Draw 事件调度（Layer 感知版）。
@@ -721,8 +728,27 @@ public class SceneAggregate
         {
             if (scene.IsEmpty)
                 throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
-            (owner._requestScene ?? throw new InvalidOperationException(
-                "Scene switching is not configured for this Scene."))(scene);
+            (owner._sceneSwitchRequester ?? throw new InvalidOperationException(
+                "Scene switching is not configured for this Scene.")).Request(scene);
         }
+
+        public void RequestScene<TArgs>(SceneRef<TArgs> scene, in TArgs args)
+            where TArgs : struct
+        {
+            if (scene.IsEmpty)
+                throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
+            (owner._sceneSwitchRequester ?? throw new InvalidOperationException(
+                "Scene switching is not configured for this Scene.")).Request(scene, args);
+        }
+    }
+
+    private sealed class UntypedSceneSwitchRequester(Action<SceneRef> request)
+        : ISceneSwitchRequester
+    {
+        public void Request(SceneRef scene) => request(scene);
+
+        public void Request<TArgs>(SceneRef<TArgs> scene, in TArgs args)
+            where TArgs : struct => throw new InvalidOperationException(
+                "This Scene switch requester only supports untyped SceneRef values.");
     }
 }

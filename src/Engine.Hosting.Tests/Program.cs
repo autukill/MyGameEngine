@@ -110,6 +110,8 @@ internal static class Program
         Console.WriteLine("3. Declarative Scene catalog and Prefabs");
         SceneRef main = new("Main");
         SceneRef gameOver = new("GameOver");
+        SceneRef<ResultsSceneArgs> results = new("Results");
+        ResultsSceneArgs configuredResults = default;
         var probePrefab = new PrefabRef<HostingPrefabProbe>("hosting.probe");
         var plan = GameApplication.Create()
             .UseDefault2DRenderer()
@@ -118,13 +120,14 @@ internal static class Program
                 spawn => new HostingPrefabProbe(spawn.Position)))
             .AddScene(main, _ => { })
             .AddScene(gameOver, _ => { })
+            .AddScene(results, (_, args) => configuredResults = args)
             .StartScene(gameOver)
             .BuildPlan();
 
         HostingPrefabProbe created = plan.Instances.Create(
             probePrefab,
             new PrefabSpawnContext(new Vector2D(4, 5)));
-        Check(plan.InitialScene == gameOver && plan.Scenes.Count == 2 &&
+        Check(plan.InitialScene == gameOver && plan.Scenes.Count == 3 &&
               created.Position == new Vector2D(4, 5),
             "Builder freezes a typed Prefab catalog and selects a registered initial Scene");
         CheckThrows<ArgumentException>(
@@ -154,6 +157,45 @@ internal static class Program
         CheckThrows<KeyNotFoundException>(
             () => navigator.SwitchTo(new SceneRef("Missing")),
             "Unknown runtime Scene requests fail immediately");
+
+        var typedNavigator = new SceneNavigator(plan.Scenes, main);
+        var resultsArgs = new ResultsSceneArgs(42, 12.5d);
+        typedNavigator.SwitchTo(results, resultsArgs);
+        typedNavigator.SwitchTo(results, resultsArgs);
+        Check(typedNavigator.TryTakePending(out ISceneActivation typedActivation) &&
+              typedActivation.Scene == results.Untyped &&
+              typedActivation.ArgumentsType == typeof(ResultsSceneArgs),
+            "Typed Scene requests retain their argument type at the safe boundary");
+        plan.Scenes[results.Name].Configure(null!, typedActivation);
+        Check(configuredResults == resultsArgs,
+            "Typed Scene configuration receives the copied argument snapshot");
+
+        typedNavigator.SwitchTo(results, resultsArgs);
+        CheckThrows<InvalidOperationException>(
+            () => typedNavigator.SwitchTo(results, resultsArgs with { Score = 99 }),
+            "Same-frame requests with different typed arguments are rejected");
+        _ = typedNavigator.TryTakePending(out ISceneActivation _);
+        CheckThrows<InvalidOperationException>(
+            () => typedNavigator.SwitchTo(results.Untyped),
+            "An untyped reference cannot activate a typed Scene definition");
+
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create()
+                .UseDefault2DRenderer()
+                .AddScene(results, (_, _) => { })
+                .BuildPlan(),
+            "A typed first Scene requires matching initial arguments");
+
+        ResultsSceneArgs initialArgs = new(7, 2d);
+        ResultsSceneArgs configuredInitial = default;
+        var typedInitialPlan = GameApplication.Create()
+            .UseDefault2DRenderer()
+            .AddScene(results, (_, args) => configuredInitial = args)
+            .StartScene(results, initialArgs)
+            .BuildPlan();
+        typedInitialPlan.ConfigureScene(null!);
+        Check(typedInitialPlan.InitialScene == results.Untyped && configuredInitial == initialArgs,
+            "StartScene carries typed arguments into the initial Scene configuration");
     }
 
     private static void TestResourceOwnership()
@@ -619,6 +661,8 @@ internal static class Program
     {
         public HostingPrefabProbe(Vector2D position) => Position = position;
     }
+
+    private readonly record struct ResultsSceneArgs(int Score, double ElapsedSeconds);
 
     private sealed class RecordingTelemetrySink : IPerformanceTelemetrySink
     {

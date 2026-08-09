@@ -49,15 +49,19 @@ internal static class Program
                     context.Window.Width,
                     context.Window.Height));
                 if (smoke)
-                    context.Scene.Add(new SmokeJourney(GameScenes.GameOver, context.Close));
+                    context.Scene.Add(new SmokeJourney(
+                        GameScenes.GameOver,
+                        new GameOverArgs(3d / 60d, 0),
+                        context.Close));
             })
-            .AddScene(GameScenes.GameOver, context =>
+            .AddScene(GameScenes.GameOver, (context, gameOver) =>
             {
                 context.Scene.Background = BackgroundConfig.FromColor(
                     new Vector4(0.14f, 0.015f, 0.02f, 1f));
                 context.Scene.Add(new GameOverMarker(
                     GameAssets.Sprites.AsteroidsShip,
-                    new Vector2D(context.Window.Width * 0.5f, context.Window.Height * 0.5f)));
+                    new Vector2D(context.Window.Width * 0.5f, context.Window.Height * 0.5f),
+                    gameOver));
             })
             .StartScene(GameScenes.Main)
             .Build();
@@ -67,13 +71,15 @@ internal static class Program
 
     private sealed class SmokeJourney : GameInstance
     {
-        private readonly SceneRef _next;
+        private readonly SceneRef<GameOverArgs> _next;
+        private readonly GameOverArgs _args;
         private readonly Action _close;
         private int _steps;
 
-        public SmokeJourney(SceneRef next, Action close)
+        public SmokeJourney(SceneRef<GameOverArgs> next, GameOverArgs args, Action close)
         {
             _next = next;
+            _args = args;
             _close = close;
             IsPersistent = true;
         }
@@ -81,7 +87,7 @@ internal static class Program
         public override void OnStep(double deltaTime)
         {
             _steps++;
-            if (_steps == 3) SwitchScene(_next);
+            if (_steps == 3) SwitchScene(_next, _args);
             if (_steps >= 7) _close();
         }
     }

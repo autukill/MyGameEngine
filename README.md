@@ -9,7 +9,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - GMS 风格实例生命周期：Create、Begin/Step/End Step、Begin/Draw/End Draw、Draw GUI、Key Down/Up、Destroy。
 - Gameplay Authoring：直接 Position/Rotation/Scale、非空输入便利 API、实例级 Spawn/Destroy/Find、确定性帧边界提交与轻量 Alarm。
 - Gameplay Motion：21 种无状态 Easing、标量/位置/颜色/最短角 Tween，以及限速和半衰期平滑追踪。
-- Gameplay 组合：声明式 Scene 目录与安全切换、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
+- Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
@@ -279,7 +279,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 为 Scene 切换增加强类型参数与明确的暂停策略。
+1. 为 Gameplay 定义不依赖 UI 的暂停策略。
 2. 降低 SceneAggregate 生命周期遍历、LINQ 与排序分配。
 3. 用真实 Playground 遥测复核空间查询成本；碰撞细化需求保持记录但暂不展开。
 

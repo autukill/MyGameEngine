@@ -21,4 +21,5 @@ public interface IGameplayContext
     IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance;
     IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius) where T : GameInstance;
     void RequestScene(SceneRef scene);
+    void RequestScene<TArgs>(SceneRef<TArgs> scene, in TArgs args) where TArgs : struct;
 }

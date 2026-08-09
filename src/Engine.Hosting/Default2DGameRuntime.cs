@@ -210,8 +210,8 @@ internal sealed class Default2DGameRuntime : IDisposable
         _scene.SetInput(_window.Input);
         _scene.SetSprites(_sprites);
         _scene.SetInstanceFactory(_plan.Instances);
-        _scenes = new SceneNavigator(_plan.Scenes, _plan.InitialScene);
-        _scene.SetSceneSwitchRequester(_scenes.SwitchTo);
+        _scenes = new SceneNavigator(_plan.Scenes, _plan.InitialSceneActivation);
+        _scene.SetSceneSwitchRequester(_scenes);
         _camera = new Camera2D(new Vector2(width, height));
         _sceneTarget = _resources.Add(new RenderTarget2D(gl, new RenderTargetDescriptor(
             width,
@@ -321,24 +321,24 @@ internal sealed class Default2DGameRuntime : IDisposable
                 telemetry,
                 () => Context.CapturePerformanceSnapshot(telemetry.Budget));
         }
-        ConfigureScene(_plan.InitialScene);
+        ConfigureScene(_plan.InitialSceneActivation);
     }
 
     private void ApplyPendingSceneSwitch()
     {
-        if (!_scenes.TryTakePending(out SceneRef next)) return;
+        if (!_scenes.TryTakePending(out ISceneActivation next)) return;
 
-        _scene!.TransitionTo(next.Name);
+        _scene!.TransitionTo(next.Scene.Name);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
-        _scenes.Commit(next);
+        _scenes.Commit(next.Scene);
         ConfigureScene(next);
         _scene.Start();
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
     }
 
-    private void ConfigureScene(SceneRef scene)
+    private void ConfigureScene(ISceneActivation activation)
     {
-        _scenes.GetDefinition(scene).Configure(Context);
+        _scenes.GetDefinition(activation.Scene).Configure(Context, activation);
         _scene!.Add(new DefaultWorldPresentationController(
             _scene.RaiseEvent,
             _plan.Renderer));

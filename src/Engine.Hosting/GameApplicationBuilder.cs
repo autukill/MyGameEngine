@@ -8,9 +8,9 @@ public sealed class GameApplicationBuilder
 {
     private readonly EngineWindowOptions _windowOptions;
     private Default2DRendererOptions? _renderer;
-    private readonly Dictionary<string, SceneDefinition> _scenes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ISceneDefinition> _scenes = new(StringComparer.Ordinal);
     private readonly InstanceFactory _instances = new();
-    private SceneRef? _initialScene;
+    private ISceneActivation? _initialScene;
     private bool _instancesConfigured;
 
     internal GameApplicationBuilder(EngineWindowOptions windowOptions)
@@ -36,7 +36,7 @@ public sealed class GameApplicationBuilder
             throw new InvalidOperationException("The initial Scene is already configured.");
         SceneRef scene = new(sceneName);
         AddScene(scene, configure);
-        _initialScene = scene;
+        _initialScene = new UntypedSceneActivation(scene);
         return this;
     }
 
@@ -47,9 +47,22 @@ public sealed class GameApplicationBuilder
         if (scene.IsEmpty)
             throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
         ArgumentNullException.ThrowIfNull(configure);
-        if (!_scenes.TryAdd(scene.Name, new SceneDefinition(scene, configure)))
+        if (!_scenes.TryAdd(scene.Name, new UntypedSceneDefinition(scene, configure)))
             throw new ArgumentException($"Scene '{scene.Name}' is already registered.", nameof(scene));
-        _initialScene ??= scene;
+        _initialScene ??= new UntypedSceneActivation(scene);
+        return this;
+    }
+
+    public GameApplicationBuilder AddScene<TArgs>(
+        SceneRef<TArgs> scene,
+        Action<Default2DGameContext, TArgs> configure) where TArgs : struct
+    {
+        if (scene.IsEmpty)
+            throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
+        ArgumentNullException.ThrowIfNull(configure);
+        if (!_scenes.TryAdd(scene.Name, new TypedSceneDefinition<TArgs>(scene, configure)))
+            throw new ArgumentException($"Scene '{scene.Name}' is already registered.", nameof(scene));
+        _initialScene ??= new UntypedSceneActivation(scene.Untyped);
         return this;
     }
 
@@ -57,7 +70,17 @@ public sealed class GameApplicationBuilder
     {
         if (scene.IsEmpty)
             throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
-        _initialScene = scene;
+        _initialScene = new UntypedSceneActivation(scene);
+        return this;
+    }
+
+    public GameApplicationBuilder StartScene<TArgs>(
+        SceneRef<TArgs> scene,
+        in TArgs args) where TArgs : struct
+    {
+        if (scene.IsEmpty)
+            throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
+        _initialScene = new TypedSceneActivation<TArgs>(scene, args);
         return this;
     }
 
@@ -78,10 +101,17 @@ public sealed class GameApplicationBuilder
         if (_renderer is null)
             throw new InvalidOperationException("Call UseDefault2DRenderer before Build.");
         if (_initialScene is not { } initial ||
-            !_scenes.ContainsKey(initial.Name))
+            !_scenes.TryGetValue(initial.Scene.Name, out ISceneDefinition? initialDefinition))
         {
             throw new InvalidOperationException(
                 "Register the initial Scene with ConfigureScene/AddScene before Build.");
+        }
+        if (initialDefinition.ArgumentsType != initial.ArgumentsType)
+        {
+            string expected = initialDefinition.ArgumentsType?.Name ?? "no arguments";
+            throw new InvalidOperationException(
+                $"Initial Scene '{initial.Scene.Name}' expects {expected}. " +
+                "Select it with the matching StartScene overload.");
         }
         var renderer = _renderer.ToPlan();
         renderer.Validate();
@@ -89,8 +119,8 @@ public sealed class GameApplicationBuilder
                                             _windowOptions.FrameStatistics is null
             ? _windowOptions.WithFrameStatistics()
             : _windowOptions;
-        var scenes = new ReadOnlyDictionary<string, SceneDefinition>(
-            new Dictionary<string, SceneDefinition>(_scenes, StringComparer.Ordinal));
+        var scenes = new ReadOnlyDictionary<string, ISceneDefinition>(
+            new Dictionary<string, ISceneDefinition>(_scenes, StringComparer.Ordinal));
         return new GameApplicationPlan(
             windowOptions,
             renderer,
@@ -103,11 +133,12 @@ public sealed class GameApplicationBuilder
 internal sealed record GameApplicationPlan(
     EngineWindowOptions WindowOptions,
     Default2DRendererPlan Renderer,
-    SceneRef InitialScene,
-    IReadOnlyDictionary<string, SceneDefinition> Scenes,
+    ISceneActivation InitialSceneActivation,
+    IReadOnlyDictionary<string, ISceneDefinition> Scenes,
     IInstanceFactory Instances)
 {
+    public SceneRef InitialScene => InitialSceneActivation.Scene;
     public string SceneName => InitialScene.Name;
-    public Action<Default2DGameContext> ConfigureScene =>
-        Scenes[InitialScene.Name].Configure;
+    public Action<Default2DGameContext> ConfigureScene => context =>
+        Scenes[InitialScene.Name].Configure(context, InitialSceneActivation);
 }

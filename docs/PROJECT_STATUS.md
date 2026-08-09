@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 47 个 .NET 项目、仓库共 228 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 47 个 .NET 项目、仓库共 229 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -56,6 +56,7 @@
 - Gameplay Authoring 第一切片提供 `Position/Rotation/Scale`、输入轴/按键边沿、实例级 `Spawn/Destroy/Find`、End Step 后确定性变更提交和暂停感知的轻量 `AlarmId`；模板展示 WASD、Space 发射与生命周期自动销毁。
 - `playgrounds/AirplaneShooter` 提供第一个面向游戏开发者的独立可运行样例：方向键/WASD 移动、按住空格发射、强类型 Sprite 资产和 Alarm 子弹回收。
 - Hosting 提供强类型 `SceneRef` 目录、帧边界切换和 persistent 实例保留；Prefab 目录按 `PrefabRef<T>` 注册并在 Build 后冻结。
+- `SceneRef<TArgs>`、泛型 `AddScene/StartScene/SwitchScene` 把值类型参数与目标 Scene 编译期绑定；请求快照、注册类型校验和同帧冲突均发生在切换前，Asteroids 已传递 GameOver 生存数据。
 - GameInstance 支持可选 Box/Circle Collider、类型化首次/全部碰撞，以及 Scene 区域和半径查询；AirplaneShooter 已迁移为 Prefab 子弹、目标碰撞和 Main/Victory Scene 往返。
 - `PrefabRef<T, TArgs>` 通过类型化 `in TArgs` 路径传递方向、速度、半径等构造数据，不装箱且不引入属性字典。
 - `playgrounds/Asteroids` 验证旋转推进、参数化 Laser/Asteroid、Alarm 周期生成、Circle 碰撞和 Main/GameOver 重启；Gameplay Cookbook 已提炼两套 Playground 的常见配方。
@@ -70,11 +71,11 @@
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
 - 各交互式 VisualTests 仍需人工观察；自动基线已覆盖八条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
-- Hosting v1 仅支持单窗口；已有声明式 Scene 切换，但尚无 Scene 栈、强类型切换参数、暂停策略或后台加载。
+- Hosting v1 仅支持单窗口；已有声明式及强类型参数 Scene 切换，但尚无 Scene 栈、暂停策略或后台加载。
 
 ## 下一里程碑：Scene 参数与生命周期分配收口
 
-1. 评估强类型 Scene 切换参数，让 GameOver/关卡入口数据不依赖全局状态，同时保持定义目录可验证。
+1. 定义 Gameplay 暂停策略，分别说明 Step/Alarm、Input、Draw、动态效果和 persistent 实例行为，不先引入 UI Pause Menu。
 2. 收敛 SceneAggregate Step/Draw 的 `ToList`、LINQ 和排序分配，不改变当前帧边界语义。
 3. 继续用真实 Playground 遥测复核空间查询；只有累计查询进入帧预算 5% 以上才引入 Spatial Hash。
 

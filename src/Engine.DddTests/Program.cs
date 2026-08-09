@@ -415,6 +415,15 @@ internal sealed class Program
         Assert(requested == nextScene,
             "GameInstance Scene requests remain logical and delegate commit timing to Hosting");
 
+        var typedRequester = new RecordingSceneSwitchRequester();
+        scene.SetSceneSwitchRequester(typedRequester);
+        var resultsScene = new SceneRef<SceneResultsArgs>("Results");
+        var resultsArgs = new SceneResultsArgs(123, 4.5d);
+        switcher.Go(resultsScene, resultsArgs);
+        Assert(typedRequester.Scene == resultsScene.Untyped &&
+               typedRequester.Results == resultsArgs,
+            "GameInstance preserves typed Scene arguments through the gameplay boundary");
+
         player.IsPersistent = true;
         scene.Background = BackgroundConfig.FromColor(new Vector4(1, 0, 0, 1));
         scene.Start();
@@ -711,6 +720,26 @@ internal sealed class Program
     private sealed class SceneSwitchProbe : GameInstance
     {
         public void Go(SceneRef scene) => SwitchScene(scene);
+
+        public void Go<TArgs>(SceneRef<TArgs> scene, in TArgs args) where TArgs : struct =>
+            SwitchScene(scene, args);
+    }
+
+    private readonly record struct SceneResultsArgs(int Score, double ElapsedSeconds);
+
+    private sealed class RecordingSceneSwitchRequester : ISceneSwitchRequester
+    {
+        public SceneRef Scene { get; private set; }
+        public SceneResultsArgs Results { get; private set; }
+
+        public void Request(SceneRef scene) => Scene = scene;
+
+        public void Request<TArgs>(SceneRef<TArgs> scene, in TArgs args) where TArgs : struct
+        {
+            Scene = scene.Untyped;
+            if (args is SceneResultsArgs results)
+                Results = results;
+        }
     }
 
     private sealed class SpatialProbe : GameInstance

@@ -262,6 +262,13 @@ public class GameInstance
     /// <summary>Requests a registered Scene switch at the safe boundary after the current Step.</summary>
     protected void SwitchScene(SceneRef scene) => RequireGameplay().RequestScene(scene);
 
+    /// <summary>
+    /// Requests a typed Scene switch. The value-type arguments are copied into the pending
+    /// frame-boundary activation.
+    /// </summary>
+    protected void SwitchScene<TArgs>(SceneRef<TArgs> scene, in TArgs args)
+        where TArgs : struct => RequireGameplay().RequestScene(scene, args);
+
     public void SetAlarm(AlarmId alarm, double seconds)
     {
         if (alarm.IsEmpty)

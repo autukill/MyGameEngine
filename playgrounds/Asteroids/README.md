@@ -6,8 +6,8 @@
 - 按住空格连续发射带方向和速度参数的 Laser。
 - Alarm 周期生成带半径、位置和速度参数的 Asteroid。
 - Circle Collider 驱动 Laser/Asteroid 与 Ship/Asteroid 碰撞。
-- Ship 命中后安全切换到 GameOver Scene，按 `Enter` 重新开始。
-- 所有运行时生成都使用 `PrefabRef<T, TArgs>`，不使用无类型参数字典。
+- Ship 命中后通过 `SceneRef<GameOverArgs>` 把生存时长和发射次数交给 GameOver Scene，按 `Enter` 无参切回 Main。
+- 所有运行时生成和 Scene 参数都使用编译期关联的泛型引用，不使用无类型参数字典或全局过渡状态。
 
 运行：
 
