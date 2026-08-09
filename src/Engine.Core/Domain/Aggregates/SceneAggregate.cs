@@ -63,6 +63,9 @@ public class SceneAggregate
 
     private readonly Dictionary<InstanceId, GameInstance> _instances = new();
     private readonly List<IDomainEvent> _uncommittedEvents = new();
+    private readonly List<GameInstance> _lifecycleSnapshot = new();
+    private readonly List<GameInstance> _guiSnapshot = new();
+    private readonly List<DrawEntry> _drawSnapshot = new();
     private readonly IGameplayContext _gameplay;
     private List<PendingInstanceMutation> _pendingMutations = new();
     private List<PendingInstanceMutation> _committingMutations = new();
@@ -293,35 +296,40 @@ public class SceneAggregate
             OnBeforeStep?.Invoke(time.DeltaTime);
 
         // Lightweight alarms fire before Begin Step in each Instance's selected time domain.
-        foreach (var instance in _instances.Values.ToList())
+        CaptureInstances(_lifecycleSnapshot);
+        foreach (var instance in _lifecycleSnapshot)
         {
             if (ShouldUpdate(instance, time))
                 instance.AdvanceAlarms(DeltaFor(instance, time));
         }
 
         // GMS Begin Step：所有活跃实例先执行（输入预处理/状态缓存）
-        foreach (var instance in _instances.Values.ToList())
+        CaptureInstances(_lifecycleSnapshot);
+        foreach (var instance in _lifecycleSnapshot)
         {
             if (ShouldUpdate(instance, time))
                 instance.OnBeginStep(DeltaFor(instance, time));
         }
 
         // GMS Step：主游戏逻辑
-        foreach (var instance in _instances.Values.ToList())
+        CaptureInstances(_lifecycleSnapshot);
+        foreach (var instance in _lifecycleSnapshot)
         {
             if (ShouldUpdate(instance, time))
                 instance.OnStep(DeltaFor(instance, time));
         }
 
         // GMS End Step：校验/后处理
-        foreach (var instance in _instances.Values.ToList())
+        CaptureInstances(_lifecycleSnapshot);
+        foreach (var instance in _lifecycleSnapshot)
         {
             if (ShouldUpdate(instance, time))
                 instance.OnEndStep(DeltaFor(instance, time));
         }
 
         // Sprite 动画在所有 End Step 完成后统一推进，Draw 阶段读取新帧。
-        foreach (var instance in _instances.Values.ToList())
+        CaptureInstances(_lifecycleSnapshot);
+        foreach (var instance in _lifecycleSnapshot)
         {
             if (ShouldUpdate(instance, time))
                 instance.AdvanceSpriteAnimation(DeltaFor(instance, time));
@@ -341,7 +349,8 @@ public class SceneAggregate
     {
         if (keysPressed.Count > 0)
         {
-            foreach (var instance in _instances.Values.ToList())
+            CaptureInstances(_lifecycleSnapshot);
+            foreach (var instance in _lifecycleSnapshot)
             {
                 if (!CanReceiveInput(instance)) continue;
                 for (int i = 0; i < keysPressed.Count; i++)
@@ -351,7 +360,8 @@ public class SceneAggregate
 
         if (keysReleased.Count > 0)
         {
-            foreach (var instance in _instances.Values.ToList())
+            CaptureInstances(_lifecycleSnapshot);
+            foreach (var instance in _lifecycleSnapshot)
             {
                 if (!CanReceiveInput(instance)) continue;
                 for (int i = 0; i < keysReleased.Count; i++)
@@ -407,14 +417,10 @@ public class SceneAggregate
         {
             if (!layer.IsVisible) continue;
 
-            var layerInstances = _instances.Values
-                .Where(i => i.IsActive && i.LayerName == layer.Name);
-
-            // 同 Layer 内按 Depth 降序排序（Depth 值大的先画，在底层）
-            var sorted = layerInstances.OrderByDescending(i => i.Depth.Value);
-
-            foreach (var instance in sorted)
+            CaptureDrawEntries(layer.Name);
+            foreach (DrawEntry entry in _drawSnapshot)
             {
+                GameInstance instance = entry.Instance;
                 ApplyRenderState(batch, instance);
                 instance.OnBeginDraw(batch);
                 instance.OnDraw(batch);
@@ -448,13 +454,10 @@ public class SceneAggregate
             var layer = _layers[i];
             if (layer.Name != layerName || !layer.IsVisible) continue;
 
-            var layerInstances = _instances.Values
-                .Where(i => i.IsActive && i.LayerName == layer.Name);
-
-            var sorted = layerInstances.OrderByDescending(i => i.Depth.Value);
-
-            foreach (var instance in sorted)
+            CaptureDrawEntries(layer.Name);
+            foreach (DrawEntry entry in _drawSnapshot)
             {
+                GameInstance instance = entry.Instance;
                 ApplyRenderState(batch, instance);
                 instance.OnBeginDraw(batch);
                 instance.OnDraw(batch);
@@ -470,7 +473,8 @@ public class SceneAggregate
     /// </summary>
     public void DrawGUI(ISpriteBatch batch)
     {
-        foreach (var instance in _instances.Values)
+        CaptureInstances(_guiSnapshot);
+        foreach (var instance in _guiSnapshot)
         {
             if (!instance.IsActive) continue;
             instance.OnDrawGUI(batch);
@@ -620,6 +624,59 @@ public class SceneAggregate
             ? time.UnscaledDeltaTime
             : time.DeltaTime;
 
+    private void CaptureInstances(List<GameInstance> destination)
+    {
+        destination.Clear();
+        foreach (GameInstance instance in _instances.Values)
+            destination.Add(instance);
+    }
+
+    private void CaptureDrawEntries(string layerName)
+    {
+        _drawSnapshot.Clear();
+        int sequence = 0;
+        foreach (GameInstance instance in _instances.Values)
+        {
+            if (instance.IsActive && instance.LayerName == layerName)
+                _drawSnapshot.Add(new DrawEntry(instance, sequence));
+            sequence++;
+        }
+        SortDrawEntries();
+    }
+
+    private void SortDrawEntries()
+    {
+        int count = _drawSnapshot.Count;
+        for (int root = count / 2 - 1; root >= 0; root--)
+            SiftDrawEntryDown(root, count);
+
+        for (int end = count - 1; end > 0; end--)
+        {
+            (_drawSnapshot[0], _drawSnapshot[end]) = (_drawSnapshot[end], _drawSnapshot[0]);
+            SiftDrawEntryDown(0, end);
+        }
+    }
+
+    private void SiftDrawEntryDown(int root, int count)
+    {
+        while (true)
+        {
+            int child = root * 2 + 1;
+            if (child >= count) return;
+            if (child + 1 < count && CompareDrawEntries(
+                    _drawSnapshot[child], _drawSnapshot[child + 1]) < 0)
+            {
+                child++;
+            }
+            if (CompareDrawEntries(_drawSnapshot[root], _drawSnapshot[child]) >= 0)
+                return;
+
+            (_drawSnapshot[root], _drawSnapshot[child]) =
+                (_drawSnapshot[child], _drawSnapshot[root]);
+            root = child;
+        }
+    }
+
     private T QueueSpawn<T>(T instance) where T : GameInstance
     {
         ArgumentNullException.ThrowIfNull(instance);
@@ -705,6 +762,14 @@ public class SceneAggregate
 
         public static PendingInstanceMutation Destroy(InstanceId id) =>
             new(InstanceMutationKind.Destroy, null, id);
+    }
+
+    private readonly record struct DrawEntry(GameInstance Instance, int Sequence);
+
+    private static int CompareDrawEntries(DrawEntry x, DrawEntry y)
+    {
+        int depth = y.Instance.Depth.Value.CompareTo(x.Instance.Depth.Value);
+        return depth != 0 ? depth : x.Sequence.CompareTo(y.Sequence);
     }
 
     private sealed class SceneGameplayContext(SceneAggregate owner) : IGameplayContext

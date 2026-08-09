@@ -12,6 +12,7 @@
 - [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)：声明式 Scene 切换、类型安全实例工厂、Box/Circle 与区域/半径查询。
 - [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)：移动、旋转推进、射击冷却、参数化 Prefab、Alarm、碰撞和 Scene 重启配方。
 - [Gameplay 空间查询基准](GAMEPLAY_QUERY_PERFORMANCE.md)：线性扫描测量方法、当前基线和 Spatial Hash 引入条件。
+- [SceneAggregate 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)：可复用快照、零稳态帧分配、阶段可见性与 Release 基准。
 - [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)：逐帧多区域、Polygon/Alpha Mask、查询分层与动画帧一致性；当前明确延后。
 - [可选离线 Shader 编译方向](OFFLINE_SHADER_COMPILATION.md)：暂缓原因、适配边界、诊断缓存与恢复条件。
 - [Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)：运行时聚合包、模板安装、仓库外项目与分发验证边界。

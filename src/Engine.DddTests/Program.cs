@@ -148,8 +148,11 @@ internal sealed class Program
         VerifyPrefabCollisionAndSceneTransition();
         VerifyEasingTweenAndMotion();
         VerifyGameplayTimeControl();
+        VerifyLifecycleSteadyStateAllocations();
         if (args.Contains("--benchmark-spatial", StringComparer.Ordinal))
             MeasureSpatialQueries();
+        if (args.Contains("--benchmark-lifecycle", StringComparer.Ordinal))
+            MeasureLifecycleFrames();
 
         Console.WriteLine("\n=== All Phase 1.4 DDD tactical design smoke tests passed ===");
     }
@@ -598,7 +601,7 @@ internal sealed class Program
 
     private static void MeasureSpatialQueries()
     {
-        Console.WriteLine("\n17. Spatial query benchmark (linear scan)");
+        Console.WriteLine("\n18. Spatial query benchmark (linear scan)");
         foreach (int count in new[] { 100, 1_000, 10_000 })
         {
             var scene = new SceneAggregate($"Spatial-{count}");
@@ -626,6 +629,108 @@ internal sealed class Program
             Console.WriteLine(
                 $"   {count,6:N0} colliders: {elapsedMs / queries,8:F4} ms/query, " +
                 $"{allocated / queries,6:N0} B/query, hits={hits}");
+        }
+    }
+
+    private static void VerifyLifecycleSteadyStateAllocations()
+    {
+        var scene = new SceneAggregate("AllocationFreeLifecycle");
+        var batch = new RecordingSpriteBatch();
+        var pressed = new[] { InputKey.Space };
+        var released = new[] { InputKey.Space };
+
+        const int instanceCount = 128;
+        for (int i = 0; i < instanceCount; i++)
+            scene.Add(new AllocationFreeProbe(new LayerDepth(i % 4)));
+
+        scene.MarkEventsAsCommitted();
+        for (int i = 0; i < 64; i++)
+            RunLifecycleFrame(scene, batch, pressed, released);
+
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+            scene.PerformInput(pressed, released);
+        long inputAllocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+            scene.PerformStep(1d / 60d);
+        long stepAllocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+            scene.DrawActive(batch);
+        long drawAllocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+            scene.DrawGUI(batch);
+        long guiAllocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        long allocated = inputAllocated + stepAllocated + drawAllocated + guiAllocated;
+        Assert(allocated == 0,
+            $"Scene lifecycle remains allocation-free after warm-up " +
+            $"(Input={inputAllocated:N0}, Step={stepAllocated:N0}, " +
+            $"Draw={drawAllocated:N0}, GUI={guiAllocated:N0} B)");
+
+        var mutationScene = new SceneAggregate("PhaseVisibility");
+        var addedDuringBegin = new PhaseProbe();
+        var removedDuringBegin = mutationScene.Add(new PhaseProbe());
+        mutationScene.Add(new BeginStepMutationProbe(
+            mutationScene,
+            addedDuringBegin,
+            removedDuringBegin.Id));
+        mutationScene.PerformStep(.016d);
+        Assert(addedDuringBegin.Steps == 1 && removedDuringBegin.Steps == 0,
+            "Direct Begin Step mutations retain the existing same-frame Step visibility boundary");
+
+        var drawScene = new SceneAggregate("StableDrawOrder");
+        var order = new List<string>();
+        drawScene.Add(new DrawOrderProbe("back", 20, order));
+        drawScene.Add(new DrawOrderProbe("equal-first", 10, order));
+        drawScene.Add(new DrawOrderProbe("equal-second", 10, order));
+        drawScene.Add(new DrawOrderProbe("front", -10, order));
+        drawScene.DrawActive(batch);
+        Assert(order.SequenceEqual(["back", "equal-first", "equal-second", "front"]),
+            "Draw keeps descending depth and stable insertion order for equal depths");
+
+        Console.WriteLine("\n17. Scene lifecycle steady-state allocations");
+        Console.WriteLine("   [PASS] Input + Step + Draw + DrawGUI remain at 0 B/frame after warm-up");
+        Console.WriteLine("   [PASS] phase mutation visibility and stable depth ordering are preserved");
+    }
+
+    private static void RunLifecycleFrame(
+        SceneAggregate scene,
+        ISpriteBatch batch,
+        IReadOnlyList<InputKey> pressed,
+        IReadOnlyList<InputKey> released)
+    {
+        scene.PerformInput(pressed, released);
+        scene.PerformStep(1d / 60d);
+        scene.DrawActive(batch);
+        scene.DrawGUI(batch);
+    }
+
+    private static void MeasureLifecycleFrames()
+    {
+        Console.WriteLine("\n19. Scene lifecycle benchmark");
+        foreach (int count in new[] { 100, 1_000, 10_000 })
+        {
+            var scene = new SceneAggregate($"Lifecycle-{count}");
+            var batch = new RecordingSpriteBatch();
+            for (int i = 0; i < count; i++)
+                scene.Add(new AllocationFreeProbe(new LayerDepth(i % 8)));
+            scene.MarkEventsAsCommitted();
+
+            for (int i = 0; i < 64; i++)
+                RunLifecycleFrame(scene, batch, Array.Empty<InputKey>(), Array.Empty<InputKey>());
+
+            const int frames = 240;
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            long started = Stopwatch.GetTimestamp();
+            for (int i = 0; i < frames; i++)
+                RunLifecycleFrame(scene, batch, Array.Empty<InputKey>(), Array.Empty<InputKey>());
+            double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+            Console.WriteLine(
+                $"   {count,6:N0} instances: {elapsedMs / frames,8:F4} ms/frame, " +
+                $"{allocated / frames,6:N0} B/frame");
         }
     }
 
@@ -883,6 +988,63 @@ internal sealed class Program
 
         public void HoldPause(GameplayPauseKey key) => PauseGameplay(key);
         public void ReleasePause(GameplayPauseKey key) => ResumeGameplay(key);
+    }
+
+    private sealed class AllocationFreeProbe : GameInstance
+    {
+        public int CallbackCount { get; private set; }
+
+        public AllocationFreeProbe(LayerDepth depth)
+            : base(nameof(AllocationFreeProbe), Vector2D.Zero, depth)
+        {
+        }
+
+        public override void OnKeyDown(InputKey key) => CallbackCount++;
+        public override void OnKeyUp(InputKey key) => CallbackCount++;
+        public override void OnBeginStep(double deltaTime) => CallbackCount++;
+        public override void OnStep(double deltaTime) => CallbackCount++;
+        public override void OnEndStep(double deltaTime) => CallbackCount++;
+        public override void OnBeginDraw(ISpriteBatch batch) => CallbackCount++;
+        public override void OnDraw(ISpriteBatch batch) => CallbackCount++;
+        public override void OnEndDraw(ISpriteBatch batch) => CallbackCount++;
+        public override void OnDrawGUI(ISpriteBatch batch) => CallbackCount++;
+    }
+
+    private sealed class PhaseProbe : GameInstance
+    {
+        public int Steps { get; private set; }
+        public override void OnStep(double deltaTime) => Steps++;
+    }
+
+    private sealed class BeginStepMutationProbe(
+        SceneAggregate scene,
+        GameInstance instanceToAdd,
+        InstanceId instanceToDestroy) : GameInstance
+    {
+        private bool _mutated;
+
+        public override void OnBeginStep(double deltaTime)
+        {
+            if (_mutated) return;
+            _mutated = true;
+            scene.Add(instanceToAdd);
+            scene.Destroy(instanceToDestroy);
+        }
+    }
+
+    private sealed class DrawOrderProbe : GameInstance
+    {
+        private readonly string _name;
+        private readonly List<string> _order;
+
+        public DrawOrderProbe(string name, int depth, List<string> order)
+            : base(nameof(DrawOrderProbe), Vector2D.Zero, new LayerDepth(depth))
+        {
+            _name = name;
+            _order = order;
+        }
+
+        public override void OnDraw(ISpriteBatch batch) => _order.Add(_name);
     }
 
     private sealed class RecordingSpriteBatch : ISpriteBatch

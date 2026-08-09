@@ -10,6 +10,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Gameplay Authoring：直接 Position/Rotation/Scale、非空输入便利 API、实例级 Spawn/Destroy/Find、确定性帧边界提交与轻量 Alarm。
 - Gameplay Motion：21 种无状态 Easing、标量/位置/颜色/最短角 Tween，以及限速和半衰期平滑追踪。
 - Gameplay Time：Gameplay/Unscaled 时间域、owner/key 暂停、单一 TimeScale；暂停冻结逻辑但继续渲染和安全帧边界。
+- Gameplay Runtime：Scene Input/Step/Draw/DrawGUI 使用可复用快照，实例规模预热后保持零托管分配，并保留确定性阶段边界。
 - Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件。
@@ -280,9 +281,9 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 为 Gameplay 定义不依赖 UI 的暂停策略。
-2. 降低 SceneAggregate 生命周期遍历、LINQ 与排序分配。
-3. 用真实 Playground 遥测复核空间查询成本；碰撞细化需求保持记录但暂不展开。
+1. 提供轻量、强类型且不依赖 UI 的 Gameplay 状态机 Authoring。
+2. 用真实 Playground 遥测复核空间查询成本；只有进入帧预算后才引入 Spatial Hash。
+3. 碰撞细化与时间回溯保持需求记录，暂不扩张当前主线。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
 
