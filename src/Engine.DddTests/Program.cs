@@ -141,6 +141,7 @@ internal sealed class Program
 
         VerifyInstanceLifecycleAndRenderState();
         VerifyFrameRateAndStatistics();
+        VerifyMaterialParameterBlocks();
 
         Console.WriteLine("\n=== All Phase 1.4 DDD tactical design smoke tests passed ===");
     }
@@ -157,6 +158,7 @@ internal sealed class Program
         {
             RenderStyle = new RenderStyle(BlendMode.Additive, DepthTest: true, DepthWrite: true),
             Shader = new ShaderRef("probe-shader"),
+            Material = new MaterialRef("probe-material"),
             Sprite = new SpriteRef("probe-sprite")
         };
         scene.Add(instance);
@@ -171,7 +173,8 @@ internal sealed class Program
         Assert(ReferenceEquals(instance.Input, input), "Scene input is injected into instances");
         Assert(batch.BlendMode == BlendMode.Additive, "RenderStyle blend mode is applied");
         Assert(batch.DepthState == (true, true), "RenderStyle depth state is applied");
-        Assert(batch.Shader == new ShaderRef("probe-shader"), "ShaderRef is applied");
+        Assert(batch.Material == new MaterialRef("probe-material"),
+            "MaterialRef takes precedence over ShaderRef");
         Assert(batch.SpriteCommand is { Sprite.Name: "probe-sprite" }, "DrawSelf submits logical Sprite");
         Assert(batch.SpriteCommand is { } draw &&
                draw.Position == new Vector2(3, 4) &&
@@ -227,6 +230,49 @@ internal sealed class Program
         Console.WriteLine("\n11. Frame-rate control / optional frame statistics");
         Console.WriteLine("   [PASS] startup settings + strict validation");
         Console.WriteLine("   [PASS] FPS/UPS + Draw/Flush/Texture/Pass counters");
+    }
+
+    private static void VerifyMaterialParameterBlocks()
+    {
+        var parameters = new MaterialParameterBlock(
+            ShaderUniformDefinition.Float("uGain"),
+            ShaderUniformDefinition.Int("uMode"),
+            ShaderUniformDefinition.Vector2("uDirection"),
+            ShaderUniformDefinition.Vector4("uTint"));
+
+        parameters
+            .SetFloat("uGain", 1.25f)
+            .SetInt("uMode", 2)
+            .SetVector2("uDirection", new Vector2(1, -1))
+            .SetVector4("uTint", new Vector4(.2f, .4f, .6f, .8f));
+        long revision = parameters.Revision;
+        parameters.SetFloat("uGain", 1.25f);
+
+        Assert(parameters.GetFloat("uGain") == 1.25f &&
+               parameters.GetInt("uMode") == 2 &&
+               parameters.GetVector2("uDirection") == new Vector2(1, -1) &&
+               parameters.GetVector4("uTint") == new Vector4(.2f, .4f, .6f, .8f),
+            "Typed material values round-trip");
+        Assert(parameters.Revision == revision,
+            "Assigning an unchanged material value does not advance its revision");
+        AssertThrows<InvalidOperationException>(
+            () => parameters.SetInt("uGain", 1),
+            "Uniform type mismatches are rejected");
+        AssertThrows<KeyNotFoundException>(
+            () => parameters.SetFloat("uMissing", 1),
+            "Undeclared uniforms are rejected");
+        AssertThrows<ArgumentException>(
+            () => _ = new MaterialParameterBlock(
+                ShaderUniformDefinition.Float("uGain"),
+                ShaderUniformDefinition.Float("uGain")),
+            "Duplicate uniform declarations are rejected");
+        AssertThrows<ArgumentException>(
+            () => _ = ShaderUniformDefinition.Float("uProjection"),
+            "Engine-owned uniforms are reserved");
+
+        Console.WriteLine("\n12. Typed material parameter blocks");
+        Console.WriteLine("   [PASS] strict schema + typed values + change revision");
+        Console.WriteLine("   [PASS] engine-owned uniforms remain protected");
     }
 
     private static void AssertThrows<TException>(Action action, string message)
@@ -287,6 +333,7 @@ internal sealed class Program
         public BlendMode BlendMode { get; private set; }
         public (bool Test, bool Write) DepthState { get; private set; }
         public ShaderRef? Shader { get; private set; }
+        public MaterialRef? Material { get; private set; }
         public SpriteDrawCommand? SpriteCommand { get; private set; }
 
         public void Begin() { }
@@ -304,6 +351,7 @@ internal sealed class Program
         public void SetDepthState(bool depthTest, bool depthWrite) =>
             DepthState = (depthTest, depthWrite);
         public void SetShader(ShaderRef? shader) => Shader = shader;
+        public void SetMaterial(MaterialRef? material) => Material = material;
     }
 
     private sealed class FakeSpriteResolver : ISpriteResolver

@@ -111,7 +111,11 @@ internal static class Program {
         scene.OnStart = () => Console.WriteLine( $"[Scene] '{scene.SceneName}' started." );
 
         var orbitingSprite = GameAssets.Sprites.RunnerOrbiting;
-        var orbitShader = new ShaderRef( "runner.orbit" );
+        var orbitMaterial = context.Shaders.CreateMaterial(
+                "runner.orbit.material",
+                new ShaderRef( "runner.orbit" ),
+                ShaderUniformDefinition.Float( "uGain" ) )
+            .SetFloat( "uGain", 1f );
         var center = new Vector2D(
             context.Window.Width * 0.5f,
             context.Window.Height * 0.5f );
@@ -126,7 +130,7 @@ internal static class Program {
                 i * MathF.PI / 2f,
                 colors[i],
                 orbitingSprite,
-                orbitShader ) );
+                orbitMaterial.Ref ) );
         }
 
         var spotlightGroup = new StencilMaskGroupRef( "spotlight" );

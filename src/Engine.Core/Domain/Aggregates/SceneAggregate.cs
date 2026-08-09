@@ -354,7 +354,10 @@ public class SceneAggregate
     {
         batch.SetBlendMode(instance.RenderStyle.BlendMode);
         batch.SetDepthState(instance.RenderStyle.DepthTest, instance.RenderStyle.DepthWrite);
-        batch.SetShader(instance.Shader);
+        if (instance.Material is { IsEmpty: false } material)
+            batch.SetMaterial(material);
+        else
+            batch.SetShader(instance.Shader);
     }
 
     /// <summary>

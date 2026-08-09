@@ -10,6 +10,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
+- 类型化 Shader 材质：逻辑 `MaterialRef`、多材质共享 Program、参数 Revision 批处理与热替换自动重放。
 - 动画就绪 Sprite：逻辑资源名、原点、多帧 UV、自动帧推进、旋转/缩放/颜色以及 `batch.DrawSprite*` 便利 API。
 - Texture Assets：逻辑 `TextureRef`、PNG/静态 WebP 解码、采样预设、资产清单与 GPU 句柄统一回收。
 - 声明式 Content Assets：单一版本化 `assets.json`、包依赖、单图/Grid/多图片 Sprite、事务回滚与引用计数卸载。
@@ -247,12 +248,12 @@ Presentation         -> Screen (Tone opaque + Mask alpha + SceneGui alpha)
 
 Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 Surface 输入/输出，Builder 验证唯一生产者、缺失输入、格式匹配和循环后稳定拓扑创建 Runtime；底层 Pass 再通过实际 RenderTarget 声明执行依赖。完整说明见 [动态渲染效果使用指南](docs/DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](docs/RENDER_SURFACES.md)、[Presentation](docs/PRESENTATION.md)、[Bloom](docs/BLOOM_EFFECT.md)和 [Tone Mapping](docs/TONE_MAPPING.md)。
 
-自定义 Sprite Shader 可由 Hosting 从安全根目录注册，通过逻辑 `ShaderRef` 应用到实例；开发期可选整批原子热替换，编译或链接失败继续使用旧 Program。详见[自定义 Sprite Shader 与热重载](docs/SHADER_HOT_RELOAD.md)。
+自定义 Sprite Shader 可由 Hosting 从安全根目录注册，通过逻辑 `ShaderRef` 或类型化 `MaterialRef` 应用到实例；开发期可选整批原子热替换，编译或链接失败继续使用旧 Program，材质参数会自动应用到新 Program。详见[自定义 Sprite Shader 与热重载](docs/SHADER_HOT_RELOAD.md)和[Shader 材质参数块](docs/SHADER_MATERIALS.md)。
 
 ## 下一阶段
 
 1. 为无显示器 CI 固化软件 OpenGL 执行环境。
-2. 在已完成 Content 与 Shader 原子热重载的基础上，规划材质参数块和类型化 uniform schema。
+2. 在已完成 Content、Shader 与材质参数热重载闭环的基础上，增加构建期 Shader/Material 契约校验和更友好的错误定位。
 3. 继续降低 SceneAggregate 每帧 LINQ 与排序分配。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

@@ -60,7 +60,7 @@ uniform sampler2D uTexture;
 context.Shaders.TryGet("game.player-hit")?.SetFloat("uFlash", flashAmount);
 ```
 
-Program 热替换后，驱动端 uniform 值会回到新 Program 的默认状态，location 缓存也会清空。因此随时间变化或必须持久的自定义 uniform 应在每帧绘制前重新设置。当前没有材质参数自动重放系统。
+直接调用 `ShaderProgram.Set*` 时，Program 热替换后驱动端 uniform 值会回到默认状态，location 缓存也会清空。游戏对象需要持久参数时应创建类型化材质；材质保留 CPU 参数和逻辑 Shader 引用，新 Program 首次提交时会自动重放。完整用法见 [Shader 材质参数块](SHADER_MATERIALS.md)。
 
 ## 开启热重载
 
@@ -113,5 +113,5 @@ dotnet run --project src/MyGame.Runner -- `
 - v1 的注册集合固定；运行中可修改源码，但不能新增、删除或重命名 Shader 定义。配置变化需要重启。
 - 当前只管理游戏自定义 Sprite Shader。Bloom、Stencil、Tone Mapping 和 Presentation Shader 仍由各 Feature 组合根拥有，不读取外部覆盖文件。
 - GL 编译必须在窗口 Context 线程执行；后台阶段只做文件读取和哈希。
-- 每个 Scene Pass 会为已注册自定义 Shader 同步投影。通常游戏 Shader 数量较少；大量材质时应进一步引入按需投影版本和材质参数块。
+- 每个 Scene Pass 会为已注册自定义 Shader 同步投影。通常游戏 Shader 数量较少；大量 Shader 时可进一步引入按需投影版本。材质参数已按材质与 Revision 延迟绑定。
 - 正式发布默认不启用监测。GLSL 文件是否随 Publish 输出由项目的 Content 配置决定。

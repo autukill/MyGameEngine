@@ -39,27 +39,47 @@ public sealed class ShaderProgram : IShader
     public void SetFloat(string name, float value)
     {
         Use();
-        int location = Location(name);
-        if (location >= 0) _gl.Uniform1(location, value);
+        SetFloatBound(name, value);
     }
 
     public void SetVec2(string name, Vector2 value)
     {
         Use();
-        int location = Location(name);
-        if (location >= 0) _gl.Uniform2(location, value.X, value.Y);
+        SetVec2Bound(name, value);
     }
 
     public void SetVec4(string name, Vector4 value)
     {
         Use();
-        int location = Location(name);
-        if (location >= 0) _gl.Uniform4(location, value.X, value.Y, value.Z, value.W);
+        SetVec4Bound(name, value);
     }
 
     public void SetInt(string name, int value)
     {
         Use();
+        SetIntBound(name, value);
+    }
+
+    internal void SetFloatBound(string name, float value)
+    {
+        int location = Location(name);
+        if (location >= 0) _gl.Uniform1(location, value);
+    }
+
+    internal void SetVec2Bound(string name, Vector2 value)
+    {
+        int location = Location(name);
+        if (location >= 0) _gl.Uniform2(location, value.X, value.Y);
+    }
+
+    internal void SetVec4Bound(string name, Vector4 value)
+    {
+        int location = Location(name);
+        if (location >= 0) _gl.Uniform4(location, value.X, value.Y, value.Z, value.W);
+    }
+
+    internal void SetIntBound(string name, int value)
+    {
         int location = Location(name);
         if (location >= 0) _gl.Uniform1(location, value);
     }

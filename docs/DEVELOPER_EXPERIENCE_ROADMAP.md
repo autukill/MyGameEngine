@@ -59,7 +59,7 @@ GameAssets.Packages.SharedPrimitives
 - 失败时继续使用上一份有效资源，不破坏当前 Scene。
 - 与 Content 指纹、Atlas 原子替换和 Hosting 生命周期共享同一所有权边界。
 
-当前验收：Content 包已使用编译元数据轮询和去抖，后台完成 Manifest 图校验、图片解码与 Sprite 规范化；Texture/Sprite/包索引在 Step 与 Draw 之间事务切换，失败保留旧修订。自定义 Sprite Shader 支持安全根文件注册、稳定源码快照、整批 Program 原子替换和驱动错误诊断；投影同步覆盖主 Scene 与 Stencil 重绘。Runner 提供 `--content-hot-reload` 与 `--shader-hot-reload`。阶段 5 下一步评估材质参数块与代码热重载边界。
+当前验收：Content 包已使用编译元数据轮询和去抖，后台完成 Manifest 图校验、图片解码与 Sprite 规范化；Texture/Sprite/包索引在 Step 与 Draw 之间事务切换，失败保留旧修订。自定义 Sprite Shader 支持安全根文件注册、稳定源码快照、整批 Program 原子替换和驱动错误诊断；投影同步覆盖主 Scene 与 Stencil 重绘。类型化材质参数块以逻辑 Shader 引用保存 CPU 参数，支持多材质共享 Program、按 Revision 批处理和热替换后自动重放。Runner 提供 `--content-hot-reload` 与 `--shader-hot-reload`。阶段 5 下一步聚焦开发期错误呈现与可选的 Shader/Material 构建期校验，暂不进入代码热重载。
 
 ## 设计约束
 

@@ -34,7 +34,7 @@ public sealed class OrbitingSprite : GameInstance
         float phase,
         Vector4 color,
         SpriteRef sprite,
-        ShaderRef? shader = null)
+        MaterialRef? material = null)
         : base(
             objectTypeName: nameof(OrbitingSprite),
             position: center,
@@ -45,7 +45,7 @@ public sealed class OrbitingSprite : GameInstance
         _phase = phase;
         Color = color;
         Sprite = sprite;
-        Shader = shader;
+        Material = material;
     }
 
     /// <summary>GMS Step event: 圆周运动</summary>

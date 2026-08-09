@@ -76,6 +76,12 @@ public class GameInstance
     public ShaderRef? Shader { get; set; }
 
     /// <summary>
+    /// Optional material instance. When set it takes precedence over Shader and supplies typed
+    /// uniform values while preserving a logical reference across shader hot replacement.
+    /// </summary>
+    public MaterialRef? Material { get; set; }
+
+    /// <summary>
     /// 输入提供者（GMS keyboard_check / mouse_x 等价物）。
     /// 由 SceneAggregate.Add/SetInput 自动注入；OnStep 中轮询查询。
     /// </summary>

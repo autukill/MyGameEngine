@@ -181,6 +181,7 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
     private const string PeerShaderName = "regression.reload.peer";
     private SpriteShader? _defaultShader;
     private ShaderLibrary? _shaders;
+    private ShaderMaterial? _material;
     private SpriteBatch? _batch;
     private TextureLibrary? _textures;
     private TextureRef _white;
@@ -206,6 +207,20 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
         _shaders = new ShaderLibrary(gl);
         _shaders.Create(ShaderName, VertexSource, RedFragmentSource);
         _shaders.Create(PeerShaderName, VertexSource, RedFragmentSource);
+        _material = _shaders.CreateMaterial(
+                "regression.reload.material",
+                new ShaderRef(ShaderName),
+                ShaderUniformDefinition.Float("uGain"))
+            .SetFloat("uGain", 1f);
+        try
+        {
+            _material.SetInt("uGain", 1);
+            throw new InvalidOperationException("Material accepted a mismatched uniform type.");
+        }
+        catch (InvalidOperationException exception)
+            when (exception.Message.Contains("not Int", StringComparison.Ordinal))
+        {
+        }
         _initialHandle = _shaders.Resolve(new ShaderRef(ShaderName));
         _peerInitialHandle = _shaders.Resolve(new ShaderRef(PeerShaderName));
         _batch = new SpriteBatch(gl)
@@ -262,7 +277,7 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
         _defaultShader!.Use();
         _defaultShader.SetProjection(projection);
         _batch!.Begin();
-        _batch.SetShader(new ShaderRef(ShaderName));
+        _batch.SetMaterial(_material!.Ref);
         _batch.Draw(
             ResolveWhiteHandle(),
             new Vector2(32, 24),
@@ -309,7 +324,8 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
         in vec4 vColor;
         out vec4 FragColor;
         uniform sampler2D uTexture;
-        void main() { FragColor = texture(uTexture, vUv) * vColor; }
+        uniform float uGain;
+        void main() { FragColor = texture(uTexture, vUv) * vColor * uGain; }
         """;
 
     private const string GreenFragmentSource = """
@@ -318,8 +334,9 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
         in vec4 vColor;
         out vec4 FragColor;
         uniform sampler2D uTexture;
+        uniform float uGain;
         void main() {
-            float value = texture(uTexture, vUv).r * vColor.r;
+            float value = texture(uTexture, vUv).r * vColor.r * uGain;
             FragColor = vec4(0.1, value, 0.1, 1.0);
         }
         """;

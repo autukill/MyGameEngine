@@ -34,6 +34,8 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
     private bool _currentDepthTest;
     private bool _currentDepthWrite;
     private uint _currentShaderHandle = 0;
+    private MaterialRef? _currentMaterial;
+    private long _currentMaterialRevision;
 
     /// <summary>默认 shader（SetShader(null) 时切回；由组合根/Pass 注入）</summary>
     public IShader? DefaultShader { get; set; }
@@ -219,11 +221,34 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
         if (shader is { IsEmpty: false } s && ShaderResolver is not null)
             handle = ShaderResolver.Resolve(s);
 
-        if (handle == _currentShaderHandle) return;
+        if (handle == _currentShaderHandle && _currentMaterial is null) return;
         Flush();
         _currentShaderHandle = handle;
+        _currentMaterial = null;
+        _currentMaterialRevision = 0;
         if (handle != 0) _gl.UseProgram(handle);
         else DefaultShader?.Use();
+    }
+
+    public void SetMaterial(MaterialRef? material)
+    {
+        if (material is not { IsEmpty: false } reference || ShaderResolver is null ||
+            !ShaderResolver.TryResolveMaterial(reference, out ResolvedMaterial resolved))
+        {
+            SetShader(null);
+            return;
+        }
+
+        if (_currentMaterial == reference &&
+            _currentShaderHandle == resolved.ProgramHandle &&
+            _currentMaterialRevision == resolved.ParameterRevision)
+            return;
+
+        Flush();
+        _currentShaderHandle = resolved.ProgramHandle;
+        _currentMaterial = reference;
+        _currentMaterialRevision = resolved.ParameterRevision;
+        ShaderResolver.ApplyMaterial(reference);
     }
 
     private void ApplyBlendMode(BlendMode mode)
@@ -298,6 +323,8 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
         if (_currentShaderHandle != 0)
         {
             _currentShaderHandle = 0;
+            _currentMaterial = null;
+            _currentMaterialRevision = 0;
             DefaultShader?.Use();
         }
     }

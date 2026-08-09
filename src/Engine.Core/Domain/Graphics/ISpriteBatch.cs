@@ -36,4 +36,7 @@ public interface ISpriteBatch
     /// 状态未变化时零开销；变化时自动 Flush 并 UseProgram。
     /// </summary>
     void SetShader(ShaderRef? shader);
+
+    /// <summary>Switch to a logical material; null restores the pass default shader.</summary>
+    void SetMaterial(MaterialRef? material);
 }
