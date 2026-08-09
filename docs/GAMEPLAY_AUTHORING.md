@@ -28,6 +28,8 @@ public override void OnStep(double deltaTime)
 
 `GameplayTimeController` 提供 `(0, 8]` 时间缩放和 owner-aware 暂停；普通实例默认使用 Gameplay 时间，解除暂停等控制器把 `TimeMode` 设为 `Unscaled`。暂停时 Gameplay Step、Alarm、动画和输入边沿冻结，Draw、帧边界提交与 Unscaled 控制器继续。详见 [Gameplay 暂停、时间缩放与回溯方向](GAMEPLAY_TIME_CONTROL.md)。
 
+需要可复现玩法时，通过 `WithFixedUpdateRate` 同时固定 UPS 与 delta；实例从 `SimulationTime` 读取 StepIndex、缩放/非缩放 delta 和累计时间。Owner-local `GameplayRandom` 提供固定 PCG32 序列、范围/概率/几何便利方法及状态恢复。完整约束见 [确定性 Simulation Clock 与 Gameplay Random](DETERMINISTIC_SIMULATION.md)。
+
 ## 实例级 Gameplay Context
 
 Scene 会为已添加或已排队生成的实例注入窄化 `IGameplayContext`。`GameInstance` 子类通过以下 protected API 使用它：

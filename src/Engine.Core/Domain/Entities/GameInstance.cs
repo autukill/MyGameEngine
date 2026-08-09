@@ -194,6 +194,7 @@ public class GameInstance
 
     /// <summary>Most recent Scene time snapshot; default before this Instance joins a Scene.</summary>
     protected GameplayTimeSnapshot GameplayTime => _gameplay?.Time.Current ?? default;
+    protected SimulationClockSnapshot SimulationTime => _gameplay?.Clock.Current ?? default;
 
     /// <summary>Sprite 元数据/帧解析器，由 SceneAggregate 注入。</summary>
     public ISpriteResolver? SpriteResolver { get; set; }

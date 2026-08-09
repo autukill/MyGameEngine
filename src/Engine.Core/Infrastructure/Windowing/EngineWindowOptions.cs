@@ -56,4 +56,26 @@ public record EngineWindowOptions(
 
     public EngineWindowOptions WithFrameStatistics(FrameStatisticsOptions? options = null) =>
         this with { FrameStatistics = options ?? FrameStatisticsOptions.Default };
+
+    /// <summary>
+    /// Couples the native update rate with an exact logical delta for deterministic simulation.
+    /// Rendering remains independently controlled by VSync and FramesPerSecond.
+    /// </summary>
+    public EngineWindowOptions WithFixedUpdateRate(double updatesPerSecond)
+    {
+        if (!double.IsFinite(updatesPerSecond) || updatesPerSecond <= 0d)
+            throw new ArgumentOutOfRangeException(
+                nameof(updatesPerSecond), updatesPerSecond,
+                "Fixed update rate must be finite and positive.");
+        double fixedDeltaTime = 1d / updatesPerSecond;
+        if (!double.IsFinite(fixedDeltaTime) || fixedDeltaTime <= 0d)
+            throw new ArgumentOutOfRangeException(
+                nameof(updatesPerSecond), updatesPerSecond,
+                "Fixed update rate must produce a finite positive delta.");
+        return this with
+        {
+            UpdatesPerSecond = updatesPerSecond,
+            FixedDeltaTime = fixedDeltaTime
+        };
+    }
 }

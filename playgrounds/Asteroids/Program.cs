@@ -16,13 +16,12 @@ internal static class Program
         bool smoke = args.Contains("--smoke", StringComparer.Ordinal);
         bool diagnostics = args.Contains("--diagnostics", StringComparer.Ordinal);
         var queryTelemetry = diagnostics ? new QueryTelemetrySink() : null;
-        EngineWindowOptions options = EngineWindowOptions.Default with
+        EngineWindowOptions options = (EngineWindowOptions.Default with
         {
             Title = "MyGameEngine Playground - Asteroids",
             IsVisible = !smoke,
-            VSync = !smoke,
-            FixedDeltaTime = smoke ? 1d / 60d : null
-        };
+            VSync = !smoke
+        }).WithFixedUpdateRate(60d);
 
         using var game = GameApplication
             .Create(options)

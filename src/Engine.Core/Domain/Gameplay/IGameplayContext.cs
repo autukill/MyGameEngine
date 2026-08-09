@@ -10,6 +10,7 @@ using GameEngine.Core.Domain.ValueObjects;
 public interface IGameplayContext
 {
     GameplayTimeController Time { get; }
+    SimulationClock Clock { get; }
     T Spawn<T>(T instance) where T : GameInstance;
     T Spawn<T>(PrefabRef<T> prefab, Vector2D position) where T : GameInstance;
     T Spawn<T, TArgs>(PrefabRef<T, TArgs> prefab, in TArgs args) where T : GameInstance;

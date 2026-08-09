@@ -74,6 +74,7 @@ GameAssets.Packages.SharedPrimitives
 - `GameplayCooldown` 提供 ready/use/progress/restart/reset 的 owner-local 冷却语义；AirplaneShooter 与 Asteroids 已移除重复的手写浮点计时，并继续继承暂停、时间缩放和 inactive 调度。
 - `GameplayHealth`、`GameplayHealthChange` 与 `IHasGameplayHealth` 提供钳制生命值、一次性耗尽/复活转换和 Tag + capability 的伤害调用方式；不把护甲、来源、死亡表现或 RPG 规则固化进 Core。
 - `InstanceRef<T>` 提供只保存 ID 的强类型弱引用、O(1) Resolve 与类型校验销毁；Asteroids Spawner 通过它跨帧追踪玩家，不保留已脱离 Scene 的对象。
+- `SimulationClock` 在每个 Step 提供稳定 Tick、缩放/非缩放 delta 与累计时间；`WithFixedUpdateRate` 绑定 UPS 和固定 delta，owner-local `GameplayRandom` 以 versioned PCG32 提供可恢复、零分配随机流。
 - 强类型 `GameplayTag` 与 Find/Collision/Area/Radius 对称重载已让横切玩法身份脱离继承树；类型和单 Tag 可组合，Buffer 路径保持 0 B，不提前维护 Tag 索引。
 - 轻量 `GameplayBehavior<TInstance>` 提供强类型 Owner、冻结装配、确定性生命周期和暂停感知调度；`LifetimeBehavior` 已替代两个 Playground 的重复子弹 Alarm，稳态分发保持 0 B。
 - 技能与 Buff 已完成需求分析：推荐独立 Abilities 切片，以固定 BuffContainer/SkillBook 管理动态 Runtime，先验证 Buff 叠层、来源和安全修改，再实现 Skill 提交与游戏专属 Executor；不提前引入万能 Effect DSL 或通用 RPG 属性系统。详见[技能与 Buff 功能设计思考](SKILLS_AND_BUFFS_DESIGN.md)。
@@ -95,7 +96,7 @@ GameAssets.Packages.SharedPrimitives
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：多 Camera/Viewport 路线已经闭环；Gameplay Authoring 已具备查询 Buffer、强类型状态机、暂停时间域、Scene 生命周期零分配、Cooldown、Health/Damage 与强类型 Instance Ref。Gameplay Signal 继续处于需求验证阶段：只有出现一个发布者、至少两个独立消费者，且直接引用或强类型查询明显造成耦合时才进入设计；否则优先继续用普通方法、Ref 与变化结果。暂不展开完整 Skill/Buff、UI、协程或物理系统。当前 1,000 Collider 线性扫描约 0.0209 ms/查询，不提前引入 Spatial Hash；逐帧多区域与 Sprite 异形碰撞继续保持需求记录。
+下一步优先级：Gameplay Authoring 已具备查询 Buffer、状态机、暂停时间域、Cooldown、Health/Damage、Instance Ref，以及确定性 Clock/Random。下一切片优先做“按 Tick 的逻辑输入录制与回放”：记录 Action/Axis 快照，回放时不读取物理设备，并验证相同 seed + 输入流得到相同状态；随后再增加状态 Hash 和首次分叉诊断。Gameplay Signal 继续等待真实一对多用例，不预建全局总线。暂不展开完整 Skill/Buff、UI、协程或物理系统；逐帧异形碰撞继续保持需求记录。
 
 ## 设计约束
 

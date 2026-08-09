@@ -13,14 +13,12 @@ internal static class Program
     private static void Main(string[] args)
     {
         bool smoke = args.Contains("--smoke", StringComparer.Ordinal);
-        var options = smoke
-            ? EngineWindowOptions.Default with
-            {
-                IsVisible = false,
-                VSync = false,
-                FixedDeltaTime = 1d / 60d
-            }
-            : EngineWindowOptions.Default with { Title = "MyGameTemplate" };
+        var options = (EngineWindowOptions.Default with
+        {
+            Title = "MyGameTemplate",
+            IsVisible = !smoke,
+            VSync = !smoke
+        }).WithFixedUpdateRate(60d);
 
         using var game = GameApplication
             .Create(options)

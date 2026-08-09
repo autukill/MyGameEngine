@@ -88,6 +88,7 @@ public class SceneAggregate : IInstanceDrawTracker
     public IEnumerable<GameInstance> ActiveInstances => _instances.Values.Where(i => i.IsActive);
     public int InstanceCount => _instances.Count;
     public GameplayTimeController Time { get; } = new();
+    public SimulationClock Clock { get; } = new();
     public bool GameplayQueryStatisticsEnabled => _gameplayQueryStatisticsEnabled;
 
     // ============ Scene 级生命周期 Hook（委托） ============
@@ -315,6 +316,7 @@ public class SceneAggregate : IInstanceDrawTracker
     {
         if (!_hasStarted) Start();
         GameplayTimeSnapshot time = Time.BeginFrame(deltaTime);
+        Clock.Advance(time);
 
         if (!time.IsPaused)
             OnBeforeStep?.Invoke(time.DeltaTime);
@@ -1584,6 +1586,7 @@ public class SceneAggregate : IInstanceDrawTracker
     private sealed class SceneGameplayContext(SceneAggregate owner) : IGameplayContext
     {
         public GameplayTimeController Time => owner.Time;
+        public SimulationClock Clock => owner.Clock;
 
         public T Spawn<T>(T instance) where T : GameInstance => owner.QueueSpawn(instance);
 

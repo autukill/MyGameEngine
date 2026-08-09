@@ -4,6 +4,19 @@
 
 这些配方来自可运行 Playground，目标是让常见玩法代码短、明确且保持帧边界语义。完整项目见 [`AirplaneShooter`](../playgrounds/AirplaneShooter/README.md) 与 [`Asteroids`](../playgrounds/Asteroids/README.md)。
 
+## 固定 Tick 与确定性随机
+
+```csharp
+EngineWindowOptions options = EngineWindowOptions.Default
+    .WithFixedUpdateRate(60d);
+
+private readonly GameplayRandom random = new(1234UL);
+float speed = random.Range(80f, 120f);
+bool rareSpawn = random.Chance(0.05f);
+```
+
+固定更新率定义模拟节奏，Owner-local seed 定义随机序列。不要在玩法代码中读取 `DateTime.Now`、`Stopwatch` 或 `Random.Shared`。需要重放某段生成序列时保存 `GameplayRandomState`；完整边界见 [确定性 Simulation](DETERMINISTIC_SIMULATION.md)。
+
 ## 使用 deltaTime 移动
 
 ```csharp

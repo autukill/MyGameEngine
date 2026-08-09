@@ -34,6 +34,7 @@ internal static class Program
         TestGameplayCooldown();
         TestGameplayHealth();
         TestInstanceReferences();
+        TestDeterministicSimulationPrimitives();
         TestGameplayTags();
         TestGameplayBehaviors();
         TestSceneCatalogAndPrefabs();
@@ -448,6 +449,170 @@ internal static class Program
         scene.Destroy(nearEnemy.Id);
         Check(scene.CountInstances<TaggedProbe>(enemy) == 2,
             "Destroyed tagged instances disappear from later queries");
+    }
+
+    private static void TestDeterministicSimulationPrimitives()
+    {
+        Console.WriteLine("3e. Deterministic simulation clock and random");
+        EngineWindowOptions fixedOptions = EngineWindowOptions.Default.WithFixedUpdateRate(60d);
+        Check(fixedOptions.UpdatesPerSecond == 60d &&
+              fixedOptions.FixedDeltaTime == 1d / 60d,
+            "Fixed update configuration couples native UPS and logical delta");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => EngineWindowOptions.Default.WithFixedUpdateRate(0d),
+            "Fixed update rate must be finite and positive");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => EngineWindowOptions.Default.WithFixedUpdateRate(double.Epsilon),
+            "Fixed update rate must produce a representable delta");
+
+        var clockProbe = new SimulationClockProbe();
+        var scene = new SceneAggregate("SimulationClock");
+        scene.Add(clockProbe);
+        Check(scene.Clock.StepIndex == 0 && scene.Clock.UnscaledElapsedSeconds == 0d,
+            "Simulation clock starts before Tick zero has advanced");
+
+        scene.PerformStep(0.25d);
+        Check(scene.Clock.StepIndex == 1 && scene.Clock.UnscaledDeltaSeconds == 0.25d &&
+              scene.Clock.GameplayDeltaSeconds == 0.25d &&
+              scene.Clock.UnscaledElapsedSeconds == 0.25d &&
+              scene.Clock.GameplayElapsedSeconds == 0.25d &&
+              clockProbe.Observed == scene.Clock.Current,
+            "Every instance observes the same clock snapshot for one Step");
+
+        scene.Time.TimeScale = 0.5d;
+        scene.PerformStep(0.2d);
+        Check(scene.Clock.StepIndex == 2 && scene.Clock.UnscaledElapsedSeconds == 0.45d &&
+              Math.Abs(scene.Clock.GameplayElapsedSeconds - 0.35d) < 0.000001d &&
+              scene.Clock.GameplayDeltaSeconds == 0.1d && scene.Clock.TimeScale == 0.5d,
+            "Clock accumulates scaled Gameplay time from the existing time controller");
+
+        var pause = new GameplayPauseKey("simulation-clock-test");
+        scene.Time.Pause(pause);
+        scene.PerformStep(0.4d);
+        Check(scene.Clock.StepIndex == 3 && scene.Clock.IsPaused &&
+              Math.Abs(scene.Clock.UnscaledElapsedSeconds - 0.85d) < 0.000001d &&
+              Math.Abs(scene.Clock.GameplayElapsedSeconds - 0.35d) < 0.000001d &&
+              clockProbe.Observed.StepIndex == 2,
+            "Paused Steps advance Tick and Unscaled time while Gameplay instances remain frozen");
+
+        scene.TransitionTo("ClockContinues");
+        Check(scene.Clock.StepIndex == 3 &&
+              Math.Abs(scene.Clock.UnscaledElapsedSeconds - 0.85d) < 0.000001d,
+            "Scene transitions preserve the application simulation timeline");
+        var exhaustedClockScene = new SceneAggregate("ClockOverflow");
+        exhaustedClockScene.PerformStep(double.MaxValue);
+        CheckThrows<InvalidOperationException>(
+            () => exhaustedClockScene.PerformStep(double.MaxValue),
+            "Simulation clock rejects elapsed-time overflow");
+
+        var random = new GameplayRandom(0xA57E201DUL);
+        uint[] expected =
+        [
+            3639831199U,
+            2639829579U,
+            1201333440U,
+            179796295U,
+            4267463458U,
+            1499256909U
+        ];
+        uint[] actual = new uint[expected.Length];
+        for (int i = 0; i < actual.Length; i++) actual[i] = random.NextUInt();
+        Check(actual.SequenceEqual(expected) && GameplayRandom.AlgorithmVersion == 1,
+            "PCG32 exposes one versioned cross-runtime golden bit sequence");
+
+        random.Reset(0xA57E201DUL);
+        Check(random.NextUInt() == expected[0],
+            "Reset reproduces the stream from its seed");
+        GameplayRandomState saved = random.CaptureState();
+        uint afterSave = random.NextUInt();
+        random.RestoreState(saved);
+        Check(random.NextUInt() == afterSave,
+            "Captured random state resumes at the exact next value");
+
+        var sameSeedA = new GameplayRandom(42UL);
+        var sameSeedB = new GameplayRandom(42UL);
+        var differentSeed = new GameplayRandom(43UL);
+        Check(sameSeedA.NextUInt() == sameSeedB.NextUInt() &&
+              sameSeedA.NextUInt() == sameSeedB.NextUInt() &&
+              differentSeed.NextUInt() != new GameplayRandom(42UL).NextUInt(),
+            "Owner-local streams match by seed and separate across seeds");
+
+        var ranges = new GameplayRandom(7UL);
+        bool rangesValid = true;
+        for (int i = 0; i < 1_024; i++)
+        {
+            int integer = ranges.Range(-9, 13);
+            float scalar = ranges.Range(-2.5f, 4.75f);
+            rangesValid &= integer >= -9 && integer < 13 &&
+                           scalar >= -2.5f && scalar < 4.75f;
+        }
+        Check(rangesValid && !ranges.Chance(0f) && ranges.Chance(1f),
+            "Integer, float, and probability helpers preserve their documented bounds");
+
+        Vector2D direction = ranges.Direction2D();
+        Vector2D point = ranges.InsideCircle(5f);
+        Check(Math.Abs(direction.Length() - 1f) < 0.00001f && point.Length() <= 5.00001f,
+            "Direction and circle helpers produce valid gameplay geometry");
+
+        int[] choices = [10, 20, 30, 40];
+        int chosen = ranges.Choose<int>(choices);
+        int[] shuffledA = [1, 2, 3, 4, 5];
+        int[] shuffledB = [1, 2, 3, 4, 5];
+        var shuffleA = new GameplayRandom(99UL);
+        var shuffleB = new GameplayRandom(99UL);
+        shuffleA.Shuffle<int>(shuffledA);
+        shuffleB.Shuffle<int>(shuffledB);
+        Check(choices.Contains(chosen) && shuffledA.SequenceEqual(shuffledB) &&
+              shuffledA.Order().SequenceEqual(new[] { 1, 2, 3, 4, 5 }),
+            "Choose and Fisher-Yates Shuffle are deterministic and preserve values");
+
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => ranges.NextInt(0),
+            "Random integer maximum must be positive");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => ranges.Range(3, 3),
+            "Random integer ranges must be non-empty");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => ranges.Range(float.NaN, 1f),
+            "Random float bounds must be finite");
+        GameplayRandomState beforeInvalidRange = ranges.CaptureState();
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => ranges.Range(-float.MaxValue, float.MaxValue),
+            "Random float range rejects an overflowing width");
+        Check(ranges.CaptureState() == beforeInvalidRange,
+            "Rejected random ranges do not advance the stream");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => ranges.Chance(1.1f),
+            "Random probability must remain within zero and one");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => ranges.InsideCircle(-1f),
+            "Random circle radius cannot be negative");
+        CheckThrows<ArgumentException>(
+            () => ranges.Choose<int>(ReadOnlySpan<int>.Empty),
+            "Random choice rejects an empty span");
+
+        var allocationRandom = new GameplayRandom(1234UL);
+        int[] allocationValues = [1, 2, 3, 4, 5, 6, 7, 8];
+        for (int i = 0; i < 64; i++)
+        {
+            _ = allocationRandom.NextUInt();
+            _ = allocationRandom.Range(-100, 100);
+            _ = allocationRandom.Range(-1f, 1f);
+            _ = allocationRandom.Choose<int>(allocationValues);
+            allocationRandom.Shuffle<int>(allocationValues);
+        }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            _ = allocationRandom.NextUInt();
+            _ = allocationRandom.Range(-100, 100);
+            _ = allocationRandom.Range(-1f, 1f);
+            _ = allocationRandom.Choose<int>(allocationValues);
+            allocationRandom.Shuffle<int>(allocationValues);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Deterministic random helpers remain allocation-free ({allocated:N0} B)");
     }
 
     private static void TestInstanceReferences()
@@ -1373,6 +1538,13 @@ internal static class Program
             Destroy(SpawnedReference);
             ResolvedAfterDestroyRequest = Resolve(SpawnedReference) is not null;
         }
+    }
+
+    private sealed class SimulationClockProbe : GameInstance
+    {
+        public SimulationClockSnapshot Observed { get; private set; }
+
+        public override void OnStep(double deltaTime) => Observed = SimulationTime;
     }
 
     private sealed class TaggedProbe : GameInstance
