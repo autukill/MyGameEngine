@@ -170,7 +170,7 @@ dotnet run --project src/MyGame.Runner/MyGame.Runner.csproj -- --smoke
 
 图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 的源包包含双帧 WebP 图集和两张独立 WebP 帧，Build 自动在 `obj` 生成单页 Atlas 并复制到 `AssetsCompiled`；这些项目需要本地图形窗口人工确认。
 
-七个确定性真实 OpenGL 场景可自动执行 PNG 像素回归：
+九个确定性真实 OpenGL 场景可自动执行 PNG 像素回归：
 
 ```bash
 dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj -- --verify
@@ -285,9 +285,8 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 独立 `Engine.PerformanceBenchmarks` 已建立多 Render View Release 基线；当前数据不支持引入跨 View 缓存。
-2. 保持唯一 Presentation 屏幕终端，并补充双视图 resize、效果释放的 GPU 回归场景。
-3. 完成上述多 View 正确性闭环后，回到直接改善 Gameplay Authoring 的能力。
+1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
+2. 回到直接改善 Gameplay Authoring 的能力，优先选择无需 UI、可在 Playground 中马上验证的高频玩法原语。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
 

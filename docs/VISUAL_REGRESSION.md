@@ -56,8 +56,11 @@ dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTes
 6. `bloom-ping-pong`：覆盖 Bloom 活跃、resize 和 release；活跃时断言恰好租用 Bright/Ping/Pong 三个目标，Glow 由显式 Presentation Additive 呈现。
 7. `render-surface-chain`：真实执行 SceneColor → Bloom(main).glow → Bloom(secondary).glow，断言两个效果占用六个租约，并由单一 Presentation 终端稳定组合。
 8. `hdr-tone-mapping`：真实执行 RGBA16F Scene → HDR Bloom → Tone Mapping → Presentation，同时把 `SceneGui` 作为曝光后 LDR 层；覆盖 ACES、低曝光 Reinhard、resize 与效果 release。
+9. `multi-render-view-lifecycle`：主 View 执行 HDR Bloom + Tone Mapping，0.75 RenderScale observer 只执行 Tone Mapping；覆盖双 View 无缝呈现、resize 后三组租约尺寸、逐 View release，以及最后所有目标均归还 Pool 的状态。
 
 checkpoint 可以携带独立的 `PixelComparisonOptions`。Bloom 的 active 与 resized-active 使用 soft `3`、hard `12`、差异比例 `0.5%`；release 和其他场景继续使用默认容差，因此浮点采样差异不会放宽整个回归套件。
+
+`RenderTargetPool.TotalCount` 包含活动租约和可复用缓存。结构性 owner 释放为了原子性会先创建新图、再归还旧图，因此释放过程中 Total 可能增长；无泄漏的不变量是 `LeasedCount == 0` 且 `AvailableCount == TotalCount`，最终由 Pool 的 `Dispose` 统一释放缓存。
 
 ## 新增场景
 

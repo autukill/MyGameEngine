@@ -75,6 +75,7 @@
 - Layer 索引现已在实例加入、切层和改 Depth 时维护稳定有序关系，普通 View Draw 不再重复排序；相同 Depth 保持 Scene 加入顺序，同帧后续 Layer 仍能看到变更。10,000 实例双 View 本机调度由 Layer 索引阶段约 1.185 ms 进一步降至 0.470 ms，排序比较为 0/0。
 - Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；`UseRenderViews` 可声明每个 View 的静态跟随策略，Hosting 惰性创建控制器，Gameplay 仍显式提供和切换运行时目标。
 - 独立 `Engine.PerformanceBenchmarks` 已把多 View 性能实验与 DDD 烟测分离：100/1,000/10,000 实例场景同时报告无剔除/剔除耗时、每 View 候选/Draw/拒绝数与分配量，并以确定性计数、零排序和 `0 B/frame` 作为回归守卫。
+- GPU 回归新增 `multi-render-view-lifecycle`：真实组合主 View HDR Bloom + Tone Mapping 与 0.75 RenderScale observer Tone Mapping，resize 后验证五个活动租约的精确尺寸，逐 View 释放后验证活动效果和租约归零、缓存全部回到 Pool。
 
 ## 仍在演进
 
@@ -82,7 +83,7 @@
 - Stencil 暂时只支持 Circle 与 SpriteAlpha，不支持软边、任意矢量路径或布尔几何运算。
 - Atlas 暂不支持旋转、trim 或相同像素内容哈希去重。
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
-- 各交互式 VisualTests 仍需人工观察；自动基线已覆盖八条高价值确定性路径，但无显示器 CI 环境尚未固化。
+- 各交互式 VisualTests 仍需人工观察；自动基线已覆盖九条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - Hosting v1 仅支持单窗口；已有声明式及强类型参数 Scene 切换和无 UI 暂停策略，但尚无 Scene 栈或后台加载。
 - 多 Render View 可选择不同 Scene Layer 与 HDR/Bloom/Tone Mapping Profile；Layer 索引与 Camera 粗剔除已减少每 View 工作量，但仍独立检查、排序与重绘可见实例，Stencil 暂只属于主 View。
 
@@ -93,7 +94,8 @@
 3. 已允许主 View 使用 HDR/Stencil，并让次级 View 显式选择 Direct 或独立 HDR/Bloom/Tone Mapping；效果租约跟随各自输入 Surface 尺寸。
 4. 已完成 Layer 过滤、小地图式样例、显式效果成本、Scene Draw 分项诊断、Layer/Depth 有序索引、保守 Camera 可见性剔除，以及独立 Camera 跟随/Dead Zone/边界/震屏控制器。
 5. 已把静态跟随策略接入声明式 RenderView 配置，同时保留 Gameplay 运行时换目标的出口。
-6. 已建立独立多 View 稳定基准；本机 10,000 实例、双 View、剔除路径约 `0.431 ms` 且 `0 B/frame`，不足以证明跨 View 缓存值得引入，当前明确保留简单逐 View 检查。下一步补充双 View resize、效果释放的 GPU 回归。
+6. 已建立独立多 View 稳定基准；本机 10,000 实例、双 View、剔除路径约 `0.431 ms` 且 `0 B/frame`，不足以证明跨 View 缓存值得引入，当前明确保留简单逐 View 检查。
+7. 已完成双 View resize、不同 RenderScale 效果租约和逐 View release 的 GPU 像素回归。多 Camera/View 当前里程碑闭环，下一步回到 Gameplay Authoring Experience。
 
 ## 已知限制
 

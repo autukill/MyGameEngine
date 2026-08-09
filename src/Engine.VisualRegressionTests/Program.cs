@@ -60,6 +60,7 @@ internal static class Program {
         yield return new BloomPingPongScenario();
         yield return new RenderSurfaceChainScenario();
         yield return new HdrToneMappingScenario();
+        yield return new MultiRenderViewLifecycleScenario();
     }
 
     private static void RunComparerSelfChecks() {
