@@ -12,8 +12,9 @@ public sealed record StencilMaskEffectDescriptor : IRenderEffectDescriptor
         RenderSurfaceKey.FromEffect(key, "mask");
 
     public RenderEffectKey Key { get; }
-    public Vector2D Center { get; }
-    public float Radius { get; }
+    public StencilMaskGeometry Geometry { get; }
+    public Vector2D Center => Geometry.Center;
+    public float Radius => Geometry.Radius;
     public StencilMaskState State { get; }
 
     public StencilMaskEffectDescriptor(
@@ -21,16 +22,21 @@ public sealed record StencilMaskEffectDescriptor : IRenderEffectDescriptor
         Vector2D center,
         float radius,
         StencilMaskState state)
+        : this(key, StencilMaskGeometry.Circle(center, radius), state)
+    {
+    }
+
+    public StencilMaskEffectDescriptor(
+        RenderEffectKey key,
+        StencilMaskGeometry geometry,
+        StencilMaskState state)
     {
         if (key.Kind != EffectKind)
             throw new ArgumentException($"Stencil descriptor requires effect kind '{EffectKind}'.", nameof(key));
-        if (!float.IsFinite(center.X) || !float.IsFinite(center.Y))
-            throw new ArgumentException("Mask center must be finite.", nameof(center));
-        if (!float.IsFinite(radius) || radius <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(radius));
+        if (!geometry.IsValid)
+            throw new ArgumentException("Mask geometry must be initialized.", nameof(geometry));
         Key = key;
-        Center = center;
-        Radius = radius;
+        Geometry = geometry;
         State = state;
     }
 }

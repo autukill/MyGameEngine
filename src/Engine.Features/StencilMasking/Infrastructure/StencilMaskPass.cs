@@ -17,7 +17,8 @@ public sealed class StencilMaskPass : RenderPass
     private readonly Camera2D _camera;
     private readonly RenderTarget2D _output;
     private readonly SpriteBatch _batch;
-    private readonly IShader _shader;
+    private readonly IShader _sceneShader;
+    private readonly StencilMaskShader _maskShader;
     private readonly uint _whiteTextureHandle;
     private StencilMaskEffectDescriptor[] _masks = Array.Empty<StencilMaskEffectDescriptor>();
     private Vector2 _directCenter;
@@ -35,15 +36,17 @@ public sealed class StencilMaskPass : RenderPass
         SceneAggregate scene,
         Camera2D camera,
         RenderTarget2D output,
-        IShader shader,
+        IShader sceneShader,
+        StencilMaskShader maskShader,
         WhiteTexture white,
         ISpriteResolver? spriteResolver = null) : base(name)
     {
         _scene = scene;
         _camera = camera;
         _output = output;
-        _batch = new SpriteBatch(gl) { DefaultShader = shader, SpriteResolver = spriteResolver };
-        _shader = shader;
+        _batch = new SpriteBatch(gl) { DefaultShader = sceneShader, SpriteResolver = spriteResolver };
+        _sceneShader = sceneShader;
+        _maskShader = maskShader;
         _whiteTextureHandle = white.Handle;
     }
 
@@ -53,7 +56,8 @@ public sealed class StencilMaskPass : RenderPass
         SceneAggregate scene,
         Camera2D camera,
         RenderTarget2D output,
-        IShader shader,
+        IShader sceneShader,
+        StencilMaskShader maskShader,
         TextureRef whiteTexture,
         ITextureResolver textureResolver,
         ISpriteResolver? spriteResolver = null) : base(name)
@@ -64,8 +68,9 @@ public sealed class StencilMaskPass : RenderPass
         _scene = scene;
         _camera = camera;
         _output = output;
-        _batch = new SpriteBatch(gl) { DefaultShader = shader, SpriteResolver = spriteResolver };
-        _shader = shader;
+        _batch = new SpriteBatch(gl) { DefaultShader = sceneShader, SpriteResolver = spriteResolver };
+        _sceneShader = sceneShader;
+        _maskShader = maskShader;
         _whiteTextureHandle = resolved.Handle;
     }
 
@@ -104,23 +109,13 @@ public sealed class StencilMaskPass : RenderPass
             Silk.NET.OpenGL.ClearBufferMask.StencilBufferBit));
         BlendState.ColorMaskDisabled.Apply(gl);
         DepthStencilState.StencilWrite((int)State.StencilRef, State.MaskBits).Apply(gl);
-        _shader.Use();
-        _shader.SetProjection(_camera.GetViewProjectionMatrix());
-
-        _batch.Begin();
-        if (_masks.Length > 0)
-        {
-            foreach (var mask in _masks)
-                DrawMask(new Vector2(mask.Center.X, mask.Center.Y), mask.Radius);
-        }
-        else if (_hasDirectMask)
-            DrawMask(_directCenter, _directRadius);
-        _batch.End();
+        DrawMaskGeometry();
 
         BlendState.AlphaBlend.Apply(gl);
         GetTestState(State).Apply(gl);
-        _shader.Use();
-        _shader.SetProjection(_camera.GetViewProjectionMatrix());
+        _sceneShader.Use();
+        _sceneShader.SetProjection(_camera.GetViewProjectionMatrix());
+        _batch.DefaultShader = _sceneShader;
         _batch.Begin();
         _scene.DrawActive(_batch);
         _batch.End();
@@ -129,7 +124,55 @@ public sealed class StencilMaskPass : RenderPass
         BlendState.AlphaBlend.Apply(gl);
     }
 
-    private void DrawMask(Vector2 center, float radius) =>
+    private void DrawMaskGeometry()
+    {
+        var projection = _camera.GetViewProjectionMatrix();
+        _batch.DefaultShader = _maskShader;
+        _maskShader.SetProjection(projection);
+        _maskShader.SetGeometry(StencilMaskGeometryKind.Circle);
+        _batch.Begin();
+        if (_masks.Length > 0)
+        {
+            foreach (var mask in _masks)
+            {
+                if (mask.Geometry.Kind == StencilMaskGeometryKind.Circle)
+                    DrawCircle(
+                        new Vector2(mask.Geometry.Center.X, mask.Geometry.Center.Y),
+                        mask.Geometry.Radius);
+            }
+        }
+        else if (_hasDirectMask)
+            DrawCircle(_directCenter, _directRadius);
+        _batch.End();
+
+        if (!_masks.Any(mask => mask.Geometry.Kind == StencilMaskGeometryKind.SpriteAlpha))
+            return;
+
+        _maskShader.SetGeometry(StencilMaskGeometryKind.SpriteAlpha);
+        _batch.Begin();
+        float currentCutoff = float.NaN;
+        foreach (var mask in _masks)
+        {
+            var geometry = mask.Geometry;
+            if (geometry.Kind != StencilMaskGeometryKind.SpriteAlpha) continue;
+            if (geometry.AlphaCutoff != currentCutoff)
+            {
+                _batch.Flush();
+                _maskShader.SetGeometry(StencilMaskGeometryKind.SpriteAlpha, geometry.AlphaCutoff);
+                currentCutoff = geometry.AlphaCutoff;
+            }
+            _batch.DrawSpriteCommand(new SpriteDrawCommand(
+                geometry.Sprite,
+                geometry.SubImage,
+                new Vector2(geometry.Transform.Position.X, geometry.Transform.Position.Y),
+                new Vector2(geometry.Transform.Scale.X, geometry.Transform.Scale.Y),
+                geometry.Transform.Rotation,
+                Vector4.One));
+        }
+        _batch.End();
+    }
+
+    private void DrawCircle(Vector2 center, float radius) =>
         _batch.Draw(
             _whiteTextureHandle,
             center - new Vector2(radius, radius),

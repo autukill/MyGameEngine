@@ -22,11 +22,10 @@ public sealed class ScenePipelineBuilder : IDisposable
 
     public ScenePipelineBuilder(
         RenderPipeline pipeline,
-        ViewportCompositorPass compositor,
         IRenderTargetPool targets,
         int width,
         int height)
-        : this(new RenderEffectGraphEditor(pipeline, compositor), targets, width, height)
+        : this(new RenderEffectGraphEditor(pipeline), targets, width, height)
     {
     }
 
@@ -304,7 +303,6 @@ public sealed class ScenePipelineBuilder : IDisposable
         IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
     {
         var passHandles = new List<RenderPassHandle>(runtime.Passes.Count);
-        var sourceHandles = new List<CompositeSourceHandle>(runtime.CompositeSources.Count);
         int attachedPasses = 0;
         try
         {
@@ -313,13 +311,9 @@ public sealed class ScenePipelineBuilder : IDisposable
                 passHandles.Add(_graph.AddPass(pass));
                 attachedPasses++;
             }
-            foreach (var source in runtime.CompositeSources)
-                sourceHandles.Add(_graph.AddCompositeSource(source));
         }
         catch
         {
-            for (int i = sourceHandles.Count - 1; i >= 0; i--)
-                _graph.RemoveCompositeSource(sourceHandles[i]);
             for (int i = passHandles.Count - 1; i >= 0; i--)
                 _graph.RemovePass(passHandles[i]);
             for (int i = attachedPasses; i < runtime.Passes.Count; i++)
@@ -332,14 +326,11 @@ public sealed class ScenePipelineBuilder : IDisposable
             runtime,
             plan,
             new Dictionary<InstanceId, IRenderEffectDescriptor>(owners),
-            passHandles,
-            sourceHandles);
+            passHandles);
     }
 
     private void Detach(ActiveEffect effect)
     {
-        for (int i = effect.SourceHandles.Count - 1; i >= 0; i--)
-            _graph.RemoveCompositeSource(effect.SourceHandles[i]);
         for (int i = effect.PassHandles.Count - 1; i >= 0; i--)
             _graph.RemovePass(effect.PassHandles[i]);
         effect.Runtime.Dispose();
@@ -362,7 +353,7 @@ public sealed class ScenePipelineBuilder : IDisposable
         if (runtime.Key != key)
             throw new InvalidOperationException(
                 $"Effect factory returned runtime '{runtime.Key}' for requested key '{key}'.");
-        if (runtime.Passes is null || runtime.CompositeSources is null || runtime.Outputs is null)
+        if (runtime.Passes is null || runtime.Outputs is null)
             throw new InvalidOperationException(
                 $"Effect runtime '{key}' returned a null collection.");
         if (!runtime.Outputs.Select(output => output.Key).SequenceEqual(plan.Outputs))
@@ -424,20 +415,17 @@ public sealed class ScenePipelineBuilder : IDisposable
         public RenderEffectPlan Plan { get; }
         public Dictionary<InstanceId, IRenderEffectDescriptor> Owners { get; set; }
         public IReadOnlyList<RenderPassHandle> PassHandles { get; }
-        public IReadOnlyList<CompositeSourceHandle> SourceHandles { get; }
 
         public ActiveEffect(
             IRenderEffectRuntime runtime,
             RenderEffectPlan plan,
             Dictionary<InstanceId, IRenderEffectDescriptor> owners,
-            IReadOnlyList<RenderPassHandle> passHandles,
-            IReadOnlyList<CompositeSourceHandle> sourceHandles)
+            IReadOnlyList<RenderPassHandle> passHandles)
         {
             Runtime = runtime;
             Plan = plan;
             Owners = owners;
             PassHandles = passHandles;
-            SourceHandles = sourceHandles;
         }
     }
 }

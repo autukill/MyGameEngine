@@ -55,6 +55,7 @@ internal static class Program {
         yield return new SpriteOriginTransformScenario();
         yield return new StencilOwnerLifecycleScenario();
         yield return new DynamicEffectResizeScenario();
+        yield return new StencilSpriteAlphaScenario();
         yield return new BloomPingPongScenario();
         yield return new RenderSurfaceChainScenario();
         yield return new HdrToneMappingScenario();

@@ -18,6 +18,10 @@
     <Project Path="src/Engine.Features/RenderPipeline.VisualTests/RenderPipeline.VisualTests.csproj" />
     <Project Path="src/Engine.Features/RenderPipeline/RenderPipeline.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/Presentation/">
+    <Project Path="src/Engine.Features/Presentation.Tests/Presentation.Tests.csproj" />
+    <Project Path="src/Engine.Features/Presentation/Presentation.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/SceneSystem/">
     <Project Path="src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csproj" />
     <Project Path="src/Engine.Features/SceneSystem.VisualTests/SceneSystem.VisualTests.csproj" />

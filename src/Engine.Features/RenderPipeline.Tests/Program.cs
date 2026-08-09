@@ -508,8 +508,6 @@ internal static class Program
     {
         public RenderEffectKey Key { get; }
         public IReadOnlyList<RenderPass> Passes { get; }
-        public IReadOnlyList<RenderEffectCompositeSource> CompositeSources { get; } =
-            Array.Empty<RenderEffectCompositeSource>();
         public IReadOnlyList<RenderEffectOutput> Outputs { get; } =
             Array.Empty<RenderEffectOutput>();
         public int OwnerCount { get; private set; }
@@ -568,9 +566,6 @@ internal static class Program
             pass.Dispose();
             return true;
         }
-        public CompositeSourceHandle AddCompositeSource(in RenderEffectCompositeSource source) =>
-            throw new InvalidOperationException("Fake runtime has no composite sources.");
-        public bool RemoveCompositeSource(CompositeSourceHandle handle) => false;
     }
 
     private sealed class FakeTargetPool : IRenderTargetPool

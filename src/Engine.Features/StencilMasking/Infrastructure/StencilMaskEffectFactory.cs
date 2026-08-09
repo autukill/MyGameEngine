@@ -16,9 +16,10 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
     private readonly SceneAggregate _scene;
     private readonly Camera2D _camera;
     private readonly IShader _spriteShader;
+    private readonly StencilMaskShader _maskShader;
     private readonly TextureRef _whiteTexture;
     private readonly ITextureResolver _textures;
-    private readonly ISpriteResolver? _sprites;
+    private readonly ISpriteResolver _sprites;
 
     public string Kind => StencilMaskEffectDescriptor.EffectKind;
 
@@ -27,24 +28,27 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         SceneAggregate scene,
         Camera2D camera,
         IShader spriteShader,
+        StencilMaskShader maskShader,
         TextureRef whiteTexture,
         ITextureResolver textures,
-        ISpriteResolver? sprites = null)
+        ISpriteResolver sprites)
     {
         _gl = gl;
         _scene = scene;
         _camera = camera;
         _spriteShader = spriteShader;
+        _maskShader = maskShader ?? throw new ArgumentNullException(nameof(maskShader));
         _whiteTexture = whiteTexture;
         _textures = textures;
-        _sprites = sprites;
+        _sprites = sprites ?? throw new ArgumentNullException(nameof(sprites));
     }
 
     public RenderEffectPlan Plan(
         RenderEffectKey key,
         IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
     {
-        StencilMaskEffectPolicy.ValidateAndOrder(key, owners);
+        var descriptors = StencilMaskEffectPolicy.ValidateAndOrder(key, owners);
+        ValidateSpriteMasks(descriptors);
         return new RenderEffectPlan(
             key,
             inputSurfaces: null,
@@ -60,6 +64,7 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         IReadOnlyDictionary<InstanceId, IRenderEffectDescriptor> owners)
     {
         var descriptors = StencilMaskEffectPolicy.ValidateAndOrder(key, owners);
+        ValidateSpriteMasks(descriptors);
         RenderTargetLease? maskLease = null;
         StencilMaskPass? stencilPass = null;
         try
@@ -75,6 +80,7 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
                 _camera,
                 maskLease.Target,
                 _spriteShader,
+                _maskShader,
                 _whiteTexture,
                 _textures,
                 _sprites);
@@ -86,14 +92,6 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
                 key,
                 stencilPass,
                 passes,
-                new[]
-                {
-                    new RenderEffectCompositeSource(
-                        maskLease.Target,
-                        ViewportRect.FullScreen,
-                        BlendState.AlphaBlend,
-                        Order: 100)
-                },
                 new[]
                 {
                     new RenderEffectOutput(
@@ -110,6 +108,18 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         }
     }
 
+    private void ValidateSpriteMasks(IEnumerable<StencilMaskEffectDescriptor> descriptors)
+    {
+        foreach (var descriptor in descriptors)
+        {
+            var geometry = descriptor.Geometry;
+            if (geometry.Kind == StencilMaskGeometryKind.SpriteAlpha &&
+                !_sprites.TryGetMetadata(geometry.Sprite, out _))
+                throw new InvalidOperationException(
+                    $"Stencil mask Sprite '{geometry.Sprite}' is not registered.");
+        }
+    }
+
     private sealed class StencilMaskEffectRuntime : IRenderEffectRuntime
     {
         private readonly StencilMaskPass _stencilPass;
@@ -117,21 +127,18 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
 
         public RenderEffectKey Key { get; }
         public IReadOnlyList<RenderPass> Passes { get; }
-        public IReadOnlyList<RenderEffectCompositeSource> CompositeSources { get; }
         public IReadOnlyList<RenderEffectOutput> Outputs { get; }
 
         public StencilMaskEffectRuntime(
             RenderEffectKey key,
             StencilMaskPass stencilPass,
             IReadOnlyList<RenderPass> passes,
-            IReadOnlyList<RenderEffectCompositeSource> compositeSources,
             IReadOnlyList<RenderEffectOutput> outputs,
             RenderTargetLease maskLease)
         {
             Key = key;
             _stencilPass = stencilPass;
             Passes = passes;
-            CompositeSources = compositeSources;
             Outputs = outputs;
             _maskLease = maskLease;
         }

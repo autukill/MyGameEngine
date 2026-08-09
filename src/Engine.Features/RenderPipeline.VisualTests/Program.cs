@@ -13,6 +13,9 @@ using GameEngine.Features.Bloom.Application;
 using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.Bloom.Infrastructure;
 using GameEngine.Features.Camera.Domain;
+using GameEngine.Features.Presentation.Application;
+using GameEngine.Features.Presentation.Domain;
+using GameEngine.Features.Presentation.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 
@@ -22,7 +25,7 @@ using GameEngine.Features.RenderPipeline.Infrastructure;
 /// 展示内容：
 ///   - Pass 1: SceneRenderPass → RT_Scene  (场景实例：背景方块 + 高亮光源)
 ///   - Pass 2: BloomPass 内部执行 Bright + Horizontal/Vertical Ping-Pong
-///   - Pass 3: CompositorPass → 屏幕 (RT_Scene Opaque 打底 + RT_Bloom Additive 叠加)
+///   - Pass 3: Presentation → 屏幕 (SceneColor Opaque + Bloom.glow Additive)
 ///   - 鼠标移动高亮光源
 ///   - ESC 退出
 /// </summary>
@@ -89,6 +92,7 @@ internal static class Program
         _scene.Add(new BloomController(
             _scene.RaiseEvent,
             new BloomSettings(0.1f, 1.8f, 1.25f, 2, BloomResolution.Half)));
+        _scene.Add(new ScenePresentationController(_scene.RaiseEvent));
 
         _rtScene = new RenderTarget2D(gl, vw, vh, withDepthStencil: true);
         _targetPool = new RenderTargetPool(gl);
@@ -97,16 +101,13 @@ internal static class Program
         var scenePass = new SceneRenderPass("ScenePass", gl, _scene, _camera, _rtScene);
 
         // Bloom Pass 由 ScenePipelineBuilder 根据实例请求动态装配。
-        var compositorPass = new ViewportCompositorPass("CompositorPass", gl, _blitShader, _batch);
-        compositorPass.AddSource(_rtScene, ViewportRect.FullScreen, BlendState.Opaque);
-
         _pipeline = new RenderPipeline(gl, vw, vh);
         _pipeline.AddPass(scenePass);
-        _pipeline.AddPass(compositorPass);
-        _builder = new ScenePipelineBuilder(_pipeline, compositorPass, _targetPool, vw, vh);
+        _builder = new ScenePipelineBuilder(_pipeline, _targetPool, vw, vh);
         _builder.RegisterRootSurface(RenderSurfaceKey.SceneColor, _rtScene);
         _builder.RegisterFactory(new BloomEffectFactory(
             gl, _extractShader, _blurShader));
+        _builder.RegisterFactory(new PresentationEffectFactory(gl, _blitShader, _batch));
     }
 
     private static void HandleStep(double dt)
@@ -229,7 +230,32 @@ internal static class Program
             _settings = settings;
         }
 
-        public override void OnCreate() => this.RequestBloom(_settings, _raiseEvent);
-        public override void OnDestroy() => this.ReleaseBloom(_raiseEvent);
+        public override void OnCreate()
+        {
+            this.RequestBloom(_settings, _raiseEvent);
+            this.RequestPresentSurface(
+                BloomEffectDescriptor.GlowOutput(BloomEffectDescriptor.DefaultKey),
+                _raiseEvent,
+                layer: 100,
+                blend: PresentationBlendMode.Additive);
+        }
+
+        public override void OnDestroy()
+        {
+            this.ReleasePresentSurface(_raiseEvent);
+            this.ReleaseBloom(_raiseEvent);
+        }
+    }
+
+    private sealed class ScenePresentationController(
+        Action<GameEngine.Core.Domain.Events.IDomainEvent> raiseEvent) : GameInstance
+    {
+        public override void OnCreate() => this.RequestPresentSurface(
+            RenderSurfaceKey.SceneColor,
+            raiseEvent,
+            layer: 0,
+            blend: PresentationBlendMode.Opaque);
+
+        public override void OnDestroy() => this.ReleasePresentSurface(raiseEvent);
     }
 }

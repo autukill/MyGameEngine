@@ -14,8 +14,7 @@ public static class GameInstanceBloomExtensions
         RenderEffectKey? key = null,
         RenderSurfaceKey? source = null,
         RenderTargetColorFormat colorFormat = RenderTargetColorFormat.Rgba8,
-        RenderSurfaceEncoding encoding = RenderSurfaceEncoding.Display,
-        BloomPresentation presentation = BloomPresentation.Additive)
+        RenderSurfaceEncoding encoding = RenderSurfaceEncoding.Display)
     {
         ArgumentNullException.ThrowIfNull(instance);
         ArgumentNullException.ThrowIfNull(raiseEvent);
@@ -27,8 +26,7 @@ public static class GameInstanceBloomExtensions
                 settings,
                 source,
                 colorFormat,
-                encoding,
-                presentation)));
+                encoding)));
     }
 
     public static void ReleaseBloom(

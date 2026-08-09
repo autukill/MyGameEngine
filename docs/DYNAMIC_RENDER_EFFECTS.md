@@ -19,7 +19,7 @@ ScenePipelineBuilder.ApplyEvents(...)
      ├─ IRenderEffectFactory.Plan(...)
      ├─ RenderSurface 依赖校验与稳定拓扑排序
      ├─ RenderTargetPool.Rent(...)
-     └─ 原子添加/更新/移除 Pass、输出与合成源
+     └─ 原子添加/更新/移除 Pass 与逻辑输出
                 │
                 ▼
 RenderPipeline.Execute(...)
@@ -50,6 +50,13 @@ public sealed class SpotlightController : GameInstance
 {
     private readonly Action<IDomainEvent> _raiseEvent;
 
+    public override void OnCreate() => this.RequestPresentSurface(
+        StencilMaskEffectDescriptor.MaskOutput(
+            StencilMaskEffectDescriptor.DefaultKey),
+        _raiseEvent,
+        layer: 100,
+        blend: PresentationBlendMode.AlphaBlend);
+
     public override void OnStep(double deltaTime)
     {
         if (Input is null) return;
@@ -61,12 +68,15 @@ public sealed class SpotlightController : GameInstance
             raiseEvent: _raiseEvent);
     }
 
-    public override void OnDestroy() =>
+    public override void OnDestroy()
+    {
+        this.ReleasePresentSurface(_raiseEvent);
         this.ReleaseStencilMask(_raiseEvent);
+    }
 }
 ```
 
-`StencilMaskEffectDescriptor` 保存 Key、中心、半径和 `StencilMaskState`。中心和半径必须为有限值，半径必须大于零。
+`StencilMaskEffectDescriptor` 保存 Key、`StencilMaskGeometry` 和 `StencilMaskState`。Circle 的中心和半径必须为有限值，半径必须大于零；SpriteAlpha 还可保存 Sprite 帧、Transform 与 AlphaCutoff。
 
 共享同一个 Stencil Key 的 owner 可以拥有不同中心和半径，但 `Mode`、`StencilRef` 和 `MaskBits` 必须一致。状态冲突会在修改 Pass 图之前失败；需要不同状态时应使用不同 Slot。
 
@@ -76,7 +86,6 @@ public sealed class SpotlightController : GameInstance
 var targets = new RenderTargetPool(gl);
 var builder = new ScenePipelineBuilder(
     pipeline,
-    compositor,
     targets,
     window.Width,
     window.Height);
@@ -90,6 +99,7 @@ builder.RegisterFactory(new StencilMaskEffectFactory(
     scene,
     camera,
     spriteShader,
+    stencilMaskShader,
     whiteTexture,
     textures,
     sprites));
@@ -98,16 +108,21 @@ builder.RegisterFactory(new BloomEffectFactory(
     gl,
     bloomExtractShader,
     gaussianBlurShader));
+
+builder.RegisterFactory(new PresentationEffectFactory(
+    gl,
+    blitShader,
+    batch));
 ```
 
-Stencil 与 Bloom 是两个互不依赖的效果 Key。Stencil Factory 只创建一个带 Depth24Stencil8 的遮罩目标，并以 AlphaBlend 合成；Bloom Factory 独立读取完整 Scene RT：
+Stencil 与 Bloom 是两个效果生产者；Presentation 是消费其 RGBA8/Display 输出的唯一屏幕终端：
 
 ```text
-StencilMaskPass -> RT_Masked (D24S8)
-RT_Masked       -> ViewportCompositor (AlphaBlend)
+StencilMaskPass -> StencilMask.mask RGBA8/Display
+StencilMask.mask -> Presentation (AlphaBlend)
 
 RT_Scene -> Bright -> Ping(H) -> Pong(V)
-RT_Pong  -> ViewportCompositor (Additive)
+RT_Pong  -> Bloom.glow
 ```
 
 组合根不保存动态 Stencil/Bloom Pass 或对应 RenderTarget；它只保存 Builder、Pool 和借用的 SceneColor 根 Surface。Bloom Factory 通过构建上下文解析 SceneColor，不再直接持有 Scene RT。
@@ -170,14 +185,14 @@ RenderTargetPool.Dispose
 Shader / Texture / Batch / Window Graphics
 ```
 
-Builder 先移除动态 Pass 和合成源，再归还 Lease；这样不会让 Pass 引用已经释放的 RenderTarget 或 Shader。
+Builder 先移除动态 Pass，再归还 Lease；这样不会让 Pass 引用已经释放的 RenderTarget 或 Shader。
 
 ## 扩展新效果
 
 1. 定义实现 `IRenderEffectDescriptor` 的纯领域描述符。
 2. 实现 `IRenderEffectFactory.Plan`，完成共享配置检查并声明逻辑输入/输出。
 3. Factory 在 `Create` 中通过 `context.Surfaces` 解析上游，再从 Pool 租赁目标。
-4. Runtime 暴露与 Plan 完全一致的 `Outputs`、Pass 和合成源。
+4. Runtime 暴露与 Plan 完全一致的 `Outputs` 和 Pass；需要上屏时由 Presentation 描述符消费输出。
 5. 在 `UpdateOwners` 中更新普通参数；结构参数变化时实现 `RequiresRebuild`。
 6. 在组合根注册根 Surface 与 Factory；GameInstance 发 Request/Release 事件。
 
@@ -185,8 +200,9 @@ Factory 创建失败、未知 Kind 或描述符冲突不会破坏已经挂接的
 
 ## 当前边界
 
-- Stencil 遮罩几何仍使用现有白纹理 Quad 路径，尚未增加任意矢量路径或专用圆形网格。
+- Stencil 支持程序化 Circle 与 SpriteAlpha；尚未支持软边或任意矢量路径。
 - Bloom 可以消费 SceneColor 或另一个动态效果输出，并支持 RGBA8/Display 与 RGBA16F/Linear 两条严格匹配路径。
 - Tone Mapping 消费 RGBA16F/Linear Scene 与可选 Bloom，输出 RGBA8/Display。
+- Presentation 只消费 RGBA8/Display，并用唯一 `present:main` Runtime 稳定组合 World、Stencil 与 SceneGui。
 - v1 不支持 MSAA、多颜色 Attachment、隐式格式转换或跨场景共享 Pool。
 - 没有全局事件总线；组合根负责在明确帧边界分发事件快照。

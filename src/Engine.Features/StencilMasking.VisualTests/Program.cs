@@ -33,6 +33,7 @@ internal static class Program
 {
     private static EngineWindow? _window;
     private static SpriteShader? _spriteShader;
+    private static StencilMaskShader? _maskShader;
     private static BlitShader? _blitShader;
     private static SpriteBatch? _batch;
     private static WhiteTexture? _white;
@@ -59,6 +60,7 @@ internal static class Program
         var (vw, vh) = (_window.Width, _window.Height);
 
         _spriteShader = new SpriteShader(gl);
+        _maskShader = new StencilMaskShader(gl);
         _blitShader = new BlitShader(gl);
         _batch = new SpriteBatch(gl);
         _batch.DefaultShader = _spriteShader;
@@ -81,7 +83,7 @@ internal static class Program
 
         var scenePass = new SceneRenderPass("ScenePass", gl, _scene, _camera, rtScene);
         _stencilPass = new StencilMaskPass("StencilPass", gl, _scene, _camera,
-            rtMasked, _spriteShader, _white);
+            rtMasked, _spriteShader, _maskShader, _white);
         _stencilPass.State = StencilMaskState.Spotlight;
 
         var compositor = new ViewportCompositorPass("CompositorPass", gl, _blitShader, _batch);

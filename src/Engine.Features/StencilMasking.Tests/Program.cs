@@ -28,6 +28,7 @@ internal static class Program
         Console.WriteLine("=== StencilMasking Feature Smoke Test ===\n");
         TestState();
         TestTypedEffectEvents();
+        TestMaskGeometry();
         TestOwnerAggregation();
 
         Console.WriteLine();
@@ -114,7 +115,7 @@ internal static class Program
 
     private static void TestOwnerAggregation()
     {
-        Console.WriteLine("3. Shared owner aggregation policy");
+        Console.WriteLine("4. Shared owner aggregation policy");
         var key = StencilMaskEffectDescriptor.DefaultKey;
         var ownerA = InstanceId.New();
         var ownerB = InstanceId.New();
@@ -140,5 +141,74 @@ internal static class Program
         try { StencilMaskEffectPolicy.ValidateAndOrder(key, owners); }
         catch (InvalidOperationException) { conflictRejected = true; }
         Check(conflictRejected, "Owners sharing a key cannot conflict on stencil state");
+    }
+
+    private static void TestMaskGeometry()
+    {
+        Console.WriteLine("3. Circle and Sprite Alpha geometry");
+        var circle = StencilMaskGeometry.Circle(new Vector2D(12, 24), 8f);
+        Check(circle.Kind == StencilMaskGeometryKind.Circle &&
+              circle.Center == new Vector2D(12, 24) &&
+              circle.Radius == 8f,
+            "Circle is a typed procedural geometry");
+
+        var sprite = new SpriteRef("mask.cooldown-ring");
+        var transform = new Transform2D(
+            new Vector2D(100, 80),
+            MathF.PI / 4f,
+            new Vector2D(-2f, 1.5f));
+        var spriteMask = StencilMaskGeometry.FromSprite(sprite, -1f, transform, 0.35f);
+        Check(spriteMask.Kind == StencilMaskGeometryKind.SpriteAlpha &&
+              spriteMask.Sprite == sprite &&
+              spriteMask.SubImage == -1f &&
+              spriteMask.Transform == transform &&
+              spriteMask.AlphaCutoff == 0.35f,
+            "Sprite Alpha preserves sub-image, origin-aware transform, and cutoff");
+
+        var events = new List<GameEngine.Core.Domain.Events.IDomainEvent>();
+        var instance = new GameEngine.Core.Domain.Entities.GameInstance(
+            "sprite-mask-owner", Vector2D.Zero, LayerDepth.Instances);
+        instance.RequestStencilSpriteMask(
+            sprite,
+            2f,
+            transform,
+            0.5f,
+            StencilMaskState.Spotlight,
+            events.Add);
+        Check(events.Single() is RenderEffectRequestedEvent
+            {
+                Descriptor: StencilMaskEffectDescriptor
+                {
+                    Geometry.Kind: StencilMaskGeometryKind.SpriteAlpha
+                }
+            },
+            "GameInstance raises a typed Sprite Alpha request");
+
+        CheckThrows<ArgumentException>(
+            () => StencilMaskGeometry.FromSprite(SpriteRef.Empty, 0f, transform),
+            "Empty Sprite masks are rejected");
+        CheckThrows<ArgumentException>(
+            () => StencilMaskGeometry.FromSprite(
+                sprite,
+                0f,
+                transform with { Scale = Vector2D.Zero }),
+            "Zero Sprite mask scale is rejected");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => StencilMaskGeometry.FromSprite(sprite, 0f, transform, 1.01f),
+            "Alpha cutoff outside [0,1] is rejected");
+    }
+
+    private static void CheckThrows<TException>(Action action, string name)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+            Check(false, name);
+        }
+        catch (TException)
+        {
+            Check(true, name);
+        }
     }
 }

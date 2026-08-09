@@ -96,7 +96,6 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
 
         public RenderEffectKey Key { get; }
         public IReadOnlyList<RenderPass> Passes { get; }
-        public IReadOnlyList<RenderEffectCompositeSource> CompositeSources { get; }
         public IReadOnlyList<RenderEffectOutput> Outputs { get; }
 
         public BloomEffectRuntime(
@@ -114,16 +113,6 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
             _ping = ping;
             _pong = pong;
             Passes = new[] { pass };
-            CompositeSources = configuration.Presentation == BloomPresentation.Additive
-                ? new[]
-                {
-                    new RenderEffectCompositeSource(
-                        pong.Target,
-                        ViewportRect.FullScreen,
-                        BlendState.Additive,
-                        Order: 200)
-                }
-                : Array.Empty<RenderEffectCompositeSource>();
             Outputs = new[]
             {
                 new RenderEffectOutput(BloomEffectDescriptor.GlowOutput(key), pong.Target)
@@ -135,8 +124,7 @@ public sealed class BloomEffectFactory : IRenderEffectFactory
         {
             var next = BloomEffectPolicy.ValidateAndGetConfiguration(Key, owners);
             return next.Settings.Resolution != _configuration.Settings.Resolution ||
-                   next.ColorFormat != _configuration.ColorFormat ||
-                   next.Presentation != _configuration.Presentation;
+                   next.ColorFormat != _configuration.ColorFormat;
         }
 
         public void UpdateOwners(

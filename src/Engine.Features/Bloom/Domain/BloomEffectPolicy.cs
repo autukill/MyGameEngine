@@ -9,8 +9,7 @@ internal static class BloomEffectPolicy
         BloomSettings Settings,
         RenderSurfaceKey Source,
         RenderTargetColorFormat ColorFormat,
-        RenderSurfaceEncoding Encoding,
-        BloomPresentation Presentation);
+        RenderSurfaceEncoding Encoding);
 
     public static Configuration ValidateAndGetConfiguration(
         RenderEffectKey key,
@@ -34,8 +33,7 @@ internal static class BloomEffectPolicy
                 bloom.Settings,
                 bloom.Source,
                 bloom.ColorFormat,
-                bloom.Encoding,
-                bloom.Presentation);
+                bloom.Encoding);
             if (shared is { } existing && existing != configuration)
                 throw new InvalidOperationException(
                     $"All owners of shared bloom effect '{key}' must use identical configuration.");

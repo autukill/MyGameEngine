@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 34 个 .NET 项目、142 个 C# 文件，Feature 拆分为 Bloom、Camera、ContentAssets、RenderPipeline、SceneSystem、Sprites、StencilMasking、TextureAssets、TextureAtlas、ToneMapping 十个独立模块。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 36 个 .NET 项目、151 个 C# 文件，Feature 拆分为 Bloom、Camera、ContentAssets、Presentation、RenderPipeline、SceneSystem、Sprites、StencilMasking、TextureAssets、TextureAtlas、ToneMapping 十一个独立模块。
 
 ## 已完成
 
@@ -22,26 +22,29 @@
 - RenderTarget 支持 RGBA8 与 RGBA16F；Pool 按完整格式隔离复用，逻辑 Surface 同时校验存储格式与 Linear/Display 编码。
 - 独立 Tone Mapping 描述符、ACES/Reinhard、Exposure/Gamma 原地更新，以及 Scene + Bloom HDR 合并后输出 RGBA8。
 - Runner 已迁移为 RGBA16F Scene → HDR Bloom → ACES Tone Mapping，并保持 Stencil、resize 与释放行为。
-- 12 个无窗口冒烟项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、编译产物、动态 owner、Bloom/Tone Mapping 设置和池所有权。
+- 独立 Presentation 垂直切片把 RGBA8/Display Surface 作为显式终端输入；动态 Runtime 不再携带屏幕合成副作用。
+- `SceneGui` 根 Surface 与 `SceneGuiRenderPass` 把 Draw GUI 固定在 Tone Mapping 之后，UI 不参与 HDR 曝光和 Bloom。
+- Stencil Mask 支持专用 Shader 的真实圆形裁剪与 Sprite Alpha 裁剪，并继承 Sprite 帧、原点、旋转和正负缩放。
+- 14 个无窗口冒烟/集成项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、编译产物、动态 owner、Bloom/Tone Mapping/Presentation 设置和池所有权。
 - `Engine.Testing.Visual` 提供隐藏固定步长窗口、RGBA8 framebuffer 捕获、PNG 编解码和像素容差比较。
-- 自动 GPU 回归覆盖 Sprite、Stencil、动态 resize、Bloom、双 Bloom Surface 串联，以及 HDR 的 ACES/Reinhard、曝光、resize 和释放，共 13 个 checkpoint。
+- 自动 GPU 回归覆盖 Sprite、真实圆形/Sprite Alpha Stencil、动态 resize、Bloom、双 Bloom Surface 串联，以及 HDR、LDR GUI、ACES/Reinhard、曝光、resize 和释放，共 14 个 checkpoint。
 - AssetCompiler 可打包为 `gameengine-assets` .NET Tool；ContentPipeline NuGet 包通过 `buildTransitive` 为外部项目提供内置编译器、增量 Build 与 Publish 接入。
 - 包集成测试使用临时本地 Feed，真实验证 Tool 安装、带空格路径、Debug/Release、缓存命中与 Publish 边界。
 
 ## 仍在演进
 
 - `ShaderRef` 与 ShaderLibrary 已具备，但缺少统一动态 uniform API。
-- Stencil 几何仍使用白纹理 Quad；尚未增加任意矢量路径或专用圆形网格。
+- Stencil 暂时只支持 Circle 与 SpriteAlpha，不支持软边、任意矢量路径或布尔几何运算。
 - Atlas 暂不支持旋转、trim 或相同像素内容哈希去重。
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
 - 各交互式 VisualTests 仍需人工观察；自动基线已覆盖五条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 
-## 下一里程碑：显式 Present 节点与 HDR/LDR UI 边界
+## 下一里程碑：Cooldown UI Shape 与批处理边界
 
-1. 把当前 Runtime 的 `CompositeSources` 副作用收口为显式 Present 描述符/节点，使最终屏幕依赖也进入逻辑图。
-2. 定义 HDR World → Tone Mapping → LDR UI 的固定组合顺序，避免 UI 参与曝光与 Bloom。
-3. 为 Present 顺序、空输出、UI resize 和效果释放建立 GPU 基线。
+1. 在已记录的需求上定义 `CooldownDrawCommand`、进度方向和环形/圆形/圆角矩形/弧形裁剪语义。
+2. 复用 Sprite Alpha 与解析后的 Sprite 帧，先实现 LDR GUI 中的单 Pass 灰色覆盖 Shader。
+3. 按 Shape/Texture/Shader 状态批处理，避免每个技能图标建立独立 RenderTarget 或 Stencil Pass。
 4. 固化无显示器 CI 的软件 OpenGL 环境，再评估自动曝光与亮度直方图。
 
 ## 已知限制
@@ -51,4 +54,4 @@
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[Cooldown UI 需求](COOLDOWN_UI_EFFECTS_REQUIREMENTS.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

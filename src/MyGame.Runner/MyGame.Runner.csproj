@@ -25,6 +25,7 @@
     <ProjectReference Include="..\Engine.Features\Bloom\Bloom.csproj" />
     <ProjectReference Include="..\Engine.Features\Camera\Camera.csproj" />
     <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" />
+    <ProjectReference Include="..\Engine.Features\Presentation\Presentation.csproj" />
     <ProjectReference Include="..\Engine.Features\RenderPipeline\RenderPipeline.csproj" />
     <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" />

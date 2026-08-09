@@ -13,6 +13,8 @@ public sealed class ViewportCompositorPass : RenderPass
     private readonly List<CompositeSource> _sources = new();
     private long _nextSourceHandle;
 
+    public bool ClearBeforeDraw { get; set; }
+
     public override RenderTarget2D? Output => null;
     public override IEnumerable<RenderTarget2D> Inputs => _sources.Select(source => source.Source);
 
@@ -58,6 +60,11 @@ public sealed class ViewportCompositorPass : RenderPass
 
     public override void Execute(in RenderPassContext ctx)
     {
+        if (ClearBeforeDraw)
+        {
+            _gl.ClearColor(0f, 0f, 0f, 1f);
+            _gl.Clear((uint)Silk.NET.OpenGL.ClearBufferMask.ColorBufferBit);
+        }
         _blitShader.Use();
         _blitShader.SetProjection(Matrix4x4.CreateOrthographicOffCenter(
             0, ctx.ScreenWidth, ctx.ScreenHeight, 0, -1, 1));

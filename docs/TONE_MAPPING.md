@@ -4,9 +4,12 @@ Tone Mapping 是独立的动态效果切片，负责把线性 HDR Scene 与可�
 
 ```text
 Scene RGBA16F/Linear
-  -> Bloom RGBA16F/Linear (SurfaceOnly)
+  -> Bloom RGBA16F/Linear
   -> Tone Mapping RGBA8/Display
-  -> Viewport Compositor
+  -> Presentation
+
+SceneGui RGBA8/Display
+  -> Presentation（位于 Tone Mapping 之后）
 ```
 
 ## 创建 HDR Scene
@@ -35,18 +38,25 @@ public override void OnCreate()
         BloomSettings.Default,
         _raiseEvent,
         colorFormat: RenderTargetColorFormat.Rgba16Float,
-        encoding: RenderSurfaceEncoding.Linear,
-        presentation: BloomPresentation.SurfaceOnly);
+        encoding: RenderSurfaceEncoding.Linear);
 
     this.RequestToneMapping(
         ToneMappingSettings.Default,
         _raiseEvent,
         bloomSource: BloomEffectDescriptor.GlowOutput(
             BloomEffectDescriptor.DefaultKey));
+
+    this.RequestPresentSurface(
+        ToneMappingEffectDescriptor.ColorOutput(
+            ToneMappingEffectDescriptor.DefaultKey),
+        _raiseEvent,
+        layer: 0,
+        blend: PresentationBlendMode.Opaque);
 }
 
 public override void OnDestroy()
 {
+    this.ReleasePresentSurface(_raiseEvent);
     this.ReleaseToneMapping(_raiseEvent);
     this.ReleaseBloom(_raiseEvent);
 }
@@ -71,7 +81,7 @@ var shader = new ToneMappingShader(gl);
 builder.RegisterFactory(new ToneMappingEffectFactory(gl, shader));
 ```
 
-每个 Tone Mapping Key 租用一个全尺寸 RGBA8 输出目标，以 Opaque、Order `0` 加入 Viewport Compositor。Stencil 使用 Order `100`，直接显示的 LDR Bloom 使用 Order `200`，因此挂接顺序不会改变最终叠加关系。
+每个 Tone Mapping Key 租用一个全尺寸 RGBA8 输出目标，但不直接修改屏幕。Presentation owner 通常以 Opaque、Layer `0` 显示该 Surface；Stencil 使用 Layer `100`，`SceneGui` 使用 Layer `1000`，因此拓扑和最终叠加关系都是显式的。
 
 关闭顺序为 Builder → Pipeline → Pool → Scene RT → Tone Mapping/Bloom Shader。Runtime 只拥有租约和 Pass；Shader 与 HDR Scene 始终由组合根拥有。
 
@@ -80,4 +90,4 @@ builder.RegisterFactory(new ToneMappingEffectFactory(gl, shader));
 - Tone Mapping 的 Scene 与 Bloom 输入必须是 RGBA16F/Linear，输出固定为 RGBA8/Display。
 - 格式或编码不匹配会在 GPU 分配前由 Surface Planner 拒绝。
 - 当前没有自动曝光、亮度直方图、白平衡、LUT、色域转换或 sRGB framebuffer。
-- LDR UI 尚未被建模为 Tone Mapping 之后的独立逻辑节点；下一阶段会显式收口 Present 与 UI 顺序。
+- LDR UI 使用独立 `SceneGui` 根 Surface，并在 Presentation 中位于 Tone Mapping 之后；当前不支持隐式 sRGB 转换。

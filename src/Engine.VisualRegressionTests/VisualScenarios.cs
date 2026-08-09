@@ -13,6 +13,9 @@ using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.Bloom.Application;
 using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.Bloom.Infrastructure;
+using GameEngine.Features.Presentation.Application;
+using GameEngine.Features.Presentation.Domain;
+using GameEngine.Features.Presentation.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
@@ -200,8 +203,9 @@ internal sealed class StencilOwnerLifecycleScenario : IVisualRegressionScenario
         if (_fixture.OwnerCount != expectedOwners)
             throw new InvalidOperationException(
                 $"Expected {expectedOwners} stencil owners, found {_fixture.OwnerCount}.");
-        if (frameIndex == 2 && (_fixture.ActiveEffectCount != 0 || _fixture.LeasedTargetCount != 0))
-            throw new InvalidOperationException("Last owner must release the effect and render target.");
+        if (frameIndex == 2 && (_fixture.ActiveEffectCount != 1 || _fixture.LeasedTargetCount != 0))
+            throw new InvalidOperationException(
+                "Last mask owner must release Stencil while the screen terminal remains active.");
     }
 
     public void Dispose() => _fixture?.Dispose();
@@ -226,9 +230,41 @@ internal sealed class DynamicEffectResizeScenario : IVisualRegressionScenario
         if (frameIndex == 1) _fixture!.Resize(Width, Height);
         _fixture!.StepAndDraw(fixedDeltaTime);
         if (frameIndex == 1 &&
-            (_fixture.OwnerCount != 1 || _fixture.ActiveEffectCount != 1 ||
+            (_fixture.OwnerCount != 1 || _fixture.ActiveEffectCount != 2 ||
              _fixture.TotalTargetCount != 1 || _fixture.LeasedTargetCount != 1))
             throw new InvalidOperationException("Resize must rebuild one active effect without leaking targets.");
+    }
+
+    public void Dispose() => _fixture?.Dispose();
+}
+
+internal sealed class StencilSpriteAlphaScenario : IVisualRegressionScenario
+{
+    private DynamicStencilFixture? _fixture;
+
+    public string Name => "stencil-sprite-alpha";
+    public int Width => 320;
+    public int Height => 240;
+    public int FrameCount => 1;
+    public IReadOnlyList<VisualCheckpoint> Checkpoints { get; } =
+        new[] { new VisualCheckpoint(0, "transformed-alpha-mask") };
+
+    public void Initialize(EngineWindow window) =>
+        _fixture = new DynamicStencilFixture(
+            window.Graphics.Gl,
+            Width,
+            Height,
+            twoOwners: false,
+            useSpriteMask: true);
+
+    public void AdvanceAndDraw(int frameIndex, double fixedDeltaTime)
+    {
+        _fixture!.StepAndDraw(fixedDeltaTime);
+        if (_fixture.OwnerCount != 1 ||
+            _fixture.ActiveEffectCount != 2 ||
+            _fixture.LeasedTargetCount != 1)
+            throw new InvalidOperationException(
+                "Sprite Alpha mask must share the Stencil runtime and explicit terminal.");
     }
 
     public void Dispose() => _fixture?.Dispose();
@@ -262,13 +298,14 @@ internal sealed class BloomPingPongScenario : IVisualRegressionScenario
         if (frameIndex == 2) _fixture!.ReleaseBloom();
         _fixture!.StepAndDraw(fixedDeltaTime);
 
-        int expectedEffects = frameIndex < 2 ? 1 : 0;
+        int expectedEffects = frameIndex < 2 ? 2 : 1;
+        int expectedBloomOwners = frameIndex < 2 ? 1 : 0;
         int expectedLeases = frameIndex < 2 ? 3 : 0;
         if (_fixture.ActiveEffectCount != expectedEffects ||
-            _fixture.OwnerCount != expectedEffects ||
+            _fixture.OwnerCount != expectedBloomOwners ||
             _fixture.LeasedTargetCount != expectedLeases)
             throw new InvalidOperationException(
-                $"Bloom frame {frameIndex} expected {expectedEffects} effect and " +
+                $"Bloom frame {frameIndex} expected {expectedEffects} effects and " +
                 $"{expectedLeases} leases, found {_fixture.ActiveEffectCount} and " +
                 $"{_fixture.LeasedTargetCount}.");
         if (frameIndex == 1 && _fixture.TotalTargetCount != 3)
@@ -305,10 +342,11 @@ internal sealed class RenderSurfaceChainScenario : IVisualRegressionScenario
         if (frameIndex == 1) _fixture!.ReleaseBloom();
         _fixture!.StepAndDraw(fixedDeltaTime);
 
-        int expectedEffects = frameIndex == 0 ? 2 : 0;
+        int expectedEffects = frameIndex == 0 ? 3 : 1;
+        int expectedBloomOwners = frameIndex == 0 ? 2 : 0;
         int expectedLeases = frameIndex == 0 ? 6 : 0;
         if (_fixture.ActiveEffectCount != expectedEffects ||
-            _fixture.TotalOwnerCount != expectedEffects ||
+            _fixture.TotalOwnerCount != expectedBloomOwners ||
             _fixture.LeasedTargetCount != expectedLeases)
             throw new InvalidOperationException(
                 $"Chained Bloom frame {frameIndex} expected {expectedEffects} effects and " +
@@ -387,31 +425,36 @@ internal sealed class BloomPingPongFixture : IDisposable
         AddTile(tile, new Vector2D(255, 175), new Vector2D(3, 6),
             new Vector4(0.85f, 0.2f, 1f, 1f));
         AddTile(tile, new Vector2D(105, 195), new Vector2D(2, 2), Vector4.One);
+        _scene.Add(new SurfacePresentationOwner(
+            _scene.RaiseEvent,
+            RenderSurfaceKey.SceneColor,
+            layer: 0,
+            blend: PresentationBlendMode.Opaque));
         _owner = _scene.Add(new BloomOwner(
             _scene.RaiseEvent,
             UpstreamKey,
             RenderSurfaceKey.SceneColor,
-            new BloomSettings(0.35f, 1.35f, 1f, 2, BloomResolution.Half)));
+            new BloomSettings(0.35f, 1.35f, 1f, 2, BloomResolution.Half),
+            presentationLayer: 100));
         if (chained)
             _downstreamOwner = _scene.Add(new BloomOwner(
                 _scene.RaiseEvent,
                 DownstreamKey,
                 BloomEffectDescriptor.GlowOutput(UpstreamKey),
-                new BloomSettings(0.12f, 0.8f, 1.25f, 2, BloomResolution.Half)));
+                new BloomSettings(0.12f, 0.8f, 1.25f, 2, BloomResolution.Half),
+                presentationLayer: 200));
 
         _camera = new Camera2D(new Vector2(width, height));
         _sceneTarget = new RenderTarget2D(gl, width, height, withDepthStencil: true);
         _pool = new RenderTargetPool(gl);
         var scenePass = new SceneRenderPass("Scene", gl, _scene, _camera, _sceneTarget);
-        var compositor = new ViewportCompositorPass("Compositor", gl, _blitShader, _batch);
-        compositor.AddSource(_sceneTarget, ViewportRect.FullScreen, BlendState.Opaque);
         _pipeline = new RenderPipeline(gl, width, height);
         _pipeline.AddPass(scenePass);
-        _pipeline.AddPass(compositor);
-        _builder = new ScenePipelineBuilder(_pipeline, compositor, _pool, width, height);
+        _builder = new ScenePipelineBuilder(_pipeline, _pool, width, height);
         _builder.RegisterRootSurface(RenderSurfaceKey.SceneColor, _sceneTarget);
         _builder.RegisterFactory(new BloomEffectFactory(
             gl, _extractShader, _blurShader));
+        _builder.RegisterFactory(new PresentationEffectFactory(gl, _blitShader, _batch));
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
     }
 
@@ -480,23 +523,37 @@ internal sealed class BloomPingPongFixture : IDisposable
         private readonly RenderEffectKey _key;
         private readonly RenderSurfaceKey _source;
         private readonly BloomSettings _settings;
+        private readonly int _presentationLayer;
 
         public BloomOwner(
             Action<IDomainEvent> raiseEvent,
             RenderEffectKey key,
             RenderSurfaceKey source,
-            BloomSettings settings)
+            BloomSettings settings,
+            int presentationLayer)
         {
             _raiseEvent = raiseEvent;
             _key = key;
             _source = source;
             _settings = settings;
+            _presentationLayer = presentationLayer;
         }
 
-        public override void OnCreate() =>
+        public override void OnCreate()
+        {
             this.RequestBloom(_settings, _raiseEvent, _key, _source);
+            this.RequestPresentSurface(
+                BloomEffectDescriptor.GlowOutput(_key),
+                _raiseEvent,
+                _presentationLayer,
+                PresentationBlendMode.Additive);
+        }
 
-        public override void OnDestroy() => this.ReleaseBloom(_raiseEvent, _key);
+        public override void OnDestroy()
+        {
+            this.ReleasePresentSurface(_raiseEvent);
+            this.ReleaseBloom(_raiseEvent, _key);
+        }
     }
 }
 
@@ -532,7 +589,7 @@ internal sealed class HdrToneMappingScenario : IVisualRegressionScenario
         if (frameIndex == 3) _fixture!.ReleaseEffects();
         _fixture!.StepAndDraw(fixedDeltaTime);
 
-        int expectedEffects = frameIndex < 3 ? 2 : 0;
+        int expectedEffects = frameIndex < 3 ? 3 : 1;
         int expectedLeases = frameIndex < 3 ? 4 : 0;
         if (_fixture.ActiveEffectCount != expectedEffects ||
             _fixture.LeasedTargetCount != expectedLeases)
@@ -562,6 +619,7 @@ internal sealed class HdrToneMappingFixture : IDisposable
     private readonly SceneAggregate _scene;
     private readonly Camera2D _camera;
     private readonly RenderTarget2D _sceneTarget;
+    private readonly RenderTarget2D _guiTarget;
     private readonly RenderTargetPool _pool;
     private readonly RenderPipeline _pipeline;
     private readonly ScenePipelineBuilder _builder;
@@ -614,6 +672,12 @@ internal sealed class HdrToneMappingFixture : IDisposable
             new Vector4(2.5f, 0.2f, 4f, 1f));
         AddTile(tile, new Vector2D(115, 195), new Vector2D(2, 2),
             new Vector4(1f, 1f, 1f, 1f));
+        _scene.Add(new GuiMarker(tile));
+        _scene.Add(new SurfacePresentationOwner(
+            _scene.RaiseEvent,
+            RenderSurfaceKey.SceneGui,
+            layer: 1000,
+            blend: PresentationBlendMode.AlphaBlend));
         _owner = _scene.Add(new HdrOwner(_scene.RaiseEvent, ToneMappingSettings.Default));
 
         _camera = new Camera2D(new Vector2(width, height));
@@ -622,19 +686,26 @@ internal sealed class HdrToneMappingFixture : IDisposable
             height,
             RenderTargetColorFormat.Rgba16Float,
             RenderTargetDepthStencilFormat.Depth24Stencil8));
+        _guiTarget = new RenderTarget2D(gl, new RenderTargetDescriptor(
+            width,
+            height,
+            RenderTargetColorFormat.Rgba8,
+            RenderTargetDepthStencilFormat.None));
         _pool = new RenderTargetPool(gl);
         var scenePass = new SceneRenderPass("HDR Scene", gl, _scene, _camera, _sceneTarget);
-        var compositor = new ViewportCompositorPass("Compositor", gl, _blitShader, _batch);
+        var guiPass = new SceneGuiRenderPass("LDR GUI", gl, _scene, _guiTarget);
         _pipeline = new RenderPipeline(gl, width, height);
         _pipeline.AddPass(scenePass);
-        _pipeline.AddPass(compositor);
-        _builder = new ScenePipelineBuilder(_pipeline, compositor, _pool, width, height);
+        _pipeline.AddPass(guiPass);
+        _builder = new ScenePipelineBuilder(_pipeline, _pool, width, height);
         _builder.RegisterRootSurface(
             RenderSurfaceKey.SceneColor,
             _sceneTarget,
             RenderSurfaceEncoding.Linear);
+        _builder.RegisterRootSurface(RenderSurfaceKey.SceneGui, _guiTarget);
         _builder.RegisterFactory(new BloomEffectFactory(gl, _extractShader, _blurShader));
         _builder.RegisterFactory(new ToneMappingEffectFactory(gl, _toneShader));
+        _builder.RegisterFactory(new PresentationEffectFactory(gl, _blitShader, _batch));
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
     }
 
@@ -649,6 +720,7 @@ internal sealed class HdrToneMappingFixture : IDisposable
         _scene.ViewportHeight = height;
         _camera.ResizeViewport(width, height);
         _sceneTarget.Resize(width, height);
+        _guiTarget.Resize(width, height);
         _pipeline.Resize(width, height);
         _builder.Resize(width, height);
     }
@@ -676,6 +748,7 @@ internal sealed class HdrToneMappingFixture : IDisposable
         _builder.Dispose();
         _pipeline.Dispose();
         _pool.Dispose();
+        _guiTarget.Dispose();
         _sceneTarget.Dispose();
         _textures.Dispose();
         _batch.Dispose();
@@ -699,6 +772,23 @@ internal sealed class HdrToneMappingFixture : IDisposable
         }
     }
 
+    private sealed class GuiMarker : GameInstance
+    {
+        public GuiMarker(SpriteRef sprite)
+        {
+            Sprite = sprite;
+        }
+
+        public override void OnDrawGUI(ISpriteBatch batch) => batch.DrawSpriteCommand(
+            new SpriteDrawCommand(
+                Sprite,
+                0f,
+                new Vector2(34f, 28f),
+                new Vector2(2.2f, 1.2f),
+                0f,
+                new Vector4(0.2f, 1f, 0.35f, 0.9f)));
+    }
+
     private sealed class HdrOwner : GameInstance
     {
         private readonly Action<IDomainEvent> _raiseEvent;
@@ -716,9 +806,13 @@ internal sealed class HdrToneMappingFixture : IDisposable
                 new BloomSettings(0.7f, 1.1f, 1f, 2, BloomResolution.Half),
                 _raiseEvent,
                 colorFormat: RenderTargetColorFormat.Rgba16Float,
-                encoding: RenderSurfaceEncoding.Linear,
-                presentation: BloomPresentation.SurfaceOnly);
+                encoding: RenderSurfaceEncoding.Linear);
             RequestToneMapping();
+            this.RequestPresentSurface(
+                ToneMappingEffectDescriptor.ColorOutput(ToneMappingEffectDescriptor.DefaultKey),
+                _raiseEvent,
+                layer: 0,
+                blend: PresentationBlendMode.Opaque);
         }
 
         public void UpdateToneMapping(ToneMappingSettings settings)
@@ -729,6 +823,7 @@ internal sealed class HdrToneMappingFixture : IDisposable
 
         public override void OnDestroy()
         {
+            this.ReleasePresentSurface(_raiseEvent);
             this.ReleaseToneMapping(_raiseEvent);
             this.ReleaseBloom(_raiseEvent);
         }
@@ -746,6 +841,7 @@ internal sealed class DynamicStencilFixture : IDisposable
 
     private readonly GL _gl;
     private readonly SpriteShader _spriteShader;
+    private readonly StencilMaskShader _maskShader;
     private readonly BlitShader _blitShader;
     private readonly SpriteBatch _batch;
     private readonly TextureLibrary _textures;
@@ -756,7 +852,7 @@ internal sealed class DynamicStencilFixture : IDisposable
     private readonly RenderTargetPool _pool;
     private readonly RenderPipeline _pipeline;
     private readonly ScenePipelineBuilder _builder;
-    private readonly MaskOwner _firstOwner;
+    private readonly GameInstance _firstOwner;
     private readonly MaskOwner? _secondOwner;
     private int _width;
     private int _height;
@@ -767,12 +863,18 @@ internal sealed class DynamicStencilFixture : IDisposable
     public int TotalTargetCount => _pool.TotalCount;
     public int LeasedTargetCount => _pool.LeasedCount;
 
-    public DynamicStencilFixture(GL gl, int width, int height, bool twoOwners)
+    public DynamicStencilFixture(
+        GL gl,
+        int width,
+        int height,
+        bool twoOwners,
+        bool useSpriteMask = false)
     {
         _gl = gl;
         _width = width;
         _height = height;
         _spriteShader = new SpriteShader(gl);
+        _maskShader = new StencilMaskShader(gl);
         _blitShader = new BlitShader(gl);
         _batch = new SpriteBatch(gl) { DefaultShader = _spriteShader };
         _textures = new TextureLibrary(gl);
@@ -785,6 +887,16 @@ internal sealed class DynamicStencilFixture : IDisposable
             TextureSampler.PixelArt);
         SpriteRef tile = _sprites.RegisterSingle(
             "regression.tile", white, new Vector2(20, 20), new Vector2(10, 10));
+        TextureRef alphaMaskTexture = _textures.RegisterRgba(
+            "regression.stencil-alpha-mask",
+            64,
+            64,
+            CreateAlphaMaskPixels(64, 64),
+            TextureSampler.PixelArt);
+        SpriteRef alphaMask = _sprites.RegisterSingle(
+            "regression.stencil-alpha-mask",
+            alphaMaskTexture,
+            new Vector2(32, 32));
 
         _scene = new SceneAggregate("dynamic-stencil")
         {
@@ -798,8 +910,22 @@ internal sealed class DynamicStencilFixture : IDisposable
         AddTile(tile, new Vector2D(255, 175), new Vector2D(5, 7), new Vector4(0.8f, 0.25f, 1f, 0.72f));
         AddTile(tile, new Vector2D(110, 195), new Vector2D(4, 3), new Vector4(0.4f, 1f, 0.3f, 0.85f));
 
-        _firstOwner = _scene.Add(new MaskOwner(
-            _scene.RaiseEvent, new Vector2D(90, 85), 52f));
+        _scene.Add(new SurfacePresentationOwner(
+            _scene.RaiseEvent,
+            RenderSurfaceKey.SceneColor,
+            layer: 0,
+            blend: PresentationBlendMode.Opaque));
+
+        _firstOwner = useSpriteMask
+            ? _scene.Add(new SpriteMaskOwner(
+                _scene.RaiseEvent,
+                alphaMask,
+                new Transform2D(
+                    new Vector2D(width * 0.5f, height * 0.5f),
+                    MathF.PI / 7f,
+                    new Vector2D(2.3f, 1.7f))))
+            : _scene.Add(new MaskOwner(
+                _scene.RaiseEvent, new Vector2D(90, 85), 52f));
         if (twoOwners)
             _secondOwner = _scene.Add(new MaskOwner(
                 _scene.RaiseEvent, new Vector2D(235, 155), 58f));
@@ -808,14 +934,13 @@ internal sealed class DynamicStencilFixture : IDisposable
         _sceneTarget = new RenderTarget2D(gl, width, height, withDepthStencil: true);
         _pool = new RenderTargetPool(gl);
         var scenePass = new SceneRenderPass("Scene", gl, _scene, _camera, _sceneTarget);
-        var compositor = new ViewportCompositorPass("Compositor", gl, _blitShader, _batch);
-        compositor.AddSource(_sceneTarget, ViewportRect.FullScreen, BlendState.Opaque);
         _pipeline = new RenderPipeline(gl, width, height);
         _pipeline.AddPass(scenePass);
-        _pipeline.AddPass(compositor);
-        _builder = new ScenePipelineBuilder(_pipeline, compositor, _pool, width, height);
+        _builder = new ScenePipelineBuilder(_pipeline, _pool, width, height);
+        _builder.RegisterRootSurface(RenderSurfaceKey.SceneColor, _sceneTarget);
         _builder.RegisterFactory(new StencilMaskEffectFactory(
-            gl, _scene, _camera, _spriteShader, white, _textures, _sprites));
+            gl, _scene, _camera, _spriteShader, _maskShader, white, _textures, _sprites));
+        _builder.RegisterFactory(new PresentationEffectFactory(gl, _blitShader, _batch));
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
     }
 
@@ -864,11 +989,31 @@ internal sealed class DynamicStencilFixture : IDisposable
         _textures.Dispose();
         _batch.Dispose();
         _blitShader.Dispose();
+        _maskShader.Dispose();
         _spriteShader.Dispose();
     }
 
     private void AddTile(SpriteRef sprite, Vector2D position, Vector2D scale, Vector4 color) =>
         _scene.Add(new StaticSprite(sprite, position, scale, color));
+
+    private static byte[] CreateAlphaMaskPixels(int width, int height)
+    {
+        var pixels = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
+        {
+            float nx = (x + 0.5f) / width * 2f - 1f;
+            float ny = (y + 0.5f) / height * 2f - 1f;
+            bool insideDiamond = MathF.Abs(nx) + MathF.Abs(ny) <= 0.92f;
+            bool centerHole = nx * nx + ny * ny < 0.13f;
+            int offset = (y * width + x) * 4;
+            pixels[offset] = 255;
+            pixels[offset + 1] = 255;
+            pixels[offset + 2] = 255;
+            pixels[offset + 3] = insideDiamond && !centerHole ? (byte)255 : (byte)0;
+        }
+        return pixels;
+    }
 
     private sealed class StaticSprite : GameInstance
     {
@@ -893,9 +1038,74 @@ internal sealed class DynamicStencilFixture : IDisposable
             _radius = radius;
         }
 
-        public override void OnCreate() =>
+        public override void OnCreate()
+        {
             this.RequestStencilMask(_center, _radius, StencilMaskState.Spotlight, _raiseEvent);
+            this.RequestPresentSurface(
+                StencilMaskEffectDescriptor.MaskOutput(EffectKey),
+                _raiseEvent,
+                layer: 100,
+                blend: PresentationBlendMode.AlphaBlend);
+        }
 
-        public override void OnDestroy() => this.ReleaseStencilMask(_raiseEvent);
+        public override void OnDestroy()
+        {
+            this.ReleasePresentSurface(_raiseEvent);
+            this.ReleaseStencilMask(_raiseEvent);
+        }
     }
+
+    private sealed class SpriteMaskOwner : GameInstance
+    {
+        private readonly Action<IDomainEvent> _raiseEvent;
+        private readonly SpriteRef _sprite;
+        private readonly Transform2D _transform;
+
+        public SpriteMaskOwner(
+            Action<IDomainEvent> raiseEvent,
+            SpriteRef sprite,
+            Transform2D transform)
+        {
+            _raiseEvent = raiseEvent;
+            _sprite = sprite;
+            _transform = transform;
+        }
+
+        public override void OnCreate()
+        {
+            this.RequestStencilSpriteMask(
+                _sprite,
+                0f,
+                _transform,
+                0.5f,
+                StencilMaskState.Spotlight,
+                _raiseEvent);
+            this.RequestPresentSurface(
+                StencilMaskEffectDescriptor.MaskOutput(EffectKey),
+                _raiseEvent,
+                layer: 100,
+                blend: PresentationBlendMode.AlphaBlend);
+        }
+
+        public override void OnDestroy()
+        {
+            this.ReleasePresentSurface(_raiseEvent);
+            this.ReleaseStencilMask(_raiseEvent);
+        }
+    }
+}
+
+internal sealed class SurfacePresentationOwner(
+    Action<IDomainEvent> raiseEvent,
+    RenderSurfaceKey source,
+    int layer,
+    PresentationBlendMode blend) : GameInstance
+{
+    public override void OnCreate() => this.RequestPresentSurface(
+        source,
+        raiseEvent,
+        layer,
+        blend);
+
+    public override void OnDestroy() => this.ReleasePresentSurface(raiseEvent);
 }

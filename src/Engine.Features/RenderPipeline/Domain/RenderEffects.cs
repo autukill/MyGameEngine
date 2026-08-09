@@ -36,6 +36,7 @@ public readonly record struct RenderSurfaceKey
         !string.IsNullOrWhiteSpace(Output);
 
     public static RenderSurfaceKey SceneColor => new("scene", "main", "color");
+    public static RenderSurfaceKey SceneGui => new("scene", "main", "gui");
 
     public RenderSurfaceKey(string producerKind, string producerSlot, string output)
     {

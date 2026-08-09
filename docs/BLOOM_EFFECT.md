@@ -1,6 +1,6 @@
 # Bloom 效果使用指南
 
-Bloom 是独立于 Stencil 的动态渲染效果。它默认读取组合根注册的 SceneColor，也可以读取另一个动态效果的逻辑输出；随后提取高亮区域并执行水平/垂直分离高斯模糊。默认 LDR 模式以 Additive 混合回屏幕；HDR 模式可使用 `SurfaceOnly` 只发布 Glow，交给 Tone Mapping 消费。
+Bloom 是独立于 Stencil 的动态渲染效果。它默认读取组合根注册的 SceneColor，也可以读取另一个动态效果的逻辑输出；随后提取高亮区域并执行水平/垂直分离高斯模糊。Bloom 始终只发布 Glow Surface：HDR Glow 交给 Tone Mapping，LDR Glow 如需直接显示则由 Presentation owner 声明 Additive 混合。
 
 ## 实例声明
 
@@ -32,8 +32,7 @@ this.RequestBloom(
     BloomSettings.Default,
     _raiseEvent,
     colorFormat: RenderTargetColorFormat.Rgba16Float,
-    encoding: RenderSurfaceEncoding.Linear,
-    presentation: BloomPresentation.SurfaceOnly);
+    encoding: RenderSurfaceEncoding.Linear);
 ```
 
 ## 设置边界
@@ -72,18 +71,28 @@ builder.RegisterRootSurface(RenderSurfaceKey.SceneColor, sceneRenderTarget);
 RT_Scene -> Bright (Rec.709 threshold)
 Bright / previous Pong -> Ping (horizontal Gaussian)
 Ping -> Pong (vertical Gaussian; final iteration applies intensity)
-Pong -> ViewportCompositor (Additive)
+Pong -> Bloom.glow logical Surface
 ```
 
 高斯模糊每个方向固定五次采样：中心权重 `0.227027`，`±1.384615` 权重 `0.316216`，`±3.230769` 权重 `0.070270`。BlurRadius 会乘到按目标纹理宽高计算的采样方向上。
 
-`RequestBloom` 的可选 `source` 参数可以指向另一个效果输出。共享同一 Bloom Key 的 owner 必须使用相同设置、Source、格式、编码和 Presentation。改变 Source、Resolution、格式或 Presentation 会原子重建效果图；其他设置原地更新。
+`RequestBloom` 的可选 `source` 参数可以指向另一个效果输出。共享同一 Bloom Key 的 owner 必须使用相同设置、Source、格式和编码。改变 Source、Resolution 或格式会原子重建效果图；其他设置原地更新。
+
+直接呈现 LDR Glow：
+
+```csharp
+this.RequestPresentSurface(
+    BloomEffectDescriptor.GlowOutput(key),
+    scene.RaiseEvent,
+    layer: 200,
+    blend: PresentationBlendMode.Additive);
+```
 
 ## Resize、释放与所有权
 
 - resize 会先创建并挂接三张新尺寸中间目标；成功后才移除旧链并归还旧租约。
 - 创建或挂接失败时，旧 Pass 图和旧租约保持有效。
-- 最后一个 owner 释放、失活或销毁后，Pass 与合成源被移除，三个租约全部归还。
+- 最后一个 owner 释放、失活或销毁后，Pass 被移除，三个租约全部归还；引用该 Glow 的 Present/Tone owner 必须在同一批事件中释放。
 - Shader 由组合根拥有；关闭顺序为 Builder → Pipeline → Pool → Scene RT → Bloom Shader。
 
 ## 当前边界

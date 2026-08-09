@@ -27,7 +27,6 @@ RenderSurfaceSpec ldrOutput = RenderSurfaceSpec.Ldr(outputKey);
 ```csharp
 var builder = new ScenePipelineBuilder(
     pipeline,
-    compositor,
     targetPool,
     width,
     height);
@@ -85,7 +84,7 @@ Plan 与 Runtime 输出不一致会在挂接前失败，并释放本次新建资
 5. 在临时 Surface Registry 中按序创建 Runtime。
 6. 全部创建并挂接成功后，才逆序移除旧图。
 
-拓扑、输入、输出或结构参数改变时，v1 会原子重建整个动态效果子图。普通参数变化仍调用 `UpdateOwners` 原地更新。创建、输出校验或图挂接失败时，旧 Runtime、Pass、合成源和租约继续有效。
+拓扑、输入、输出或结构参数改变时，v1 会原子重建整个动态效果子图。普通参数变化仍调用 `UpdateOwners` 原地更新。创建、输出校验或图挂接失败时，旧 Runtime、Pass 和租约继续有效。
 
 删除生产者但保留消费者会因缺失输入而被拒绝；在同一事件批次中同时删除消费者和生产者则可以成功。
 
@@ -116,21 +115,26 @@ SceneColor
       -> Bloom(secondary).glow
 ```
 
-两个 Bloom 仍分别拥有 Bright/Ping/Pong 三个中间目标，并按拓扑顺序添加 Additive 合成源。
+两个 Bloom 仍分别拥有 Bright/Ping/Pong 三个中间目标。Bloom 只发布 Glow；是否以及如何显示由 Presentation owner 明确声明。
 
 HDR 呈现链使用类型化契约：
 
 ```text
 SceneColor RGBA16F/Linear
-   -> Bloom.glow RGBA16F/Linear (SurfaceOnly)
+   -> Bloom.glow RGBA16F/Linear
       -> ToneMapping.color RGBA8/Display
-         -> ViewportCompositor
+         -> Presentation(present:main)
+
+SceneGui RGBA8/Display
+   -> Presentation(present:main)
 ```
 
 ## 当前边界
 
 - Surface 支持 RGBA8/Display 与 RGBA16F/Linear；暂不提供隐式格式或颜色编码转换。
 - v1 在结构变化时重建整个动态子图，尚未计算最小受影响下游集合。
-- 屏幕 framebuffer 不是可消费 Surface；最终输出仍通过 Compositor 完成。
+- 屏幕 framebuffer 不是可消费 Surface；唯一 `present:main` 终端以无输出 Pass 完成最终呈现。
 - 不支持历史帧、跨 Scene Surface、MSAA resolve 或多颜色 Attachment。
-- 屏幕呈现仍通过 Runtime 合成源完成，尚未建模为显式逻辑 Present 节点。
+- Presentation 只接受 RGBA8/Display；HDR Surface 必须先经过 Tone Mapping。
+
+完整终端和 GUI 顺序见 [显式 Presentation 与 HDR/LDR UI 边界](PRESENTATION.md)。

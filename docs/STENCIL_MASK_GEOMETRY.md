@@ -1,115 +1,88 @@
-# Runner 的 StencilMask 几何实现解读
+# StencilMask 圆形与 Sprite Alpha 几何
 
-Runner 当前并没有实现真正的圆形 StencilMask。领域 API 使用 `Center` 和 `Radius` 表达 Spotlight 意图，但渲染阶段只是根据半径绘制一个边长为 `2 × Radius` 的白色 Quad，因此实际写入 Stencil Buffer 的区域是正方形。
+StencilMasking 现在用 `StencilMaskGeometry` 表达不携带 GPU 对象的二值遮罩，支持真正的程序化圆形和 Sprite Alpha。领域 owner 只声明意图；Factory 解析 Sprite，专用 Shader 决定哪些 fragment 能写入 Stencil Buffer。
 
-## 调用链
-
-### 1. GameInstance 声明 Spotlight
-
-`SpotlightController` 在 `OnCreate` 请求初始遮罩，并在每个 `OnStep` 使用鼠标位置更新中心：
+## 圆形 Spotlight
 
 ```csharp
-private void Request(Vector2D center) =>
-    this.RequestStencilMask(
-        center,
-        radius,
-        StencilMaskState.Spotlight,
-        raiseEvent);
+this.RequestStencilMask(
+    center: Input.MousePosition,
+    radius: 120f,
+    state: StencilMaskState.Spotlight,
+    raiseEvent: scene.RaiseEvent);
 ```
 
-`SpotlightController` 不持有 Pass、RenderTarget 或 Shader，只产生 `RenderEffectRequestedEvent`。请求最终包含一个 `StencilMaskEffectDescriptor`，其中保存：
-
-- `RenderEffectKey`
-- 世界坐标中心 `Center`
-- 半径 `Radius`
-- `StencilMaskState`
-
-相同 EffectKey 的多个 owner 会被聚合到共享的 `StencilMaskPass`。
-
-### 2. Factory 装配运行时资源
-
-`StencilMaskEffectFactory` 从 `RenderTargetPool` 租用一个全尺寸 RGBA8 + Depth24Stencil8 目标，创建 `StencilMaskPass`，并发布逻辑 Mask Surface。
-
-遮罩结果以 AlphaBlend、合成顺序 `100` 加入 Viewport Compositor。当前 HDR Runner 中，Tone Mapping 输出使用顺序 `0`，因此 Stencil 结果会覆盖在 Tone Mapping 后的基础画面之上。
-
-### 3. StencilMaskPass 两阶段绘制
-
-第一阶段只写 Stencil，不写颜色：
-
-```text
-清空 Color 与 Stencil
-→ ColorMaskDisabled
-→ Stencil Always + Replace(1)
-→ 绘制遮罩几何
-```
-
-第二阶段重新绘制 Scene：
-
-```text
-恢复颜色写入与 AlphaBlend
-→ ShowInside 使用 Stencil Equal(1)
-→ ShowOutside 使用 Stencil NotEqual(1)
-→ 重新绘制 Scene
-```
-
-因此 `StencilMaskState.Spotlight` 只显示被遮罩几何覆盖的区域；`FogOfWarHole` 则使用相反的测试结果。
-
-## 为什么当前是正方形
-
-`StencilMaskPass.DrawMask` 当前执行：
-
-```csharp
-_batch.Draw(
-    _whiteTextureHandle,
-    center - new Vector2(radius, radius),
-    new Vector2(radius * 2f, radius * 2f),
-    Vector4.One);
-```
-
-对应几何为：
-
-```text
-(center.x - radius, center.y - radius)
-          ┌────────────────┐
-          │                │
-          │   白色 Quad    │
-          │                │
-          └────────────────┘
-                 2r × 2r
-```
-
-通用 `SpriteShader` 只执行 `texture × color`，没有根据 Alpha 或圆形距离调用 `discard`。Stencil 写入依据 fragment 是否存活，而不是最终颜色是否透明；所以即使改成带透明圆形的纹理，透明区域的 fragment 仍会写入 Stencil，结果依然是完整 Quad。
-
-`SetMaskCircle` 和领域中的 `Radius` 目前表达的是预期语义，不代表底层已经生成圆形几何。
-
-## 推荐的真正圆形实现
-
-建议增加专用 `StencilShapeShader`，仅在第一阶段写遮罩时使用。它根据 Quad UV 计算单位圆，并丢弃圆外 fragment：
+`StencilMaskGeometry.Circle` 保存有限的世界坐标中心和正半径。遮罩阶段仍提交一个 `2r × 2r` Quad，但 `StencilMaskShader` 使用局部 UV 丢弃单位圆外的 fragment：
 
 ```glsl
-vec2 p = Frag_TexCoord * 2.0 - 1.0;
-
-if (dot(p, p) > 1.0)
-    discard;
+vec2 p = vUv * 2.0 - 1.0;
+if (dot(p, p) > 1.0) discard;
 ```
 
-只有圆内 fragment 会到达 Stencil 操作并执行 Replace。第二阶段仍使用原来的 `SpriteShader` 绘制 Scene。
+只有圆内 fragment 会执行 Stencil Replace，因此 corners 不会再被误写为方形。这个路径不为每个圆创建网格，也不会产生每帧 Triangle Fan 分配。
 
-建议的 Pass 结构为：
+## Sprite Alpha 遮罩
+
+```csharp
+this.RequestStencilSpriteMask(
+    sprite: cooldownMask,
+    subImage: imageIndex,
+    transform: new Transform2D(position, rotationRadians, scale),
+    alphaCutoff: 0.5f,
+    state: StencilMaskState.Spotlight,
+    raiseEvent: scene.RaiseEvent);
+```
+
+Sprite Alpha 几何保存：
+
+- 逻辑 `SpriteRef` 与浮点 sub-image；帧索引继续使用 SpriteLibrary 的循环规则。
+- `Transform2D`；绘制坐标对应 Sprite 原点，并支持旋转、非均匀缩放和负缩放。
+- `[0,1]` 的 `AlphaCutoff`；采样 Alpha 小于阈值的 fragment 被丢弃。
+
+Factory 在修改图之前确认 Sprite 已注册。运行时通过共享 `ISpriteResolver` 解析当前帧 Texture、UV、尺寸和原点，所以单图、多图帧及 Atlas 重映射都使用同一条路径。Sprite Library 仍拥有逻辑资源，Stencil Runtime 不接管纹理生命周期。
+
+## Pass 两阶段执行
 
 ```text
-Mask 阶段
-  StencilShapeShader + Quad + 圆形 discard
+阶段 1：写遮罩
+  清空 Color + Stencil
+  禁止颜色写入
+  Stencil Always + Replace
+  StencilMaskShader 绘制 Circle 与 SpriteAlpha
 
-Scene 阶段
-  SpriteShader + Stencil Equal/NotEqual
+阶段 2：重绘 Scene
+  恢复颜色写入与 AlphaBlend
+  Spotlight  -> Stencil Equal
+  FogOfWarHole -> Stencil NotEqual
+  SpriteShader 重绘 Scene.DrawActive
 ```
 
-这种方式继续复用 SpriteBatch Quad，不需要为每个圆构建 Triangle Fan；后续也可以在同一 Shader 中扩展椭圆、圆角矩形或基于有符号距离的形状。
+相同 EffectKey 的多个 owner 共享一个目标和 Pass。所有圆形先批量提交，Sprite Alpha 按纹理及 cutoff 的状态变化 Flush；多个遮罩区域形成并集。共享 owner 的 `Mode`、`StencilRef` 和 `MaskBits` 必须一致。
+
+## 显式呈现
+
+Stencil Runtime 只发布：
+
+```csharp
+StencilMaskEffectDescriptor.MaskOutput(key) // RGBA8/Display
+```
+
+需要在屏幕显示时，由 GameInstance 单独声明：
+
+```csharp
+this.RequestPresentSurface(
+    StencilMaskEffectDescriptor.MaskOutput(
+        StencilMaskEffectDescriptor.DefaultKey),
+    scene.RaiseEvent,
+    layer: 100,
+    blend: PresentationBlendMode.AlphaBlend);
+```
+
+释放或销毁时应在同一事件批次同时释放 Present 与 Stencil，避免终端继续引用已删除的生产者。
 
 ## 当前边界
 
-- Stencil 边缘是硬裁剪，不支持羽化或软阴影。
-- 多个 owner 当前共享相同 Stencil 状态，它们的覆盖区域形成并集。
-- Stencil Pass 会重新绘制 Scene，并不是直接裁剪 Tone Mapping 的逻辑 Surface。
-- 任意矢量路径、复杂多边形与软边 Mask 尚未实现。
+- 遮罩是硬裁剪，不支持 feather、抗锯齿覆盖率或软阴影。
+- `alphaCutoff = 0` 会保留 Alpha 为零的 fragment；需要排除完全透明像素时应使用大于零的阈值。
+- Stencil Pass 会重绘 `Scene.DrawActive`，不是直接裁剪任意逻辑 Surface。
+- 尚不支持 Ring、Arc、RoundedRectangle、任意矢量路径或布尔差集；Cooldown UI 的后续边界见 [需求记录](COOLDOWN_UI_EFFECTS_REQUIREMENTS.md)。

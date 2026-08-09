@@ -18,7 +18,8 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - RenderPass DAG：场景渲染、Stencil 遮罩、后处理和 Viewport 合成。
 - 动态效果装配：实例领域事件、共享 owner 集合、`ScenePipelineBuilder` 与 `RenderTargetPool`。
 - 逻辑 RenderSurface：纯值输入输出、根表面注册、稳定拓扑排序与失败原子重建。
-- HDR 呈现链：RGBA16F Scene/Bloom、类型化 Surface 契约、ACES/Reinhard Tone Mapping 与稳定合成层级。
+- HDR/LDR 呈现链：RGBA16F Scene/Bloom、ACES/Reinhard Tone Mapping、显式 Presentation 终端与独立 SceneGui。
+- Stencil 几何：专用 Shader 的真实 Circle 与 Sprite Alpha 遮罩，支持帧、原点、旋转和正负缩放。
 - 自动 GPU 像素回归：固定时间步、PNG 基线、容差比较以及 expected/actual/diff 诊断产物。
 - 可分发内容工具链：`gameengine-assets` .NET Tool 与内置编译器的 `buildTransitive` NuGet 包。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
@@ -34,6 +35,7 @@ src/
 │   ├── Camera/                          # Camera2D
 │   ├── Bloom/                           # 独立阈值提取与水平/垂直 ping-pong 效果链
 │   ├── ContentAssets/                   # 声明式包、依赖图、Texture/Sprite 装配与租约
+│   ├── Presentation/                    # 显式 RGBA8/Display 屏幕终端与稳定合成层级
 │   ├── RenderPipeline/                  # RenderTarget、RenderPass DAG、后处理与合成
 │   ├── SceneSystem/                     # Layer、RenderCommand（旧 Context 正在退役）
 │   ├── Sprites/                         # SpriteLibrary、帧解析与动画资源元数据
@@ -41,7 +43,7 @@ src/
 │   ├── TextureAssets/                   # TextureLibrary、Skia 解码与资产清单
 │   ├── TextureAtlas/                    # 纯 CPU Atlas 排布与像素页面生成
 │   ├── ToneMapping/                     # HDR 曝光、ACES/Reinhard 与 RGBA8 显示输出
-│   ├── *.Tests/                         # 10 个 Feature 无窗口控制台冒烟项目
+│   ├── *.Tests/                         # 11 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
@@ -63,12 +65,13 @@ Engine.Core
 └─ Camera
        └─ RenderPipeline
             ├─ Bloom
+            ├─ Presentation
             ├─ SceneSystem
             ├─ StencilMasking
             └─ ToneMapping
 ```
 
-解决方案当前共 34 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 36 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -98,6 +101,7 @@ Runner 内容：4 个彩色方块绕场景中心运动，鼠标控制圆形 Sten
 dotnet run --project src/Engine.DddTests/Engine.DddTests.csproj
 dotnet run --project src/Engine.Features/Bloom.Tests/Bloom.Tests.csproj
 dotnet run --project src/Engine.Features/Camera.Tests/Camera.Tests.csproj
+dotnet run --project src/Engine.Features/Presentation.Tests/Presentation.Tests.csproj
 dotnet run --project src/Engine.Features/RenderPipeline.Tests/RenderPipeline.Tests.csproj
 dotnet run --project src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csproj
 dotnet run --project src/Engine.Features/Sprites.Tests/Sprites.Tests.csproj
@@ -112,7 +116,7 @@ dotnet run --project src/Engine.Build.ContentPipeline.Tests/Engine.Build.Content
 
 图形验证入口位于五个 `Engine.Features/*.VisualTests` 项目。`Sprites.VisualTests` 的源包包含双帧 WebP 图集和两张独立 WebP 帧，Build 自动在 `obj` 生成单页 Atlas 并复制到 `AssetsCompiled`；这些项目需要本地图形窗口人工确认。
 
-六个确定性真实 OpenGL 场景可自动执行 PNG 像素回归：
+七个确定性真实 OpenGL 场景可自动执行 PNG 像素回归：
 
 ```bash
 dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj -- --verify
@@ -172,17 +176,18 @@ dotnet run --project src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.c
 
 ```text
 SceneRenderPass      -> RT_Scene RGBA16F Linear
-StencilMaskPass      -> RT_Masked (AlphaBlend)
+StencilMaskPass      -> StencilMask.mask RGBA8 Display
 BloomPass            -> Bright -> Ping(H) -> Pong(V) RGBA16F
 ToneMappingPass      -> Scene + Glow -> RGBA8 Display
-ViewportCompositor   -> Screen (Tone Mapping opaque + Mask alpha)
+SceneGuiRenderPass   -> SceneGui RGBA8 Display
+Presentation         -> Screen (Tone opaque + Mask alpha + SceneGui alpha)
 ```
 
-Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 Surface 输入/输出，Builder 验证唯一生产者、缺失输入、格式匹配和循环后稳定拓扑创建 Runtime；底层 Pass 再通过实际 RenderTarget 声明执行依赖。完整说明见 [动态渲染效果使用指南](docs/DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](docs/RENDER_SURFACES.md)、[Bloom](docs/BLOOM_EFFECT.md)和 [Tone Mapping](docs/TONE_MAPPING.md)。
+Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 Surface 输入/输出，Builder 验证唯一生产者、缺失输入、格式匹配和循环后稳定拓扑创建 Runtime；底层 Pass 再通过实际 RenderTarget 声明执行依赖。完整说明见 [动态渲染效果使用指南](docs/DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](docs/RENDER_SURFACES.md)、[Presentation](docs/PRESENTATION.md)、[Bloom](docs/BLOOM_EFFECT.md)和 [Tone Mapping](docs/TONE_MAPPING.md)。
 
 ## 下一阶段
 
-1. 将最终屏幕呈现建模为显式 Present 节点，并明确 HDR World 与 LDR UI 的组合边界。
+1. 按已记录边界实现 Circle/Ring/RoundedRectangle/Arc 的 Cooldown LDR UI 批处理切片。
 2. 为无显示器 CI 固化软件 OpenGL 执行环境。
 3. 为内容工具包增加签名、远程 Feed 发布与跨仓库缓存。
 4. 持续减少场景调度中的 LINQ/快照分配，再推进 Spatial Hash。

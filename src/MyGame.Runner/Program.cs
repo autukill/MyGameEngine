@@ -9,6 +9,7 @@ using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.Bloom.Infrastructure;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
+using GameEngine.Features.Presentation.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
@@ -24,6 +25,7 @@ internal sealed class Program
 {
     private static EngineWindow? _window;
     private static SpriteShader? _spriteShader;
+    private static StencilMaskShader? _stencilMaskShader;
     private static BloomExtractShader? _bloomExtractShader;
     private static GaussianBlurShader? _bloomBlurShader;
     private static ToneMappingShader? _toneMappingShader;
@@ -36,10 +38,10 @@ internal sealed class Program
     private static SceneAggregate? _scene;
     private static Camera2D? _mainCamera;
     private static RenderTarget2D? _rtScene;
+    private static RenderTarget2D? _rtGui;
     private static RenderTargetPool? _targetPool;
     private static RenderPipeline? _pipeline;
     private static ScenePipelineBuilder? _pipelineBuilder;
-    private static ViewportCompositorPass? _compositorPass;
 
     private static void Main(string[] args)
     {
@@ -53,7 +55,6 @@ internal sealed class Program
         _window.OnLoad += HandleLoad;
         _window.OnStep += HandleStep;
         _window.OnDraw += HandleDraw;
-        _window.OnDrawGUI += HandleDrawGUI;
         _window.OnResize += HandleResize;
         _window.OnClosing += HandleClosing;
         _window.Run();
@@ -65,6 +66,7 @@ internal sealed class Program
         var (width, height) = (_window.Width, _window.Height);
 
         _spriteShader = new SpriteShader(gl);
+        _stencilMaskShader = new StencilMaskShader(gl);
         _bloomExtractShader = new BloomExtractShader(gl);
         _bloomBlurShader = new GaussianBlurShader(gl);
         _toneMappingShader = new ToneMappingShader(gl);
@@ -95,27 +97,33 @@ internal sealed class Program
             height,
             RenderTargetColorFormat.Rgba16Float,
             RenderTargetDepthStencilFormat.Depth24Stencil8));
+        _rtGui = new RenderTarget2D(gl, new RenderTargetDescriptor(
+            width,
+            height,
+            RenderTargetColorFormat.Rgba8,
+            RenderTargetDepthStencilFormat.None));
         _targetPool = new RenderTargetPool(gl);
 
         var scenePass = new SceneRenderPass("ScenePass", gl, _scene, _mainCamera, _rtScene);
-        _compositorPass = new ViewportCompositorPass("CompositorPass", gl, _blitShader, _batch);
+        var guiPass = new SceneGuiRenderPass("SceneGuiPass", gl, _scene, _rtGui);
 
         _pipeline = new RenderPipeline(gl, width, height);
         _pipeline.AddPass(scenePass);
-        _pipeline.AddPass(_compositorPass);
+        _pipeline.AddPass(guiPass);
 
         _pipelineBuilder = new ScenePipelineBuilder(
             _pipeline,
-            _compositorPass,
             _targetPool,
             width,
             height);
         _pipelineBuilder.RegisterRootSurface(RenderSurfaceKey.SceneColor, _rtScene);
+        _pipelineBuilder.RegisterRootSurface(RenderSurfaceKey.SceneGui, _rtGui);
         _pipelineBuilder.RegisterFactory(new StencilMaskEffectFactory(
             gl,
             _scene,
             _mainCamera,
             _spriteShader,
+            _stencilMaskShader,
             whiteTexture,
             _textures,
             _sprites));
@@ -126,6 +134,10 @@ internal sealed class Program
         _pipelineBuilder.RegisterFactory(new ToneMappingEffectFactory(
             gl,
             _toneMappingShader));
+        _pipelineBuilder.RegisterFactory(new PresentationEffectFactory(
+            gl,
+            _blitShader,
+            _batch));
 
         var center = new Vector2D(width * 0.5f, height * 0.5f);
         var colors = new[]
@@ -149,6 +161,8 @@ internal sealed class Program
             _scene.RaiseEvent,
             new BloomSettings(0.3f, 1.5f, 1f, 2, BloomResolution.Half),
             ToneMappingSettings.Default));
+
+        _scene.Add(new SceneGuiPresentationController(_scene.RaiseEvent));
 
         _scene.Add(new SpotlightController(
             _scene.RaiseEvent,
@@ -175,17 +189,6 @@ internal sealed class Program
         _pipeline!.Execute(context);
     }
 
-    private static void HandleDrawGUI()
-    {
-        if (_scene is null || _spriteShader is null || _batch is null || _window is null) return;
-        _spriteShader.Use();
-        _spriteShader.SetProjection(Matrix4x4.CreateOrthographicOffCenter(
-            0, _window.Width, _window.Height, 0, -1, 1));
-        _batch.Begin();
-        _scene.DrawGUI(_batch);
-        _batch.End();
-    }
-
     private static void HandleResize(int width, int height)
     {
         if (width <= 0 || height <= 0) return;
@@ -196,6 +199,7 @@ internal sealed class Program
         }
         _mainCamera?.ResizeViewport(width, height);
         _rtScene?.Resize(width, height);
+        _rtGui?.Resize(width, height);
         _pipeline?.Resize(width, height);
         _pipelineBuilder?.Resize(width, height);
     }
@@ -206,6 +210,7 @@ internal sealed class Program
         _pipelineBuilder?.Dispose();
         _pipeline?.Dispose();
         _targetPool?.Dispose();
+        _rtGui?.Dispose();
         _rtScene?.Dispose();
         _package?.Dispose();
         _content?.Dispose();
@@ -215,6 +220,7 @@ internal sealed class Program
         _toneMappingShader?.Dispose();
         _bloomBlurShader?.Dispose();
         _bloomExtractShader?.Dispose();
+        _stencilMaskShader?.Dispose();
         _spriteShader?.Dispose();
     }
 }

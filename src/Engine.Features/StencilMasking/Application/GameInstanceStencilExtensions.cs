@@ -39,4 +39,25 @@ public static class GameInstanceStencilExtensions
             instance.Id,
             key ?? StencilMaskEffectDescriptor.DefaultKey));
     }
+
+    public static void RequestStencilSpriteMask(
+        this GameInstance instance,
+        SpriteRef sprite,
+        float subImage,
+        Transform2D transform,
+        float alphaCutoff,
+        StencilMaskState state,
+        Action<IDomainEvent> raiseEvent,
+        RenderEffectKey? key = null)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(raiseEvent);
+        if (!instance.IsActive) return;
+        raiseEvent(new RenderEffectRequestedEvent(
+            instance.Id,
+            new StencilMaskEffectDescriptor(
+                key ?? StencilMaskEffectDescriptor.DefaultKey,
+                StencilMaskGeometry.FromSprite(sprite, subImage, transform, alphaCutoff),
+                state)));
+    }
 }

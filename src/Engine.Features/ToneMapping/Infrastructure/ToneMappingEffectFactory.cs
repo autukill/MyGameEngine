@@ -80,7 +80,6 @@ public sealed class ToneMappingEffectFactory : IRenderEffectFactory
 
         public RenderEffectKey Key { get; }
         public IReadOnlyList<RenderPass> Passes { get; }
-        public IReadOnlyList<RenderEffectCompositeSource> CompositeSources { get; }
         public IReadOnlyList<RenderEffectOutput> Outputs { get; }
 
         public ToneMappingEffectRuntime(
@@ -94,14 +93,6 @@ public sealed class ToneMappingEffectFactory : IRenderEffectFactory
             _pass = pass;
             _output = output;
             Passes = new[] { pass };
-            CompositeSources = new[]
-            {
-                new RenderEffectCompositeSource(
-                    output.Target,
-                    ViewportRect.FullScreen,
-                    BlendState.Opaque,
-                    Order: 0)
-            };
             Outputs = new[]
             {
                 new RenderEffectOutput(
