@@ -46,7 +46,7 @@ game.Run();
 
 游戏自定义 Sprite Shader 可通过 `UseShaders(root, definitions)` 注册，随后由 `ShaderRef` 选择。`EnableShaderHotReload(options)` 会在后台读取稳定源码快照，并在相同 Step/Draw 边界整批编译替换；失败保留旧 Program。Context 暴露 `Shaders` 供高级 uniform 设置。详见 [自定义 Sprite Shader 与开发期热重载](SHADER_HOT_RELOAD.md)。
 
-需要由构建系统统一检查 Shader、Material Schema 与默认值时，推荐改用 `UseShaderAssets("Shaders/shaders.json")`。Host 会按清单装配 Program 和 Material，Scene 配置回调可通过 `context.GetMaterial(name)` 取得逻辑引用；该模式与命令式 `UseShaders` 互斥。格式与构建集成见 [声明式 Shader/Material Assets](SHADER_ASSETS.md)。
+需要由构建系统统一检查 Shader、Material Schema 与默认值时，推荐改用 `UseShaderAssets(GameShaders.ManifestPath)`。Host 会按清单装配 Program 和 Material，游戏代码直接使用生成的 `GameShaders.Materials` 与 `GameShaders.Parameters`；`context.GetMaterial(name)` 仍保留为动态名称逃生口。该模式与命令式 `UseShaders` 互斥。格式与构建集成见 [声明式 Shader/Material Assets](SHADER_ASSETS.md)。
 
 SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()`，避免创建对应 RenderTarget 和 Pass。
 

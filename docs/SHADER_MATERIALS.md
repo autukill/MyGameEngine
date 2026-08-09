@@ -28,6 +28,16 @@ context.Scene.Add(player);
 
 参数支持 `Float`、`Int`、`Vector2` 和 `Vector4`。Schema 区分大小写，重复名称、未声明参数、类型不匹配、非有限浮点值都会立即抛出异常。`uProjection` 与 `uTexture` 由引擎拥有，不能声明为材质参数。
 
+声明式清单会生成带所属 Material 的 `MaterialParameterRef<T>`，动态更新不再需要手写名称：
+
+```csharp
+context.Shaders.Set(
+    GameShaders.Parameters.GamePlayerDefault.Flash,
+    0.75f);
+```
+
+这里 `Flash` 只能接受 `float`；把 `Vector2` 等其他类型传入会在 C# 编译期失败。参数键属于 `GamePlayerDefault`，误用于另一材质时运行时立即抛出明确的所有权异常。
+
 ## Program 契约校验
 
 `CreateMaterial` 会对已经链接的 OpenGL Program 执行 Active Uniform 反射，而不是通过文本正则猜测 GLSL：
@@ -72,7 +82,7 @@ context.Shaders.TryGet("game.player-hit")?.SetFloat("uFlash", value);
 
 ## 当前边界
 
-- v1 不支持 Matrix、纹理/采样器参数、Uniform Array、Uniform Buffer Object 或清单驱动材质。
+- v1 不支持 Matrix、纹理/采样器参数、Uniform Array 或 Uniform Buffer Object。
 - 材质与 ShaderLibrary 生命周期一致；当前不提供单个材质删除或热增删 Schema。
 - 参数块面向主线程的 Step/Draw 流程，不保证跨线程并发修改安全。
 - 材质 Schema 中缺失或被编译器优化为 inactive 的 Uniform 会在材质装配或热重载时失败；直接 `ShaderProgram.Set*` 仍保持 OpenGL `-1` 安全跳过语义。

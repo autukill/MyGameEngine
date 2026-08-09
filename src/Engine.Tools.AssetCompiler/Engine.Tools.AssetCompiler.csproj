@@ -12,8 +12,8 @@
     <PackageId>MyGameEngine.AssetCompiler</PackageId>
     <Version>$(GameEnginePackageVersion)</Version>
     <Authors>MyGameEngine</Authors>
-    <Description>Offline compiler for MyGameEngine texture and sprite content packages.</Description>
-    <PackageTags>game-engine;content-pipeline;texture-atlas;sprite</PackageTags>
+    <Description>Offline compiler and strongly typed reference generator for MyGameEngine content and Shader assets.</Description>
+    <PackageTags>game-engine;content-pipeline;texture-atlas;sprite;shader;material</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
   </PropertyGroup>

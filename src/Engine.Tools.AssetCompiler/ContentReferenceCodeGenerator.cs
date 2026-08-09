@@ -1,7 +1,6 @@
 namespace GameEngine.Tools.AssetCompiler;
 
 using System.Text;
-using System.Text.Json;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 
@@ -27,20 +26,6 @@ public sealed record ContentReferenceGenerationResult(
 public sealed class ContentReferenceCodeGenerator
 {
     private const string InternalAtlasTexturePrefix = "__atlas.";
-    private static readonly HashSet<string> CSharpKeywords = new(StringComparer.Ordinal)
-    {
-        "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
-        "checked", "class", "const", "continue", "decimal", "default", "delegate", "do",
-        "double", "else", "enum", "event", "explicit", "extern", "false", "finally",
-        "fixed", "float", "for", "foreach", "goto", "if", "implicit", "in", "int",
-        "interface", "internal", "is", "lock", "long", "namespace", "new", "null",
-        "object", "operator", "out", "override", "params", "private", "protected",
-        "public", "readonly", "ref", "return", "sbyte", "sealed", "short", "sizeof",
-        "stackalloc", "static", "string", "struct", "switch", "this", "throw", "true",
-        "try", "typeof", "uint", "ulong", "unchecked", "unsafe", "ushort", "using",
-        "virtual", "void", "volatile", "while"
-    };
-
     private sealed class GraphNode
     {
         public required string ManifestPath { get; init; }
@@ -56,8 +41,8 @@ public sealed class ContentReferenceCodeGenerator
         ArgumentException.ThrowIfNullOrWhiteSpace(request.CompiledPackagesRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.RootRelativeManifestPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.OutputFile);
-        ValidateNamespace(request.Namespace);
-        ValidateIdentifier(request.RootClassName, "Generated root class name");
+        GeneratedCodeUtilities.ValidateNamespace(request.Namespace);
+        GeneratedCodeUtilities.ValidateIdentifier(request.RootClassName, "Generated root class name");
 
         string packagesRoot = Path.GetFullPath(request.CompiledPackagesRoot);
         if (!Directory.Exists(packagesRoot))
@@ -101,7 +86,7 @@ public sealed class ContentReferenceCodeGenerator
             packages,
             textures,
             sprites);
-        bool changed = WriteIfChanged(outputFile, source);
+        bool changed = GeneratedCodeUtilities.WriteIfChanged(outputFile, source);
         return new ContentReferenceGenerationResult(
             outputFile,
             changed,
@@ -184,7 +169,7 @@ public sealed class ContentReferenceCodeGenerator
             if (!logicalNames.Add(logicalName))
                 throw new InvalidDataException(
                     $"{kind} '{logicalName}' appears in multiple compiled packages.");
-            string identifier = ToIdentifier(logicalName, kind);
+            string identifier = GeneratedCodeUtilities.ToIdentifier(logicalName, kind);
             if (identifiers.TryGetValue(identifier, out string? existing))
             {
                 throw new InvalidDataException(
@@ -247,9 +232,9 @@ public sealed class ContentReferenceCodeGenerator
         source.Append("        public static readonly global::GameEngine.Features.ContentAssets.Domain.ContentPackageRef ")
             .Append(identifier)
             .Append(" = new(")
-            .Append(Literal(id))
+            .Append(GeneratedCodeUtilities.Literal(id))
             .Append(", ")
-            .Append(Literal(manifest))
+            .Append(GeneratedCodeUtilities.Literal(manifest))
             .AppendLine(");");
     }
 
@@ -268,82 +253,10 @@ public sealed class ContentReferenceCodeGenerator
                 .Append(' ')
                 .Append(member.Identifier)
                 .Append(" = new(")
-                .Append(Literal(member.LogicalName))
+                .Append(GeneratedCodeUtilities.Literal(member.LogicalName))
                 .AppendLine(");");
         }
         source.AppendLine("    }");
-    }
-
-    private static string ToIdentifier(string logicalName, string kind)
-    {
-        var result = new StringBuilder(logicalName.Length + 1);
-        bool startOfWord = true;
-        foreach (char character in logicalName)
-        {
-            if (!char.IsLetterOrDigit(character))
-            {
-                startOfWord = true;
-                continue;
-            }
-            if (result.Length == 0 && char.IsDigit(character)) result.Append('_');
-            result.Append(startOfWord ? char.ToUpperInvariant(character) : character);
-            startOfWord = false;
-        }
-        if (result.Length == 0)
-            throw new InvalidDataException(
-                $"{kind} name '{logicalName}' cannot be represented as a C# identifier.");
-        return result.ToString();
-    }
-
-    private static void ValidateNamespace(string value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
-        string[] segments = value.Split('.');
-        if (segments.Length == 0 || segments.Any(segment => !IsValidIdentifier(segment)))
-            throw new ArgumentException(
-                $"Generated namespace '{value}' is not a valid C# namespace.",
-                nameof(value));
-    }
-
-    private static void ValidateIdentifier(string value, string fieldName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
-        if (!IsValidIdentifier(value))
-            throw new ArgumentException($"{fieldName} '{value}' is not a valid C# identifier.");
-    }
-
-    private static bool IsValidIdentifier(string value)
-    {
-        if (value.Length == 0 || CSharpKeywords.Contains(value) ||
-            !(value[0] == '_' || char.IsLetter(value[0])))
-        {
-            return false;
-        }
-        return value.Skip(1).All(character => character == '_' || char.IsLetterOrDigit(character));
-    }
-
-    private static string Literal(string value) => JsonSerializer.Serialize(value);
-
-    private static bool WriteIfChanged(string outputFile, string source)
-    {
-        if (File.Exists(outputFile) &&
-            StringComparer.Ordinal.Equals(File.ReadAllText(outputFile), source))
-        {
-            return false;
-        }
-
-        Directory.CreateDirectory(Path.GetDirectoryName(outputFile)!);
-        string temporary = outputFile + $".tmp-{Guid.NewGuid():N}";
-        try
-        {
-            File.WriteAllText(temporary, source, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            File.Move(temporary, outputFile, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temporary)) File.Delete(temporary);
-        }
-        return true;
     }
 
     private static void ValidateOutputFile(string packagesRoot, string outputFile)

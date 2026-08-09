@@ -7,8 +7,8 @@
     <PackageId>MyGameEngine.ContentPipeline</PackageId>
     <Version>$(GameEnginePackageVersion)</Version>
     <Authors>MyGameEngine</Authors>
-    <Description>Hermetic MSBuild integration for the MyGameEngine content compiler.</Description>
-    <PackageTags>game-engine;msbuild;content-pipeline;texture-atlas;sprite</PackageTags>
+    <Description>Hermetic MSBuild integration for MyGameEngine content and Shader asset generation.</Description>
+    <PackageTags>game-engine;msbuild;content-pipeline;texture-atlas;sprite;shader;material</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);CollectAssetCompilerPayload</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>

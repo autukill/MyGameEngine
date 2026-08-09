@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 45 个 .NET 项目、197 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 45 个 .NET 项目、200 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -52,6 +52,7 @@
 - `MaterialRef`、`ShaderMaterial` 与类型化 `MaterialParameterBlock` 支持同一 Shader 的多套参数；Batch 按材质 Revision 精确 Flush，Program 热替换后自动在新 Handle 上重放 CPU 参数。
 - 材质创建与 Shader 热替换候选通过 GL Active Uniform 反射验证名称、类型和数组边界；失败保持旧 Handle，并输出包含文件路径、行号、阶段与逐 Uniform issue 的结构化诊断。
 - 独立 ShaderAssets 切片严格解析版本化 `shaders.json`，统一 Program 文件、Material Schema/default 与安全路径；Hosting 自动装配，AssetCompiler/MSBuild 在 C# 编译前复用同一静态校验。
+- AssetCompiler 从 `shaders.json` 确定性生成 `GameShaders.ManifestPath/Shaders/Materials/Parameters`；`MaterialParameterRef<T>` 在编译期固定值类型并携带所属 Material，Runner 与外部 NuGet 消费项目均不再手写 Shader 资产名称。
 
 ## 仍在演进
 
@@ -63,10 +64,10 @@
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 - Hosting v1 仅支持单窗口与单初始 Scene，尚无 Scene 切换栈、暂停策略或后台加载。
 
-## 下一里程碑：强类型 Material 引用与可选离线 Shader 编译
+## 下一里程碑：可选离线 Shader 编译与 Manifest 热重载
 
 1. 固化无显示器 CI 的软件 OpenGL 环境。
-2. 评估把 Material Schema 纳入声明式资产，使 MSBuild 能在构建期发现 Shader/Material 契约漂移；离线 GLSL 编译器必须作为显式可选工具，不用不可靠的源码正则替代驱动校验。
+2. 为离线 GLSL 编译器设计显式可选适配器与结构化诊断，不用不可靠的源码正则替代驱动校验，也不把外部工具变成默认构建硬依赖。
 3. 评估 Content 热重载的依赖拓扑替换与后台 GPU 上传边界。
 
 ## 已知限制

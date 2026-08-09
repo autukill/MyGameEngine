@@ -1,19 +1,20 @@
 # `GameEngine.Content.targets` 解读
 
-除 Texture/Sprite Content 外，同一 targets 还提供可选的声明式 Shader 静态校验。设置 `GameEngineShaderManifest` 后，`ValidateGameEngineShaderAssets` 会在 `ResolveProjectReferences` 之后、`CoreCompile` 之前调用同一个 AssetCompiler：
+除 Texture/Sprite Content 外，同一 targets 还提供可选的声明式 Shader 静态校验与强类型引用生成。设置 `GameEngineShaderManifest` 后，`ValidateGameEngineShaderAssets` 会在 `ResolveProjectReferences` 之后、`CoreCompile` 之前调用同一个 AssetCompiler：
 
 ~~~xml
 <GameEngineShaderManifest>$(MSBuildProjectDirectory)\Shaders\shaders.json</GameEngineShaderManifest>
 ~~~
 
-该 Target 不生成文件，也不创建 GL Context；它验证严格 JSON、Material→Shader 引用、类型化默认值和源码安全路径。真实 GLSL 编译与 Uniform 类型仍在 Hosting 创建 Program 时由驱动校验。完整格式见[声明式 Shader 与 Material Assets](SHADER_ASSETS.md)。
+该 Target 默认生成并编译 `GameEngine.Shaders.g.cs`，但不创建 GL Context；它验证严格 JSON、Material→Shader 引用、类型化默认值和源码安全路径。真实 GLSL 编译与 Uniform 类型仍在 Hosting 创建 Program 时由驱动校验。完整格式见[声明式 Shader 与 Material Assets](SHADER_ASSETS.md)。
 
-[`build/GameEngine.Content.targets`](../build/GameEngine.Content.targets) 是游戏项目与 `Engine.Tools.AssetCompiler` 之间的 MSBuild 适配层。它不实现图片解码、Atlas 排布或内容指纹，而是负责以下四件事：
+[`build/GameEngine.Content.targets`](../build/GameEngine.Content.targets) 是游戏项目与 `Engine.Tools.AssetCompiler` 之间的 MSBuild 适配层。它不实现图片解码、Atlas 排布或内容指纹，而是负责以下五件事：
 
 1. 在 C# 编译前调用资产编译器。
 2. 从编译后的 Manifest 图生成并编译强类型逻辑引用。
 3. 将编译后的标准内容包复制到程序输出目录。
 4. 将同一批运行时资产加入 `dotnet publish` 的发布文件列表。
+5. 校验 Shader 清单并生成 Shader、Material 与类型化 Uniform 参数引用。
 
 内容是否需要重建由 AssetCompiler 的包级 SHA-256 指纹判断，而不是由 MSBuild 的文件时间戳判断。
 
@@ -71,10 +72,17 @@
 | `GameEngineContentGeneratedNamespace` | `$(RootNamespace).Content` | 生成代码命名空间。 |
 | `GameEngineContentGeneratedClass` | `GameAssets` | 生成的根容器类型名。 |
 | `GameEngineContentGeneratedFile` | `obj/<Configuration>/<TargetFramework>/GameEngine.Content.g.cs` | 生成文件位置。 |
+| `GameEngineShaderManifest` | 无 | 声明式 Shader 清单；也是 Shader Target 的开关。 |
+| `GameEngineShaderGenerateReferences` | `true` | 是否生成并编译强类型 Shader/Material/参数引用。 |
+| `GameEngineShaderGeneratedNamespace` | `$(RootNamespace).Content` | Shader 生成代码命名空间。 |
+| `GameEngineShaderGeneratedClass` | `GameShaders` | Shader 生成根容器名称。 |
+| `GameEngineShaderGeneratedFile` | `obj/<Configuration>/<TargetFramework>/GameEngine.Shaders.g.cs` | Shader 生成文件位置。 |
 | `GameEngineAssetCompilerDll` | NuGet 包内编译器；源码模式为仓库 `bin` 输出 | 要执行的编译器 DLL，可显式覆盖。 |
 | `GameEngineDotNetHost` | `$(DotNetHostPath)` 或 `dotnet` | 启动框架依赖编译器的 dotnet host。 |
 
 默认中间输出显式包含 `Configuration` 和 `TargetFramework`，因此 Debug/Release 或不同目标框架不会共享错误的资产缓存。
+
+Shader Target 依次执行 `--validate-shaders` 与 `--generate-shader-references`。后者从项目根目录计算清单的安全运行时相对路径，内容未变化时不重写生成文件。生成源只进入编译项，不会复制到输出或 Publish 目录。
 
 ## `CompileGameEngineContent` 的执行顺序
 

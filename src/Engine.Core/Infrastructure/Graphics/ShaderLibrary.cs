@@ -78,6 +78,18 @@ public sealed class ShaderLibrary : IShaderResolver, IDisposable
         return _materials.TryGetValue(name, out ShaderMaterial? material) ? material : null;
     }
 
+    public ShaderMaterial Set(MaterialParameterRef<float> parameter, float value) =>
+        RequireMaterial(parameter.Material).Set(parameter, value);
+
+    public ShaderMaterial Set(MaterialParameterRef<int> parameter, int value) =>
+        RequireMaterial(parameter.Material).Set(parameter, value);
+
+    public ShaderMaterial Set(MaterialParameterRef<Vector2> parameter, Vector2 value) =>
+        RequireMaterial(parameter.Material).Set(parameter, value);
+
+    public ShaderMaterial Set(MaterialParameterRef<Vector4> parameter, Vector4 value) =>
+        RequireMaterial(parameter.Material).Set(parameter, value);
+
     public uint Resolve(ShaderRef shader)
     {
         ThrowIfDisposed();
@@ -99,6 +111,14 @@ public sealed class ShaderLibrary : IShaderResolver, IDisposable
         }
         resolved = default;
         return false;
+    }
+
+    private ShaderMaterial RequireMaterial(MaterialRef material)
+    {
+        ThrowIfDisposed();
+        if (material.IsEmpty || !_materials.TryGetValue(material.Name, out ShaderMaterial? entry))
+            throw new KeyNotFoundException($"Material '{material.Name}' is not registered.");
+        return entry;
     }
 
     public void ApplyMaterial(MaterialRef material)

@@ -63,7 +63,7 @@ internal static class Program {
         bool shaderHotReload ) {
         renderer
             .UseContent( GameAssets.Packages.Root )
-            .UseShaderAssets( "Shaders/shaders.json" )
+            .UseShaderAssets( GameShaders.ManifestPath )
             .UseHdr(
                 ToneMappingSettings.Default,
                 new BloomSettings(
@@ -105,7 +105,8 @@ internal static class Program {
         scene.OnStart = () => Console.WriteLine( $"[Scene] '{scene.SceneName}' started." );
 
         var orbitingSprite = GameAssets.Sprites.RunnerOrbiting;
-        var orbitMaterial = context.GetMaterial( "runner.orbit.material" );
+        var orbitMaterial = GameShaders.Materials.RunnerOrbitMaterial;
+        context.Shaders.Set( GameShaders.Parameters.RunnerOrbitMaterial.Gain, 1f );
         var center = new Vector2D(
             context.Window.Width * 0.5f,
             context.Window.Height * 0.5f );

@@ -87,6 +87,7 @@ internal static class Program
         string consumer = Path.Combine(workspace, "consumer project with spaces");
         Directory.CreateDirectory(consumer);
         CopyDirectory(sourceRoot, Path.Combine(consumer, "Assets"));
+        CreateShaderAssets(consumer);
         File.WriteAllText(Path.Combine(consumer, "Program.cs"), ConsumerProgram);
         File.WriteAllText(Path.Combine(consumer, "EngineReferenceStubs.cs"), EngineReferenceStubs);
         File.WriteAllText(
@@ -102,16 +103,20 @@ internal static class Program
         string debugAssets = Path.Combine(consumer, "bin", "Debug", "net10.0", "AssetsCompiled");
         Check(firstBuild.Output.Contains("Build status: Built", StringComparison.Ordinal) &&
               firstBuild.Output.Contains("Generated content references:", StringComparison.Ordinal) &&
+              firstBuild.Output.Contains("Generated Shader references:", StringComparison.Ordinal) &&
               File.Exists(Path.Combine(debugAssets, "assets.json")) &&
               File.Exists(Path.Combine(
-                  consumer, "obj", "Debug", "net10.0", "GameEngine.Content.g.cs")),
-            "PackageReference compiles runtime content and strongly typed references");
+                  consumer, "obj", "Debug", "net10.0", "GameEngine.Content.g.cs")) &&
+              File.Exists(Path.Combine(
+                  consumer, "obj", "Debug", "net10.0", "GameEngine.Shaders.g.cs")),
+            "PackageReference compiles runtime content and strongly typed Shader references");
 
         ProcessResult cachedBuild = RunDotNet(consumer,
             "build", "Consumer.csproj", "--no-restore");
         Check(cachedBuild.Output.Contains("Build status: UpToDate", StringComparison.Ordinal) &&
-              cachedBuild.Output.Contains("Reference status: UpToDate", StringComparison.Ordinal),
-            "A second consumer build reuses content and generated-reference outputs");
+              cachedBuild.Output.Contains("Reference status: UpToDate", StringComparison.Ordinal) &&
+              cachedBuild.Output.Contains("Shader reference status: UpToDate", StringComparison.Ordinal),
+            "A second consumer build reuses content and both generated-reference outputs");
 
         RunDotNet(consumer,
             "build", "Consumer.csproj", "--configuration", "Release", "--no-restore");
@@ -125,8 +130,9 @@ internal static class Program
             "--no-restore", "--output", publish);
         Check(File.Exists(Path.Combine(publish, "AssetsCompiled", "assets.json")) &&
               File.Exists(Path.Combine(publish, "AssetsCompiled", ".mygame-assets.json")) &&
-              !File.Exists(Path.Combine(publish, "GameEngine.Content.g.cs")),
-            "Publish includes runtime assets and revision metadata but excludes generated source");
+              !File.Exists(Path.Combine(publish, "GameEngine.Content.g.cs")) &&
+              !File.Exists(Path.Combine(publish, "GameEngine.Shaders.g.cs")),
+            "Publish includes runtime assets and revision metadata but excludes generated sources");
 
         ProcessResult invalidMode = RunDotNet(
             consumer,
@@ -136,6 +142,15 @@ internal static class Program
         Check(invalidMode.ExitCode != 0 && invalidMode.Output.Contains(
                 "GameEngineContentBuildMode must be", StringComparison.Ordinal),
             "Invalid MSBuild content mode fails before invoking the compiler");
+
+        ProcessResult invalidShaderGeneration = RunDotNet(
+            consumer,
+            expectSuccess: false,
+            "build", "Consumer.csproj", "--no-restore",
+            "-p:GameEngineShaderGenerateReferences=invalid");
+        Check(invalidShaderGeneration.ExitCode != 0 && invalidShaderGeneration.Output.Contains(
+                "GameEngineShaderGenerateReferences must be", StringComparison.Ordinal),
+            "Invalid Shader reference generation switch fails before invoking the generator");
     }
 
     private static void VerifyPackageLayout(
@@ -147,8 +162,9 @@ internal static class Program
         string[] toolEntries = toolArchive.Entries.Select(entry => entry.FullName).ToArray();
         Check(toolEntries.Contains("tools/net10.0/any/DotnetToolSettings.xml", StringComparer.Ordinal) &&
               toolEntries.Contains("tools/net10.0/any/GameEngineAssetCompiler.dll", StringComparer.Ordinal) &&
+              toolEntries.Contains("tools/net10.0/any/ShaderAssets.dll", StringComparer.Ordinal) &&
               toolEntries.Contains("README.md", StringComparer.Ordinal),
-            "Tool package contains command metadata and the compiler entry assembly");
+            "Tool package contains command metadata, compiler, and Shader assets support");
         Check(!toolEntries.Any(entry => entry.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)),
             "Tool package excludes compiler and dependency symbols");
 
@@ -160,6 +176,8 @@ internal static class Program
                   "buildTransitive/MyGameEngine.ContentPipeline.targets", StringComparer.Ordinal) &&
               buildEntries.Contains(
                   "tools/net10.0/any/GameEngineAssetCompiler.dll", StringComparer.Ordinal) &&
+              buildEntries.Contains(
+                  "tools/net10.0/any/ShaderAssets.dll", StringComparer.Ordinal) &&
               buildEntries.Contains("README.md", StringComparer.Ordinal),
             "ContentPipeline package contains convention-named imports and a private compiler payload");
         Check(!buildEntries.Any(entry =>
@@ -199,6 +217,14 @@ internal static class Program
         Directory.CreateDirectory(target);
         foreach (string file in Directory.GetFiles(source))
             File.Copy(file, Path.Combine(target, Path.GetFileName(file)));
+    }
+
+    private static void CreateShaderAssets(string projectRoot)
+    {
+        string root = Directory.CreateDirectory(Path.Combine(projectRoot, "Shaders")).FullName;
+        File.WriteAllText(Path.Combine(root, "sprite.vert.glsl"), "void main() {}");
+        File.WriteAllText(Path.Combine(root, "sprite.frag.glsl"), "void main() {}");
+        File.WriteAllText(Path.Combine(root, "shaders.json"), ShaderManifest);
     }
 
     private static void WriteNuGetConfig(string path, string feed)
@@ -298,6 +324,7 @@ internal static class Program
             <RootNamespace>Consumer</RootNamespace>
             <GameEngineContentPackagesRoot>$(MSBuildProjectDirectory)\Assets</GameEngineContentPackagesRoot>
             <GameEngineContentManifest>assets.json</GameEngineContentManifest>
+            <GameEngineShaderManifest>$(MSBuildProjectDirectory)\Shaders\shaders.json</GameEngineShaderManifest>
           </PropertyGroup>
           <ItemGroup>
             <PackageReference Include="MyGameEngine.ContentPipeline"
@@ -313,6 +340,10 @@ internal static class Program
         System.Console.WriteLine(GameAssets.Packages.Root.Id);
         System.Console.WriteLine(GameAssets.Textures.PackageWhite.Name);
         System.Console.WriteLine(GameAssets.Sprites.PackageWhite.Name);
+        System.Console.WriteLine(GameShaders.ManifestPath);
+        System.Console.WriteLine(GameShaders.Shaders.PackageSprite.Name);
+        System.Console.WriteLine(GameShaders.Materials.PackageMaterial.Name);
+        System.Console.WriteLine(GameShaders.Parameters.PackageMaterial.Gain.Name);
         """;
 
     private const string EngineReferenceStubs = """
@@ -325,6 +356,13 @@ internal static class Program
         namespace GameEngine.Features.ContentAssets.Domain
         {
             public readonly record struct ContentPackageRef(string Id, string Manifest);
+        }
+
+        namespace GameEngine.Core.Domain.Graphics
+        {
+            public readonly record struct ShaderRef(string Name);
+            public readonly record struct MaterialRef(string Name);
+            public readonly record struct MaterialParameterRef<T>(MaterialRef Material, string Name);
         }
         """;
 
@@ -342,6 +380,28 @@ internal static class Program
               "layout": "single",
               "texture": "package.white",
               "origin": { "x": 0, "y": 0 }
+            }
+          ]
+        }
+        """;
+
+    private const string ShaderManifest = """
+        {
+          "schemaVersion": 1,
+          "shaders": [
+            {
+              "name": "package.sprite",
+              "vertex": "sprite.vert.glsl",
+              "fragment": "sprite.frag.glsl"
+            }
+          ],
+          "materials": [
+            {
+              "name": "package.material",
+              "shader": "package.sprite",
+              "uniforms": [
+                { "name": "uGain", "type": "float", "default": 1.0 }
+              ]
             }
           ]
         }

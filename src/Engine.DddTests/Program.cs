@@ -270,9 +270,23 @@ internal sealed class Program
             () => _ = ShaderUniformDefinition.Float("uProjection"),
             "Engine-owned uniforms are reserved");
 
+        var material = new MaterialRef("probe.material");
+        var gain = new MaterialParameterRef<float>(material, "uGain");
+        var direction = new MaterialParameterRef<Vector2>(material, "uDirection");
+        Assert(gain.Material == material && gain.Name == "uGain" &&
+               direction.Material == material && direction.Name == "uDirection",
+            "Strongly typed parameter references preserve material ownership and value type");
+        AssertThrows<ArgumentException>(
+            () => _ = new MaterialParameterRef<float>(MaterialRef.Empty, "uGain"),
+            "Typed parameters reject an empty material owner");
+        AssertThrows<NotSupportedException>(
+            () => _ = new MaterialParameterRef<double>(material, "uGain"),
+            "Typed parameters reject unsupported CLR value types");
+
         Console.WriteLine("\n12. Typed material parameter blocks");
         Console.WriteLine("   [PASS] strict schema + typed values + change revision");
         Console.WriteLine("   [PASS] engine-owned uniforms remain protected");
+        Console.WriteLine("   [PASS] logical MaterialParameterRef<T> ownership + supported types");
     }
 
     private static void AssertThrows<TException>(Action action, string message)

@@ -6,6 +6,8 @@ internal static class Program
     {
         if (args.Length > 0 && args[0] == "--generate-references")
             return GenerateReferences(args);
+        if (args.Length > 0 && args[0] == "--generate-shader-references")
+            return GenerateShaderReferences(args);
         if (args.Length > 0 && args[0] == "--validate-shaders")
             return ValidateShaders(args);
 
@@ -95,6 +97,39 @@ internal static class Program
             Console.WriteLine($"Packages: {result.PackageCount}");
             Console.WriteLine($"Textures: {result.TextureCount}");
             Console.WriteLine($"Sprites: {result.SpriteCount}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+    }
+
+    private static int GenerateShaderReferences(string[] args)
+    {
+        if (args.Length != 6)
+        {
+            Console.Error.WriteLine(
+                "Usage: GameEngineAssetCompiler --generate-shader-references " +
+                "<project-root> <shaders.json> <output.cs> <namespace> <root-class-name>");
+            return 2;
+        }
+
+        try
+        {
+            ShaderReferenceGenerationResult result = new ShaderReferenceCodeGenerator().Generate(
+                new ShaderReferenceGenerationRequest(
+                    args[1],
+                    args[2],
+                    args[3],
+                    args[4],
+                    args[5]));
+            Console.WriteLine($"Generated Shader references: {result.OutputFile}");
+            Console.WriteLine($"Shader reference status: {(result.Changed ? "Updated" : "UpToDate")}");
+            Console.WriteLine($"Shaders: {result.ShaderCount}");
+            Console.WriteLine($"Materials: {result.MaterialCount}");
+            Console.WriteLine($"Parameters: {result.ParameterCount}");
             return 0;
         }
         catch (Exception ex)

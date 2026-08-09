@@ -36,6 +36,9 @@ dotnet tool install MyGameEngine.AssetCompiler `
 .tools/gameengine-assets --incremental Assets assets.json artifacts/compiled
 .tools/gameengine-assets --rebuild Assets assets.json artifacts/compiled
 .tools/gameengine-assets --check Assets assets.json artifacts/compiled
+.tools/gameengine-assets --validate-shaders Shaders/shaders.json
+.tools/gameengine-assets --generate-shader-references `
+  . Shaders/shaders.json obj/GameEngine.Shaders.g.cs MyGame.Content GameShaders
 ```
 
 Windows 的直接可执行文件名为 `gameengine-assets.exe`。Tool 退出码约定：
@@ -55,6 +58,7 @@ Windows 的直接可执行文件名为 `gameengine-assets.exe`。Tool 退出码�
 <PropertyGroup>
   <GameEngineContentPackagesRoot>$(MSBuildProjectDirectory)\Assets</GameEngineContentPackagesRoot>
   <GameEngineContentManifest>assets.json</GameEngineContentManifest>
+  <GameEngineShaderManifest>$(MSBuildProjectDirectory)\Shaders\shaders.json</GameEngineShaderManifest>
 </PropertyGroup>
 
 <ItemGroup>
@@ -73,7 +77,7 @@ dotnet build Game.csproj
 dotnet publish Game.csproj -c Release
 ```
 
-编译缓存保存在 `obj/<Configuration>/<TargetFramework>/CompiledAssets`。同一 Target 默认生成并编译 `GameEngine.Content.g.cs`，提供 `GameAssets.Packages/Sprites/Textures`；运行时文件复制到 `bin/.../AssetsCompiled` 和 Publish 的 `AssetsCompiled`。生成源码不会进入运行目录；`.mygame-assets.json` 会最后复制，作为可选 Content 热重载与诊断使用的修订提交标记。
+编译缓存保存在 `obj/<Configuration>/<TargetFramework>/CompiledAssets`。同一 Target 默认生成并编译 `GameEngine.Content.g.cs`，提供 `GameAssets.Packages/Sprites/Textures`；设置 Shader 清单后还会生成 `GameEngine.Shaders.g.cs`，提供 `GameShaders.ManifestPath/Shaders/Materials/Parameters`。运行时内容包复制到 `bin/.../AssetsCompiled` 和 Publish 的 `AssetsCompiled`。生成源码不会进入运行目录；`.mygame-assets.json` 会最后复制，作为可选 Content 热重载与诊断使用的修订提交标记。
 
 ## MSBuild 配置
 
@@ -88,6 +92,11 @@ dotnet publish Game.csproj -c Release
 | `GameEngineContentGeneratedNamespace` | `$(RootNamespace).Content` | 生成代码命名空间。 |
 | `GameEngineContentGeneratedClass` | `GameAssets` | 生成的项目级根容器。 |
 | `GameEngineContentGeneratedFile` | `obj/<Configuration>/<TargetFramework>/GameEngine.Content.g.cs` | 生成源码路径。 |
+| `GameEngineShaderManifest` | 无 | 声明式 Shader 清单，同时也是 Shader 校验与生成开关。 |
+| `GameEngineShaderGenerateReferences` | `true` | 生成并编译强类型 Shader/Material/参数引用。 |
+| `GameEngineShaderGeneratedNamespace` | `$(RootNamespace).Content` | Shader 生成代码命名空间。 |
+| `GameEngineShaderGeneratedClass` | `GameShaders` | Shader 生成根容器。 |
+| `GameEngineShaderGeneratedFile` | `obj/<Configuration>/<TargetFramework>/GameEngine.Shaders.g.cs` | Shader 生成源码路径。 |
 | `GameEngineAssetCompilerDll` | 包内编译器或源码仓库输出 | 高级覆盖入口。 |
 | `GameEngineDotNetHost` | `$(DotNetHostPath)` 或 `dotnet` | 用于启动框架依赖编译器的 dotnet host。 |
 
@@ -108,4 +117,4 @@ Runner 与 Sprites.VisualTests 继续使用：
 - ContentPipeline 包携带完整框架依赖编译器、托管依赖以及 SkiaSharp 多平台 native assets，不要求外部游戏项目引用这些程序集。
 - 包不包含源资产、编译缓存或任何仓库绝对路径。
 - 当前未实现包签名、远程 Feed 发布、跨仓库共享缓存或远程缓存。
-- 内容格式、Atlas 行为与安全路径边界仍以 [Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)和[强类型 Content 引用](STRONGLY_TYPED_CONTENT.md)文档为准。
+- 内容格式、Atlas 与 Shader 生成边界仍以 [Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[强类型 Content 引用](STRONGLY_TYPED_CONTENT.md)和[声明式 Shader 与 Material Assets](SHADER_ASSETS.md)文档为准。

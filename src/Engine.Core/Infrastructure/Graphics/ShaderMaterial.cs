@@ -40,4 +40,38 @@ public sealed class ShaderMaterial
         Parameters.SetVector4(name, value);
         return this;
     }
+
+    public ShaderMaterial Set(MaterialParameterRef<float> parameter, float value)
+    {
+        RequireOwner(parameter.Material);
+        return SetFloat(parameter.Name, value);
+    }
+
+    public ShaderMaterial Set(MaterialParameterRef<int> parameter, int value)
+    {
+        RequireOwner(parameter.Material);
+        return SetInt(parameter.Name, value);
+    }
+
+    public ShaderMaterial Set(MaterialParameterRef<Vector2> parameter, Vector2 value)
+    {
+        RequireOwner(parameter.Material);
+        return SetVector2(parameter.Name, value);
+    }
+
+    public ShaderMaterial Set(MaterialParameterRef<Vector4> parameter, Vector4 value)
+    {
+        RequireOwner(parameter.Material);
+        return SetVector4(parameter.Name, value);
+    }
+
+    private void RequireOwner(MaterialRef material)
+    {
+        if (material != Ref)
+        {
+            throw new ArgumentException(
+                $"Material parameter belongs to '{material.Name}', not '{Ref.Name}'.",
+                nameof(material));
+        }
+    }
 }

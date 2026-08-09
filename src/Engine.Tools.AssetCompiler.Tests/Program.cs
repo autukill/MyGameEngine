@@ -15,6 +15,7 @@ internal static class Program
     {
         Console.WriteLine("=== Asset Compiler Smoke Test ===\n");
         VerifyCompileAndRuntimeLoad();
+        VerifyShaderReferenceGeneration();
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0
@@ -198,6 +199,87 @@ internal static class Program
             "Foreign output remains untouched");
     }
 
+    private static void VerifyShaderReferenceGeneration()
+    {
+        Console.WriteLine("4. Strongly typed Shader, Material, and parameter references");
+        string workspace = Directory.CreateTempSubdirectory("mygame-shader-refs-").FullName;
+        string projectRoot = Path.Combine(workspace, "game");
+        string shadersRoot = Path.Combine(projectRoot, "Shaders");
+        string output = Path.Combine(projectRoot, "obj", "GameEngine.Shaders.g.cs");
+        Directory.CreateDirectory(shadersRoot);
+        try
+        {
+            File.WriteAllText(Path.Combine(shadersRoot, "sprite.vert.glsl"), "void main() {}");
+            File.WriteAllText(Path.Combine(shadersRoot, "orbit.frag.glsl"), "void main() {}");
+            string manifest = Path.Combine(shadersRoot, "shaders.json");
+            File.WriteAllText(manifest, ShaderManifest);
+
+            var generator = new ShaderReferenceCodeGenerator();
+            var request = new ShaderReferenceGenerationRequest(
+                projectRoot,
+                manifest,
+                output,
+                "Compiler.Sample.Content");
+            ShaderReferenceGenerationResult first = generator.Generate(request);
+            DateTime firstWrite = File.GetLastWriteTimeUtc(output);
+            ShaderReferenceGenerationResult cached = generator.Generate(request);
+            string source = File.ReadAllText(output);
+
+            Check(first.Changed && !cached.Changed &&
+                  File.GetLastWriteTimeUtc(output) == firstWrite &&
+                  first.ShaderCount == 1 && first.MaterialCount == 1 &&
+                  first.ParameterCount == 4,
+                "Unchanged Shader references are deterministic and preserve timestamps");
+            Check(source.Contains("const string ManifestPath = \"Shaders/shaders.json\"", StringComparison.Ordinal) &&
+                  source.Contains("ShaderRef RunnerOrbit", StringComparison.Ordinal) &&
+                  source.Contains("MaterialRef RunnerOrbitMaterial", StringComparison.Ordinal),
+                "Manifest, Shader, and Material logical references are generated");
+            Check(source.Contains("MaterialParameterRef<float> Gain", StringComparison.Ordinal) &&
+                  source.Contains("MaterialParameterRef<int> Mode", StringComparison.Ordinal) &&
+                  source.Contains("MaterialParameterRef<global::System.Numerics.Vector2> Direction", StringComparison.Ordinal) &&
+                  source.Contains("MaterialParameterRef<global::System.Numerics.Vector4> Tint", StringComparison.Ordinal),
+                "Uniform schema produces strongly typed parameter keys without the conventional u prefix");
+
+            File.WriteAllText(Path.Combine(shadersRoot, "collision.json"), ShaderCollisionManifest);
+            CheckThrows<InvalidDataException>(() => generator.Generate(request with
+                {
+                    ManifestPath = Path.Combine(shadersRoot, "collision.json"),
+                    OutputFile = Path.Combine(projectRoot, "obj", "collision.g.cs")
+                }),
+                "Ambiguous Shader identifiers fail during generation");
+
+            File.WriteAllText(
+                Path.Combine(shadersRoot, "parameter-collision.json"),
+                ShaderParameterCollisionManifest);
+            CheckThrows<InvalidDataException>(() => generator.Generate(request with
+                {
+                    ManifestPath = Path.Combine(shadersRoot, "parameter-collision.json"),
+                    OutputFile = Path.Combine(projectRoot, "obj", "parameter-collision.g.cs")
+                }),
+                "Ambiguous normalized parameter identifiers fail during generation");
+
+            string outside = Path.Combine(workspace, "outside");
+            Directory.CreateDirectory(outside);
+            File.WriteAllText(Path.Combine(outside, "sprite.vert.glsl"), "void main() {}");
+            File.WriteAllText(Path.Combine(outside, "orbit.frag.glsl"), "void main() {}");
+            File.WriteAllText(Path.Combine(outside, "shaders.json"), ShaderManifest);
+            CheckThrows<InvalidDataException>(() => generator.Generate(request with
+                {
+                    ManifestPath = Path.Combine(outside, "shaders.json")
+                }),
+                "Generated runtime manifest paths cannot escape the project root");
+            CheckThrows<InvalidDataException>(() => generator.Generate(request with
+                {
+                    OutputFile = Path.Combine(workspace, "escaped.g.cs")
+                }),
+                "Generated Shader source cannot escape the project root");
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
     private static bool DirectoriesEqual(string left, string right)
     {
         string[] leftFiles = Directory.GetFiles(left, "*", SearchOption.AllDirectories)
@@ -320,6 +402,65 @@ internal static class Program
             { "name": "foo.bar", "path": "second.png" }
           ],
           "sprites": []
+        }
+        """;
+
+    private const string ShaderManifest = """
+        {
+          "schemaVersion": 1,
+          "shaders": [
+            {
+              "name": "runner.orbit",
+              "vertex": "sprite.vert.glsl",
+              "fragment": "orbit.frag.glsl"
+            }
+          ],
+          "materials": [
+            {
+              "name": "runner.orbit.material",
+              "shader": "runner.orbit",
+              "uniforms": [
+                { "name": "uGain", "type": "float", "default": 1.0 },
+                { "name": "uMode", "type": "int", "default": 0 },
+                { "name": "uDirection", "type": "vector2", "default": { "x": 1, "y": 0 } },
+                { "name": "uTint", "type": "vector4", "default": { "x": 1, "y": 1, "z": 1, "w": 1 } }
+              ]
+            }
+          ]
+        }
+        """;
+
+    private const string ShaderCollisionManifest = """
+        {
+          "schemaVersion": 1,
+          "shaders": [
+            { "name": "foo-bar", "vertex": "sprite.vert.glsl", "fragment": "orbit.frag.glsl" },
+            { "name": "foo.bar", "vertex": "sprite.vert.glsl", "fragment": "orbit.frag.glsl" }
+          ],
+          "materials": []
+        }
+        """;
+
+    private const string ShaderParameterCollisionManifest = """
+        {
+          "schemaVersion": 1,
+          "shaders": [
+            {
+              "name": "runner.orbit",
+              "vertex": "sprite.vert.glsl",
+              "fragment": "orbit.frag.glsl"
+            }
+          ],
+          "materials": [
+            {
+              "name": "runner.orbit.material",
+              "shader": "runner.orbit",
+              "uniforms": [
+                { "name": "uGain", "type": "float", "default": 1.0 },
+                { "name": "Gain", "type": "float", "default": 1.0 }
+              ]
+            }
+          ]
         }
         """;
 }

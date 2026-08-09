@@ -7,6 +7,9 @@
     <GameEngineContentGenerateReferences Condition="'$(GameEngineContentGenerateReferences)' == ''">true</GameEngineContentGenerateReferences>
     <GameEngineContentGeneratedClass Condition="'$(GameEngineContentGeneratedClass)' == ''">GameAssets</GameEngineContentGeneratedClass>
     <GameEngineContentGeneratedFile Condition="'$(GameEngineContentGeneratedFile)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/GameEngine.Content.g.cs'))</GameEngineContentGeneratedFile>
+    <GameEngineShaderGenerateReferences Condition="'$(GameEngineShaderGenerateReferences)' == ''">true</GameEngineShaderGenerateReferences>
+    <GameEngineShaderGeneratedClass Condition="'$(GameEngineShaderGeneratedClass)' == ''">GameShaders</GameEngineShaderGeneratedClass>
+    <GameEngineShaderGeneratedFile Condition="'$(GameEngineShaderGeneratedFile)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/GameEngine.Shaders.g.cs'))</GameEngineShaderGeneratedFile>
     <GameEngineAssetCompilerDll Condition="'$(GameEngineAssetCompilerDll)' == '' and '$(GameEngineContentPackageRoot)' != ''">$([System.IO.Path]::GetFullPath('$(GameEngineContentPackageRoot)\tools\net10.0\any\GameEngineAssetCompiler.dll'))</GameEngineAssetCompilerDll>
     <GameEngineAssetCompilerDll Condition="'$(GameEngineAssetCompilerDll)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\src\Engine.Tools.AssetCompiler\bin\$(Configuration)\net10.0\GameEngineAssetCompiler.dll'))</GameEngineAssetCompilerDll>
     <GameEngineDotNetHost Condition="'$(GameEngineDotNetHost)' == '' and '$(DotNetHostPath)' != ''">$(DotNetHostPath)</GameEngineDotNetHost>
@@ -17,10 +20,27 @@
           AfterTargets="ResolveProjectReferences"
           BeforeTargets="CoreCompile"
           Condition="'$(GameEngineShaderManifest)' != ''">
+    <PropertyGroup>
+      <GameEngineShaderGeneratedNamespace Condition="'$(GameEngineShaderGeneratedNamespace)' == '' and '$(RootNamespace)' != ''">$(RootNamespace).Content</GameEngineShaderGeneratedNamespace>
+      <GameEngineShaderGeneratedNamespace Condition="'$(GameEngineShaderGeneratedNamespace)' == ''">$(AssemblyName).Content</GameEngineShaderGeneratedNamespace>
+    </PropertyGroup>
     <Error Condition="!Exists('$(GameEngineAssetCompilerDll)')"
            Text="GameEngine AssetCompiler was not built: $(GameEngineAssetCompilerDll)" />
+    <Error Condition="'$(GameEngineShaderGenerateReferences)' != 'true' and '$(GameEngineShaderGenerateReferences)' != 'false'"
+           Text="GameEngineShaderGenerateReferences must be true or false; actual: $(GameEngineShaderGenerateReferences)" />
     <Exec Command="&quot;$(GameEngineDotNetHost)&quot; &quot;$(GameEngineAssetCompilerDll)&quot; --validate-shaders &quot;$(GameEngineShaderManifest)&quot;"
           WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Exec Condition="'$(GameEngineShaderGenerateReferences)' == 'true'"
+          Command="&quot;$(GameEngineDotNetHost)&quot; &quot;$(GameEngineAssetCompilerDll)&quot; --generate-shader-references &quot;$(MSBuildProjectDirectory)&quot; &quot;$(GameEngineShaderManifest)&quot; &quot;$(GameEngineShaderGeneratedFile)&quot; &quot;$(GameEngineShaderGeneratedNamespace)&quot; &quot;$(GameEngineShaderGeneratedClass)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+
+    <ItemGroup Condition="'$(GameEngineShaderGenerateReferences)' == 'true'">
+      <Compile Include="$(GameEngineShaderGeneratedFile)"
+               AutoGen="true"
+               DesignTime="true"
+               Visible="false" />
+      <FileWrites Include="$(GameEngineShaderGeneratedFile)" />
+    </ItemGroup>
   </Target>
 
   <Target Name="CompileGameEngineContent"
