@@ -82,10 +82,11 @@ GameAssets.Packages.SharedPrimitives
 - Gameplay Cookbook 收敛常见配方；Release 基准记录 100/1,000/10,000 Collider 线性查询成本。
 - `Easing`、`Tween` 与 `Motion` 提供归一化曲线、值/最短弧度角插值、限速追踪和半衰期平滑，不引入全局 Manager。
 - SceneAggregate 使用可复用阶段快照和原地稳定排序；Input、Step、Draw、DrawGUI 在实例规模预热后保持 0 B/帧，同时保留阶段间直接变更与 Gameplay 帧边界提交语义。
+- `GameplayStateMachine<TState>` 提供强类型 Enter/Step/Exit、状态计时、确定性回调后切换和冲突/循环保护；配置后 Update/Change/Restart 保持零稳态分配。
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：为普通玩法对象提供轻量、强类型的状态机 Authoring，再根据真实游戏遥测复核 Spatial Hash。Gameplay/Unscaled 时间域、owner/key 暂停、单一 TimeScale 和 Scene 生命周期零稳态分配已经落地，性能口径见 [SceneAggregate 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)。无状态 Easing/Tween/Motion 与强类型 Scene 参数也已落地。当前 1,000 Collider 基线约 0.0201 ms/查询，不提前引入索引。逐帧多区域与 Sprite 异形碰撞的需求已记录在 [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)，但碰撞细化不是当前主要矛盾。暂不进入 UI、完整协程或物理系统。
+下一步优先级：在真实 Playground 中记录查询频率和帧预算占比，并评估保留现有便利查询的同时增加调用方复用结果缓冲区。强类型状态机、Gameplay/Unscaled 时间域、owner/key 暂停、单一 TimeScale 和 Scene 生命周期零稳态分配已经落地，状态机语义见 [Gameplay 强类型状态机](GAMEPLAY_STATE_MACHINE.md)。当前 1,000 Collider 基线约 0.0201 ms/查询，不提前引入 Spatial Hash。逐帧多区域与 Sprite 异形碰撞的需求已记录在 [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)，但碰撞细化不是当前主要矛盾。暂不进入 UI、完整协程或物理系统。
 
 ## 设计约束
 

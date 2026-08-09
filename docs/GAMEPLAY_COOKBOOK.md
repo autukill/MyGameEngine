@@ -78,6 +78,22 @@ public override void OnAlarm(AlarmId alarm)
 
 Alarm 到期后先移除再回调，所以可以在 `OnAlarm` 中安全重设同一个 ID。inactive 实例的 Alarm 会暂停。
 
+## 有进入/更新/退出阶段的玩法状态
+
+```csharp
+private enum EnemyState { Spawning, Active }
+
+private readonly GameplayStateMachine<EnemyState> states =
+    new GameplayStateMachine<EnemyState>(EnemyState.Spawning)
+        .State(EnemyState.Spawning, step: UpdateSpawning)
+        .State(EnemyState.Active, enter: EnableCollision, step: UpdateActive);
+
+public override void OnCreate() => states.Start();
+public override void OnStep(double dt) => states.Update(dt);
+```
+
+在当前状态回调中调用 `states.ChangeTo(EnemyState.Active)`。旧 Step 会先结束，再执行 Exit/Enter；新状态从下一次 Update 开始 Step。状态持续时间直接读取 `states.Elapsed`，无需为每个状态额外维护计时字段。需要重新进入当前状态时使用 `Restart()`，不要依赖同状态切换的隐式副作用。
+
 ## 碰撞响应
 
 ```csharp

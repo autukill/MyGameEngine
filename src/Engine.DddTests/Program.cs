@@ -149,6 +149,7 @@ internal sealed class Program
         VerifyEasingTweenAndMotion();
         VerifyGameplayTimeControl();
         VerifyLifecycleSteadyStateAllocations();
+        VerifyGameplayStateMachine();
         if (args.Contains("--benchmark-spatial", StringComparer.Ordinal))
             MeasureSpatialQueries();
         if (args.Contains("--benchmark-lifecycle", StringComparer.Ordinal))
@@ -601,7 +602,7 @@ internal sealed class Program
 
     private static void MeasureSpatialQueries()
     {
-        Console.WriteLine("\n18. Spatial query benchmark (linear scan)");
+        Console.WriteLine("\n19. Spatial query benchmark (linear scan)");
         foreach (int count in new[] { 100, 1_000, 10_000 })
         {
             var scene = new SceneAggregate($"Spatial-{count}");
@@ -709,7 +710,7 @@ internal sealed class Program
 
     private static void MeasureLifecycleFrames()
     {
-        Console.WriteLine("\n19. Scene lifecycle benchmark");
+        Console.WriteLine("\n20. Scene lifecycle benchmark");
         foreach (int count in new[] { 100, 1_000, 10_000 })
         {
             var scene = new SceneAggregate($"Lifecycle-{count}");
@@ -732,6 +733,126 @@ internal sealed class Program
                 $"   {count,6:N0} instances: {elapsedMs / frames,8:F4} ms/frame, " +
                 $"{allocated / frames,6:N0} B/frame");
         }
+    }
+
+    private static void VerifyGameplayStateMachine()
+    {
+        var events = new List<string>();
+        GameplayStateMachine<ProbeState>? states = null;
+        states = new GameplayStateMachine<ProbeState>(ProbeState.Idle)
+            .State(
+                ProbeState.Idle,
+                enter: () => events.Add("idle.enter"),
+                step: _ =>
+                {
+                    events.Add("idle.step");
+                    states!.ChangeTo(ProbeState.Active);
+                },
+                exit: () => events.Add("idle.exit"))
+            .State(
+                ProbeState.Active,
+                enter: () => events.Add("active.enter"),
+                step: _ => events.Add("active.step"),
+                exit: () => events.Add("active.exit"));
+
+        Assert(!states.IsStarted && states.Is(ProbeState.Idle) && states.PreviousState is null,
+            "State machine exposes its typed initial state before Start");
+        states.Start();
+        states.Update(.25d);
+        Assert(events.SequenceEqual([
+                "idle.enter", "idle.step", "idle.exit", "active.enter"]),
+            "A callback transition commits after the old Step and defers the new Step");
+        Assert(states.Is(ProbeState.Active) && states.PreviousState == ProbeState.Idle &&
+               states.Elapsed == 0d,
+            "Committed transitions expose Current/Previous and reset Elapsed");
+
+        states.Update(.5d);
+        int beforeSameState = events.Count;
+        states.ChangeTo(ProbeState.Active);
+        Assert(events.Count == beforeSameState && Nearly((float)states.Elapsed, .5f),
+            "Changing to the current state is an idempotent no-op");
+        states.Restart();
+        Assert(events.TakeLast(2).SequenceEqual(["active.exit", "active.enter"]) &&
+               states.PreviousState == ProbeState.Active && states.Elapsed == 0d,
+            "Restart explicitly exits and re-enters the current state");
+
+        var missingInitial = new GameplayStateMachine<ProbeState>(ProbeState.Idle);
+        AssertThrows<InvalidOperationException>(
+            missingInitial.Start,
+            "Start rejects an unregistered initial state");
+        var duplicate = new GameplayStateMachine<ProbeState>(ProbeState.Idle)
+            .State(ProbeState.Idle);
+        AssertThrows<ArgumentException>(
+            () => duplicate.State(ProbeState.Idle),
+            "State registration rejects duplicates");
+        AssertThrows<InvalidOperationException>(
+            () => new GameplayStateMachine<ProbeState>(ProbeState.Idle).Update(.1d),
+            "Update requires Start");
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => states.Update(-.1d),
+            "Update rejects negative delta time");
+        AssertThrows<ArgumentException>(
+            () => states.ChangeTo(ProbeState.Cooldown),
+            "Transitions reject unregistered target states before mutation");
+        AssertThrows<InvalidOperationException>(
+            () => states.State(ProbeState.Cooldown),
+            "Configuration is frozen after Start");
+
+        GameplayStateMachine<ProbeState>? conflicting = null;
+        conflicting = new GameplayStateMachine<ProbeState>(ProbeState.Idle)
+            .State(ProbeState.Idle, step: _ =>
+            {
+                conflicting!.ChangeTo(ProbeState.Active);
+                conflicting.ChangeTo(ProbeState.Cooldown);
+            })
+            .State(ProbeState.Active)
+            .State(ProbeState.Cooldown);
+        conflicting.Start();
+        AssertThrows<InvalidOperationException>(
+            () => conflicting.Update(.1d),
+            "One callback cannot request conflicting transitions");
+        Assert(conflicting.Is(ProbeState.Idle),
+            "A conflicting callback request does not partially commit its first transition");
+
+        GameplayStateMachine<ProbeState>? cyclic = null;
+        cyclic = new GameplayStateMachine<ProbeState>(ProbeState.Idle)
+            .State(ProbeState.Idle, enter: () => cyclic!.ChangeTo(ProbeState.Active))
+            .State(ProbeState.Active, enter: () => cyclic!.ChangeTo(ProbeState.Idle));
+        AssertThrows<InvalidOperationException>(
+            cyclic.Start,
+            "Enter callback transition cycles fail fast");
+
+        var allocationFree = new GameplayStateMachine<ProbeState>(ProbeState.Idle)
+            .State(ProbeState.Idle)
+            .State(ProbeState.Active);
+        allocationFree.Start();
+        for (int i = 0; i < 128; i++)
+        {
+            allocationFree.Update(1d / 60d);
+            allocationFree.ChangeTo((i & 1) == 0 ? ProbeState.Active : ProbeState.Idle);
+        }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 2_048; i++)
+        {
+            allocationFree.Update(1d / 60d);
+            allocationFree.ChangeTo((i & 1) == 0 ? ProbeState.Active : ProbeState.Idle);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert(allocated == 0,
+            $"State machine Update and transition remain allocation-free (allocated {allocated:N0} B)");
+
+        var timeScene = new SceneAggregate("StateMachineTimeDomains");
+        var gameplay = timeScene.Add(new StateMachineTimeProbe(InstanceTimeMode.Gameplay));
+        var unscaled = timeScene.Add(new StateMachineTimeProbe(InstanceTimeMode.Unscaled));
+        timeScene.Time.Pause(new GameplayPauseKey("state-machine.test"));
+        timeScene.PerformStep(.5d);
+        Assert(gameplay.StateElapsed == 0d && Nearly((float)unscaled.StateElapsed, .5f),
+            "State machine naturally inherits its GameInstance Gameplay/Unscaled scheduling");
+
+        Console.WriteLine("\n18. Strongly typed gameplay state machine");
+        Console.WriteLine("   [PASS] enter/step/exit + deterministic callback transitions");
+        Console.WriteLine("   [PASS] strict configuration + cycle/conflict detection");
+        Console.WriteLine("   [PASS] pause-aware scheduling + zero steady-state allocations");
     }
 
     private static void AssertThrows<TException>(Action action, string message)
@@ -1008,6 +1129,27 @@ internal sealed class Program
         public override void OnDraw(ISpriteBatch batch) => CallbackCount++;
         public override void OnEndDraw(ISpriteBatch batch) => CallbackCount++;
         public override void OnDrawGUI(ISpriteBatch batch) => CallbackCount++;
+    }
+
+    private enum ProbeState
+    {
+        Idle,
+        Active,
+        Cooldown
+    }
+
+    private sealed class StateMachineTimeProbe : GameInstance
+    {
+        private readonly GameplayStateMachine<ProbeState> _states =
+            new GameplayStateMachine<ProbeState>(ProbeState.Idle)
+                .State(ProbeState.Idle);
+
+        public StateMachineTimeProbe(InstanceTimeMode timeMode) => TimeMode = timeMode;
+
+        public double StateElapsed => _states.Elapsed;
+
+        public override void OnCreate() => _states.Start();
+        public override void OnStep(double deltaTime) => _states.Update(deltaTime);
     }
 
     private sealed class PhaseProbe : GameInstance
