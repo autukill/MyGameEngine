@@ -86,7 +86,8 @@ public sealed class PresentationEffectFactory : IRenderEffectFactory
                     _resolved[entry.Source],
                     entry.Viewport,
                     ToBlendState(entry.Blend),
-                    entry.Layer);
+                    entry.Layer,
+                    entry.Fit);
         }
 
         public void Dispose() { }

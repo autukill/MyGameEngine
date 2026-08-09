@@ -33,11 +33,13 @@ public sealed class ViewportCompositorPass : RenderPass
         RenderTarget2D source,
         ViewportRect rect,
         BlendState? blend = null,
-        int order = 0)
+        int order = 0,
+        ViewportFitMode fit = ViewportFitMode.Stretch)
     {
         ArgumentNullException.ThrowIfNull(source);
+        if (!Enum.IsDefined(fit)) throw new ArgumentOutOfRangeException(nameof(fit));
         var handle = new CompositeSourceHandle(++_nextSourceHandle);
-        _sources.Add(new CompositeSource(handle, source, rect, blend ?? BlendState.Opaque, order));
+        _sources.Add(new CompositeSource(handle, source, rect, blend ?? BlendState.Opaque, order, fit));
         _sources.Sort(static (left, right) =>
         {
             int byOrder = left.Order.CompareTo(right.Order);
@@ -74,13 +76,19 @@ public sealed class ViewportCompositorPass : RenderPass
         {
             _batch.Flush();
             entry.Blend.Apply(_gl);
-            var (x, y, width, height) = entry.Rect.ToPixels(ctx.ScreenWidth, ctx.ScreenHeight);
+            ViewportPlacement placement = ViewportPlacement.Calculate(
+                entry.Source.Width,
+                entry.Source.Height,
+                ctx.ScreenWidth,
+                ctx.ScreenHeight,
+                entry.Rect,
+                entry.Fit);
             _batch.Draw(
                 textureHandle: entry.Source.ColorTexture,
-                position: new Vector2(x, y),
-                size: new Vector2(width, height),
+                position: new Vector2(placement.X, placement.Y),
+                size: new Vector2(placement.Width, placement.Height),
                 color: Vector4.One,
-                uvBounds: new Vector4(0, 1, 1, 0));
+                uvBounds: placement.ToTextureUvBounds());
             _batch.Flush();
         }
         _batch.End();
@@ -92,7 +100,8 @@ public sealed class ViewportCompositorPass : RenderPass
         RenderTarget2D Source,
         ViewportRect Rect,
         BlendState Blend,
-        int Order);
+        int Order,
+        ViewportFitMode Fit);
 }
 
 public readonly record struct CompositeSourceHandle(long Value);

@@ -13,12 +13,14 @@ using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.ShaderAssets.Domain;
 using GameEngine.Features.Presentation.Infrastructure;
+using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.StencilMasking.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using GameEngine.Features.ToneMapping.Domain;
 using GameEngine.Features.ToneMapping.Infrastructure;
 
 internal sealed class Default2DGameRuntime : IDisposable
@@ -83,6 +85,7 @@ internal sealed class Default2DGameRuntime : IDisposable
     {
         _scene!.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
         _scene.PerformStep(deltaTime);
+        _camera.Update(deltaTime);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
         ApplyPendingSceneSwitch();
         _contentHotReload?.Tick();
@@ -294,6 +297,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _targetPool,
             _sceneTarget,
             _guiTarget,
+            renderer.ResolvedViewports,
             _scenes,
             _plan.Instances,
             _close);
@@ -342,11 +346,19 @@ internal sealed class Default2DGameRuntime : IDisposable
     private void ConfigureScene(ISceneActivation activation)
     {
         _scenes.GetDefinition(activation.Scene).Configure(Context, activation);
-        _scene!.Add(new DefaultWorldPresentationController(
-            _scene.RaiseEvent,
-            _plan.Renderer));
+        var renderer = _plan.Renderer;
+        SceneAggregate scene = _scene!;
+        if (renderer.HdrEnabled)
+            scene.Add(new DefaultWorldEffectsController(scene.RaiseEvent, renderer));
+        RenderSurfaceKey worldSource = renderer.HdrEnabled
+            ? ToneMappingEffectDescriptor.ColorOutput(ToneMappingEffectDescriptor.DefaultKey)
+            : RenderSurfaceKey.SceneColor;
+        Context.PresentWorldSurface(
+            worldSource,
+            layer: 0,
+            blend: PresentationBlendMode.Opaque);
         if (_plan.Renderer.SceneGuiEnabled)
-            _scene.Add(new DefaultGuiPresentationController(_scene.RaiseEvent));
+            scene.Add(new DefaultGuiPresentationController(scene.RaiseEvent));
     }
 
     private static void RegisterMaterial(

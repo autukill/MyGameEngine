@@ -16,6 +16,7 @@ public class Camera2D
     // 震屏参数
     private float _shakeTime = 0f;
     private float _shakeMagnitude = 0f;
+    private Vector2 _shakeOffset;
     private readonly Random _rng = new();
 
     public Camera2D(Vector2 viewportSize) => ViewportSize = viewportSize;
@@ -31,17 +32,48 @@ public class Camera2D
     }
 
     public Matrix4x4 GetViewProjectionMatrix()
+        => CreateViewProjectionMatrix(Position + _shakeOffset);
+
+    /// <summary>
+    /// Returns the gameplay transform without transient camera shake. Coordinate
+    /// conversion uses this matrix so pointer picking does not jitter with presentation.
+    /// </summary>
+    public Matrix4x4 GetStableViewProjectionMatrix() =>
+        CreateViewProjectionMatrix(Position);
+
+    public Vector2 WorldToViewport(Vector2 worldPosition)
     {
-        Vector2 pos = Position;
-        // 震屏偏移
-        if (_shakeTime > 0)
+        Vector4 clip = Vector4.Transform(
+            new Vector4(worldPosition, 0f, 1f),
+            GetStableViewProjectionMatrix());
+        return new Vector2(
+            (clip.X + 1f) * 0.5f * ViewportSize.X,
+            (1f - clip.Y) * 0.5f * ViewportSize.Y);
+    }
+
+    public bool TryViewportToWorld(Vector2 viewportPosition, out Vector2 worldPosition)
+    {
+        if (ViewportSize.X <= 0f || ViewportSize.Y <= 0f ||
+            !Matrix4x4.Invert(GetStableViewProjectionMatrix(), out Matrix4x4 inverse))
         {
-            float ox = ((float)_rng.NextDouble() * 2 - 1) * _shakeMagnitude;
-            float oy = ((float)_rng.NextDouble() * 2 - 1) * _shakeMagnitude;
-            pos += new Vector2(ox, oy);
+            worldPosition = default;
+            return false;
         }
 
-        var translation = Matrix4x4.CreateTranslation(-pos.X, -pos.Y, 0f);
+        var clip = new Vector4(
+            viewportPosition.X / ViewportSize.X * 2f - 1f,
+            1f - viewportPosition.Y / ViewportSize.Y * 2f,
+            0f,
+            1f);
+        Vector4 world = Vector4.Transform(clip, inverse);
+        worldPosition = new Vector2(world.X, world.Y);
+        return float.IsFinite(worldPosition.X) && float.IsFinite(worldPosition.Y);
+    }
+
+    private Matrix4x4 CreateViewProjectionMatrix(Vector2 position)
+    {
+        var translation = Matrix4x4.CreateTranslation(-position.X, -position.Y, 0f);
+
         var rotation = Matrix4x4.CreateRotationZ(Rotation);
         var scale = Matrix4x4.CreateScale(Zoom, Zoom, 1.0f);
         var view = translation * rotation * scale;
@@ -58,6 +90,16 @@ public class Camera2D
     public void Update(double deltaTime)
     {
         if (_shakeTime > 0)
+        {
+            _shakeOffset = new Vector2(
+                ((float)_rng.NextDouble() * 2f - 1f) * _shakeMagnitude,
+                ((float)_rng.NextDouble() * 2f - 1f) * _shakeMagnitude);
             _shakeTime -= (float)deltaTime;
+            if (_shakeTime <= 0f) _shakeOffset = Vector2.Zero;
+        }
+        else
+        {
+            _shakeOffset = Vector2.Zero;
+        }
     }
 }

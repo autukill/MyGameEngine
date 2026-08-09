@@ -24,6 +24,7 @@ public sealed class Default2DRendererOptions
     private readonly List<MaterialAssetDefinition> _shaderMaterials = [];
     private string? _shaderAssetManifestPath;
     private ShaderHotReloadOptions? _shaderHotReload;
+    private IReadOnlyList<SingleCameraViewportDefinition>? _viewports;
 
     public Default2DRendererOptions UseContent(
         string packagesRoot,
@@ -72,6 +73,22 @@ public sealed class Default2DRendererOptions
     public Default2DRendererOptions DisableSceneGui()
     {
         _sceneGuiEnabled = false;
+        return this;
+    }
+
+    /// <summary>
+    /// Presents the one rendered Camera view into multiple screen slots. This does
+    /// not redraw the Scene or duplicate its post-processing chain.
+    /// </summary>
+    public Default2DRendererOptions UseSingleCameraViewports(
+        Action<SingleCameraViewportLayoutBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (_viewports is not null)
+            throw new InvalidOperationException("Single-camera Viewports are already configured.");
+        var builder = new SingleCameraViewportLayoutBuilder();
+        configure(builder);
+        _viewports = builder.Build();
         return this;
     }
 
@@ -165,7 +182,8 @@ public sealed class Default2DRendererOptions
         _shaderFiles.ToArray(),
         _shaderHotReload,
         _shaderAssetManifestPath,
-        _shaderMaterials.ToArray());
+        _shaderMaterials.ToArray(),
+        _viewports ?? SingleCameraViewportLayoutBuilder.Default);
 }
 
 internal sealed record Default2DRendererPlan(
@@ -183,8 +201,12 @@ internal sealed record Default2DRendererPlan(
     IReadOnlyList<ShaderFileDefinition>? ShaderFiles = null,
     ShaderHotReloadOptions? ShaderHotReload = null,
     string? ShaderAssetManifestPath = null,
-    IReadOnlyList<MaterialAssetDefinition>? ShaderMaterials = null)
+    IReadOnlyList<MaterialAssetDefinition>? ShaderMaterials = null,
+    IReadOnlyList<SingleCameraViewportDefinition>? Viewports = null)
 {
+    public IReadOnlyList<SingleCameraViewportDefinition> ResolvedViewports =>
+        Viewports ?? SingleCameraViewportLayoutBuilder.Default;
+
     public void Validate()
     {
         if ((ContentPackagesRoot is null) != (ContentManifest is null))
@@ -210,5 +232,7 @@ internal sealed record Default2DRendererPlan(
         if (ShaderMaterials is { Count: > 0 } && ShaderFiles is not { Count: > 0 })
             throw new InvalidOperationException(
                 "Declarative materials require their Shader file definitions.");
+        if (ResolvedViewports.Count == 0)
+            throw new InvalidOperationException("At least one Viewport slot is required.");
     }
 }

@@ -64,7 +64,8 @@ internal static class Program
               plan.Renderer.Bloom == bloom &&
               plan.Renderer.ToneMapping == tone &&
               plan.Renderer.StencilMaskingEnabled &&
-              plan.Renderer.SceneGuiEnabled,
+              plan.Renderer.SceneGuiEnabled &&
+              plan.Renderer.ResolvedViewports.Single().Slot == ViewportSlotRef.Main,
             "Builder freezes window, content, HDR, Bloom, Stencil, and Scene configuration");
 
         var ldr = GameApplication.Create()
@@ -75,6 +76,18 @@ internal static class Program
               ldr.Renderer.Bloom is null &&
               !ldr.Renderer.SceneGuiEnabled,
             "Default renderer remains LDR and optional features are lazy");
+
+        var multiViewport = GameApplication.Create()
+            .UseDefault2DRenderer(renderer => renderer.UseSingleCameraViewports(views => views
+                .Add("left", ViewportRect.LeftHalf, ViewportFitMode.Cover)
+                .Add("right", ViewportRect.RightHalf, ViewportFitMode.Contain)))
+            .ConfigureScene("MultiViewport", _ => { })
+            .BuildPlan();
+        Check(multiViewport.Renderer.ResolvedViewports.Count == 2 &&
+              multiViewport.Renderer.ResolvedViewports[0].Layer == 0 &&
+              multiViewport.Renderer.ResolvedViewports[1].Layer == 1 &&
+              multiViewport.Renderer.ResolvedViewports[1].Fit == ViewportFitMode.Contain,
+            "Declarative Viewports preserve order and receive stable default layers");
     }
 
     private static void TestBuilderValidation()
@@ -103,6 +116,14 @@ internal static class Program
                 .UseDefault2DRenderer()
                 .ConfigureScene(" ", _ => { }),
             "Empty Scene name is rejected");
+        CheckThrows<InvalidOperationException>(
+            () => new Default2DRendererOptions().UseSingleCameraViewports(_ => { }),
+            "An empty Viewport layout is rejected");
+        CheckThrows<ArgumentException>(
+            () => new Default2DRendererOptions().UseSingleCameraViewports(views => views
+                .Add("same", ViewportRect.LeftHalf)
+                .Add("same", ViewportRect.RightHalf)),
+            "Duplicate Viewport slot names are rejected");
     }
 
     private static void TestSceneCatalogAndPrefabs()
@@ -237,37 +258,39 @@ internal static class Program
             true,
             true);
         var events = new List<IDomainEvent>();
-        var hdr = new DefaultWorldPresentationController(events.Add, hdrPlan);
+        var hdr = new DefaultWorldEffectsController(events.Add, hdrPlan);
         hdr.OnCreate();
         Check(events.OfType<RenderEffectRequestedEvent>().Select(value => value.Descriptor.Key.Kind)
                 .SequenceEqual(new[]
                 {
                     BloomEffectDescriptor.EffectKind,
-                    ToneMappingEffectDescriptor.EffectKind,
-                    PresentSurfaceDescriptor.EffectKind
+                    ToneMappingEffectDescriptor.EffectKind
                 }),
-            "HDR preset declares Bloom, Tone Mapping, then Presentation");
+            "HDR preset declares Bloom then Tone Mapping once for all Viewports");
         events.Clear();
         hdr.OnDestroy();
         Check(events.OfType<RenderEffectReleasedEvent>().Select(value => value.EffectKey.Kind)
                 .SequenceEqual(new[]
                 {
-                    PresentSurfaceDescriptor.EffectKind,
                     ToneMappingEffectDescriptor.EffectKind,
                     BloomEffectDescriptor.EffectKind
                 }),
             "HDR preset releases consumers before producers");
 
         events.Clear();
+        var viewport = SingleCameraViewportLayoutBuilder.Default.Single();
         var ldr = new DefaultWorldPresentationController(
             events.Add,
-            hdrPlan with { HdrEnabled = false, Bloom = null });
+            RenderSurfaceKey.SceneColor,
+            viewport,
+            layer: 0,
+            PresentationBlendMode.Opaque);
         ldr.OnCreate();
         Check(events.Single() is RenderEffectRequestedEvent
             {
                 Descriptor: PresentSurfaceDescriptor { Source: var source }
             } && source == RenderSurfaceKey.SceneColor,
-            "LDR preset directly presents SceneColor without post-process resources");
+            "World Viewport presents its selected source without owning post-process resources");
 
         events.Clear();
         var gui = new DefaultGuiPresentationController(events.Add);

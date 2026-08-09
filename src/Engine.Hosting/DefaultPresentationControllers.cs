@@ -10,21 +10,13 @@ using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.ToneMapping.Application;
 using GameEngine.Features.ToneMapping.Domain;
 
-internal sealed class DefaultWorldPresentationController(
+internal sealed class DefaultWorldEffectsController(
     Action<IDomainEvent> raiseEvent,
     Default2DRendererPlan renderer) : GameInstance
 {
     public override void OnCreate()
     {
-        if (!renderer.HdrEnabled)
-        {
-            this.RequestPresentSurface(
-                RenderSurfaceKey.SceneColor,
-                raiseEvent,
-                layer: 0,
-                blend: PresentationBlendMode.Opaque);
-            return;
-        }
+        if (!renderer.HdrEnabled) return;
 
         RenderSurfaceKey? bloomSource = null;
         if (renderer.Bloom is { } bloom)
@@ -42,21 +34,32 @@ internal sealed class DefaultWorldPresentationController(
             renderer.ToneMapping,
             raiseEvent,
             bloomSource: bloomSource);
-        this.RequestPresentSurface(
-            ToneMappingEffectDescriptor.ColorOutput(
-                ToneMappingEffectDescriptor.DefaultKey),
-            raiseEvent,
-            layer: 0,
-            blend: PresentationBlendMode.Opaque);
     }
 
     public override void OnDestroy()
     {
-        this.ReleasePresentSurface(raiseEvent);
         if (!renderer.HdrEnabled) return;
         this.ReleaseToneMapping(raiseEvent);
         if (renderer.Bloom is not null) this.ReleaseBloom(raiseEvent);
     }
+}
+
+internal sealed class DefaultWorldPresentationController(
+    Action<IDomainEvent> raiseEvent,
+    RenderSurfaceKey source,
+    SingleCameraViewportDefinition viewport,
+    int layer,
+    PresentationBlendMode blend) : GameInstance
+{
+    public override void OnCreate() => this.RequestPresentSurface(
+        source,
+        raiseEvent,
+        layer: layer,
+        blend: blend,
+        viewport: viewport.Viewport,
+        fit: viewport.Fit);
+
+    public override void OnDestroy() => this.ReleasePresentSurface(raiseEvent);
 }
 
 internal sealed class DefaultGuiPresentationController(

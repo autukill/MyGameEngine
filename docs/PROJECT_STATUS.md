@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 47 个 .NET 项目、仓库共 234 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 47 个 .NET 项目、仓库共 237 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -66,6 +66,7 @@
 - SceneAggregate 的 Input、Step、Draw 与 DrawGUI 使用可复用快照；预热后 128 实例回归为 0 B/帧，绘制采用无分配 O(n log n) 原地排序并保持相同 Depth 的加入顺序。
 - `GameplayStateMachine<TState>` 提供强类型 Enter/Step/Exit、`Elapsed`、显式 Restart 和回调后确定性切换；冲突与循环快速失败，稳态 Update/Change 为 0 B，AirplaneShooter Target 已用于验证 Spawning → Active。
 - `GameplayQueryBuffer<T>` 与 `CountInstances<T>()` 为高频 Find/Collision/Area/Radius 提供 0 B 结果复用；便利数组 API 保持不变，Hosting 遥测按采样 Step 汇总查询次数、候选、命中和耗时，Asteroids 提供 `--diagnostics` 出口。
+- Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
 
 ## 仍在演进
 
@@ -75,14 +76,14 @@
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
 - 各交互式 VisualTests 仍需人工观察；自动基线已覆盖八条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - Hosting v1 仅支持单窗口；已有声明式及强类型参数 Scene 切换和无 UI 暂停策略，但尚无 Scene 栈或后台加载。
-- Camera2D、SceneRenderPass、ViewportRect 和合成器底层可手工组成多视图，但 Hosting 仍只装配单主 Camera、单 SceneColor 根 Surface，分屏/小地图尚无推荐的声明式入口。
+- Hosting 仍只装配单主 Camera、单 SceneColor 根 Surface；多 Viewport 当前展示同一次渲染，真正双人分屏和小地图仍需要下一阶段逻辑 RenderView。
 
 ## 下一里程碑：声明式多 Camera/View
 
-1. 建立稳定 `ViewRef` 与声明式 View 注册，每个 View 明确 Camera、Viewport、RenderScale 和逻辑输出 Surface。
-2. 由 Hosting 为每个 View 拥有 Scene RenderTarget/Pass，并通过唯一 Presentation 终端组合分屏和小地图。
-3. 定义 resize、每 View 后处理、Layer 过滤及 Screen/World 坐标转换边界。
-4. 用双人分屏与小地图 VisualTests 验证资源释放和成本统计；不在首版引入通用剔除系统。
+1. 已完成单 Camera 多呈现槽位与 Fit/输入映射，稳定 Viewport 边界可直接复用。
+2. 下一步建立 `RenderViewRef` 与声明式 View 注册，每个 View 明确 Camera、RenderScale 和逻辑输出 Surface。
+3. 由 Hosting 为每个 View 拥有 Scene RenderTarget/Pass，并通过唯一 Presentation 终端组合真正分屏和小地图。
+4. 后续再加入每 View 后处理与 Layer 过滤；用成本诊断约束额外 Scene Draw，不在首版引入通用剔除。
 
 ## 已知限制
 

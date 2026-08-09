@@ -1,5 +1,6 @@
 namespace GameEngine.Hosting;
 
+using System.Numerics;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Graphics;
@@ -9,6 +10,7 @@ using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
+using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
@@ -19,6 +21,7 @@ public sealed class Default2DGameContext
 {
     private readonly Action _close;
     private readonly RenderTarget2D[] _rootRenderTargets;
+    private readonly RenderTarget2D _sceneTarget;
     private readonly Dictionary<string, Func<long>> _customGpuMemory = new(StringComparer.Ordinal);
     public EngineWindow Window { get; }
     public SceneAggregate Scene { get; }
@@ -33,6 +36,7 @@ public sealed class Default2DGameContext
     public SceneNavigator Scenes { get; }
     public IInstanceFactory Instances { get; }
     public GameplayTimeController Time => Scene.Time;
+    public IReadOnlyList<SingleCameraViewportDefinition> Viewports { get; }
 
     internal Default2DGameContext(
         EngineWindow window,
@@ -47,6 +51,7 @@ public sealed class Default2DGameContext
         RenderTargetPool renderTargets,
         RenderTarget2D sceneTarget,
         RenderTarget2D? guiTarget,
+        IReadOnlyList<SingleCameraViewportDefinition> viewports,
         SceneNavigator scenes,
         IInstanceFactory instances,
         Action close)
@@ -61,6 +66,8 @@ public sealed class Default2DGameContext
         Pipeline = pipeline;
         Effects = effects;
         RenderTargets = renderTargets;
+        _sceneTarget = sceneTarget ?? throw new ArgumentNullException(nameof(sceneTarget));
+        Viewports = viewports ?? throw new ArgumentNullException(nameof(viewports));
         Scenes = scenes ?? throw new ArgumentNullException(nameof(scenes));
         Instances = instances ?? throw new ArgumentNullException(nameof(instances));
         _rootRenderTargets = guiTarget is null
@@ -85,6 +92,30 @@ public sealed class Default2DGameContext
 
     public RenderPassHandle AddRenderPass(RenderPass pass) => Pipeline.AddPass(pass);
 
+    /// <summary>
+    /// Presents a world-space Display Surface through every configured Viewport.
+    /// Call during Scene configuration for custom Stencil or LDR overlay outputs.
+    /// </summary>
+    public void PresentWorldSurface(
+        RenderSurfaceKey source,
+        int layer = 0,
+        PresentationBlendMode blend = PresentationBlendMode.AlphaBlend)
+    {
+        if (!source.IsValid)
+            throw new ArgumentException("Presentation source must be initialized.", nameof(source));
+        if (!Enum.IsDefined(blend)) throw new ArgumentOutOfRangeException(nameof(blend));
+        for (int i = 0; i < Viewports.Count; i++)
+        {
+            SingleCameraViewportDefinition viewport = Viewports[i];
+            Scene.Add(new DefaultWorldPresentationController(
+                Scene.RaiseEvent,
+                source,
+                viewport,
+                checked(layer + viewport.Layer),
+                blend));
+        }
+    }
+
     /// <summary>显式捕获当前 Pass、Surface、Effect owner 与临时目标租约。</summary>
     public Default2DRenderDiagnostics CaptureRenderDiagnostics()
     {
@@ -95,7 +126,83 @@ public sealed class Default2DGameContext
             Pipeline.CaptureDiagnostics(),
             Effects.CaptureDiagnostics(),
             RenderTargets.CaptureDiagnostics(),
-            frame);
+            frame,
+            CaptureViewportDiagnostics());
+    }
+
+    /// <summary>
+    /// Resolves the topmost Viewport under a screen point and maps it through the
+    /// stable Camera transform. Contain letterbox regions do not count as a hit.
+    /// </summary>
+    public bool TryScreenToView(Vector2D screenPosition, out ViewportHit hit)
+    {
+        SingleCameraViewportDefinition? best = null;
+        for (int i = 0; i < Viewports.Count; i++)
+        {
+            SingleCameraViewportDefinition candidate = Viewports[i];
+            ViewportPlacement placement = ResolvePlacement(candidate);
+            if (!placement.Contains((float)screenPosition.X, (float)screenPosition.Y)) continue;
+            if (best is null || candidate.Layer > best.Layer ||
+                candidate.Layer == best.Layer &&
+                candidate.DeclarationOrder > best.DeclarationOrder)
+            {
+                best = candidate;
+            }
+        }
+        if (best is not null) return TryScreenToView(screenPosition, best, out hit);
+        hit = default;
+        return false;
+    }
+
+    public bool TryScreenToView(
+        Vector2D screenPosition,
+        ViewportSlotRef slot,
+        out ViewportHit hit)
+    {
+        for (int i = 0; i < Viewports.Count; i++)
+        {
+            SingleCameraViewportDefinition viewport = Viewports[i];
+            if (viewport.Slot == slot)
+                return TryScreenToView(screenPosition, viewport, out hit);
+        }
+        hit = default;
+        return false;
+    }
+
+    public bool TryScreenToWorld(
+        Vector2D screenPosition,
+        out Vector2D worldPosition,
+        out ViewportSlotRef slot)
+    {
+        if (TryScreenToView(screenPosition, out ViewportHit hit))
+        {
+            worldPosition = hit.WorldPosition;
+            slot = hit.Slot;
+            return true;
+        }
+        worldPosition = default;
+        slot = default;
+        return false;
+    }
+
+    public IReadOnlyList<ViewportSlotDiagnostics> CaptureViewportDiagnostics()
+    {
+        var result = new ViewportSlotDiagnostics[Viewports.Count];
+        for (int i = 0; i < Viewports.Count; i++)
+        {
+            SingleCameraViewportDefinition viewport = Viewports[i];
+            ViewportPlacement placement = ResolvePlacement(viewport);
+            result[i] = new ViewportSlotDiagnostics(
+                viewport.Slot,
+                viewport.Viewport,
+                viewport.Fit,
+                viewport.Layer,
+                placement.X,
+                placement.Y,
+                placement.Width,
+                placement.Height);
+        }
+        return Array.AsReadOnly(result);
     }
 
     /// <summary>运行时更新 VSync、渲染 FPS 与更新 UPS 目标；0 表示不限速。</summary>
@@ -194,6 +301,44 @@ public sealed class Default2DGameContext
     private LoadedContentPackage RequireContent() => Content ??
         throw new InvalidOperationException(
             "No content package is configured. Call UseContent on Default2DRendererOptions.");
+
+    private bool TryScreenToView(
+        Vector2D screenPosition,
+        SingleCameraViewportDefinition viewport,
+        out ViewportHit hit)
+    {
+        ViewportPlacement placement = ResolvePlacement(viewport);
+        if (!placement.Contains((float)screenPosition.X, (float)screenPosition.Y))
+        {
+            hit = default;
+            return false;
+        }
+        Vector2 view = placement.ScreenToSource(
+            (float)screenPosition.X,
+            (float)screenPosition.Y,
+            _sceneTarget.Width,
+            _sceneTarget.Height);
+        if (!Camera.TryViewportToWorld(view, out Vector2 world))
+        {
+            hit = default;
+            return false;
+        }
+        hit = new ViewportHit(
+            viewport.Slot,
+            screenPosition,
+            new Vector2D(view.X, view.Y),
+            new Vector2D(world.X, world.Y));
+        return true;
+    }
+
+    private ViewportPlacement ResolvePlacement(SingleCameraViewportDefinition viewport) =>
+        ViewportPlacement.Calculate(
+            _sceneTarget.Width,
+            _sceneTarget.Height,
+            Window.Width,
+            Window.Height,
+            viewport.Viewport,
+            viewport.Fit);
 
     private sealed class GpuMemoryRegistration(
         Default2DGameContext owner,

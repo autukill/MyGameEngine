@@ -78,9 +78,11 @@ internal static class Program
         // 5. 震屏：只影响矩阵生成，不抛异常
         cam.Rotation = 0;
         cam.Shake(5f, 1.0f);
-        var _ = cam.GetViewProjectionMatrix();
-        Check(true, "Shake produces a matrix without exception");
         cam.Update(0.5);
+        var shakenA = cam.GetViewProjectionMatrix();
+        var shakenB = cam.GetViewProjectionMatrix();
+        Check(shakenA == shakenB,
+            "Shake is stable across all render passes in one update");
         cam.Update(0.6); // 计时归零
         Check(true, "Shake timer decays and Update() does not throw");
 
@@ -88,7 +90,20 @@ internal static class Program
         cam.ResizeViewport(1920, 1080);
         Check(cam.ViewportSize == new Vector2(1920, 1080), "ResizeViewport updates size");
 
-        // 7. 命令链路：FocusCameraCommand → Handler
+        // 7. Stable coordinate conversion ignores transient camera shake.
+        cam.Position = new Vector2(100, 50);
+        cam.Zoom = 1.5f;
+        cam.Rotation = 0.2f;
+        Vector2 world = new(450, 320);
+        Vector2 viewport = cam.WorldToViewport(world);
+        bool mapped = cam.TryViewportToWorld(viewport, out Vector2 roundTrip);
+        Check(mapped && Vector2.Distance(world, roundTrip) < 0.001f,
+            "World/Viewport conversion round-trips through pan, zoom, and rotation");
+        cam.Shake(50f, 1f);
+        Check(cam.WorldToViewport(world) == viewport,
+            "Gameplay coordinate conversion ignores presentation-only shake");
+
+        // 8. 命令链路：FocusCameraCommand → Handler
         var scene = new SceneAggregate("CameraScene");
         CameraCommandHandler.Handle(new FocusCameraCommand(
             Scene: scene,

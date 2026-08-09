@@ -138,6 +138,7 @@ Runner 内容：4 个彩色方块绕场景中心运动，鼠标控制圆形 Sten
 - 移动鼠标：移动聚光灯
 - `Esc`：退出
 - 调整窗口：同步 resize Camera、RenderTarget 和 Pipeline Viewport
+- `--mirrored-viewports`：同一 Camera/后处理结果以 Cover 模式呈现到左右两个 Viewport
 
 ## 验证
 

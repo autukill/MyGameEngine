@@ -8,4 +8,5 @@ public sealed record Default2DRenderDiagnostics(
     RenderPipelineDiagnostics Pipeline,
     ScenePipelineDiagnostics Effects,
     RenderTargetPoolDiagnostics RenderTargets,
-    FrameStatisticsSnapshot? FrameStatistics);
+    FrameStatisticsSnapshot? FrameStatistics,
+    IReadOnlyList<ViewportSlotDiagnostics> Viewports);

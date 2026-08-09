@@ -7,6 +7,8 @@ namespace GameEngine.Features.RenderPipeline.Domain;
 public readonly record struct ViewportRect(float X, float Y, float Width, float Height)
 {
     public static ViewportRect FullScreen => new(0f, 0f, 1f, 1f);
+    public static ViewportRect LeftHalf => new(0f, 0f, 0.5f, 1f);
+    public static ViewportRect RightHalf => new(0.5f, 0f, 0.5f, 1f);
     public static ViewportRect TopHalf => new(0f, 0f, 1f, 0.5f);
     public static ViewportRect BottomHalf => new(0f, 0.5f, 1f, 0.5f);
     public static ViewportRect TopRightQuarter => new(0.75f, 0f, 0.25f, 0.25f);
@@ -14,10 +16,19 @@ public readonly record struct ViewportRect(float X, float Y, float Width, float 
     public static ViewportRect TopLeftQuarter => new(0f, 0f, 0.25f, 0.25f);
 
     public (int x, int y, int w, int h) ToPixels(int screenWidth, int screenHeight)
-        => (
-            (int)(X * screenWidth),
-            (int)(Y * screenHeight),
-            (int)(Width * screenWidth),
-            (int)(Height * screenHeight)
-        );
+    {
+        if (screenWidth <= 0) throw new ArgumentOutOfRangeException(nameof(screenWidth));
+        if (screenHeight <= 0) throw new ArgumentOutOfRangeException(nameof(screenHeight));
+
+        // Round shared edges rather than widths independently, so adjacent slots
+        // cover odd-sized windows without a one-pixel seam or overlap.
+        int left = RoundEdge(X * screenWidth);
+        int top = RoundEdge(Y * screenHeight);
+        int right = RoundEdge((X + Width) * screenWidth);
+        int bottom = RoundEdge((Y + Height) * screenHeight);
+        return (left, top, right - left, bottom - top);
+    }
+
+    private static int RoundEdge(float value) =>
+        (int)MathF.Round(value, MidpointRounding.AwayFromZero);
 }

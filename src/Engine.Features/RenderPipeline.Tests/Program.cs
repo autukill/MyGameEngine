@@ -68,6 +68,25 @@ internal static class Program
         Check(px == (0, 300, 800, 300), "BottomHalf pixels @800x600");
         var q = ViewportRect.TopRightQuarter.ToPixels(400, 200);
         Check(q == (300, 0, 100, 50), "TopRightQuarter pixels @400x200");
+        var oddLeft = ViewportRect.LeftHalf.ToPixels(801, 601);
+        var oddRight = ViewportRect.RightHalf.ToPixels(801, 601);
+        Check(oddLeft.w + oddRight.w == 801 && oddLeft.x + oddLeft.w == oddRight.x,
+            "Adjacent half Viewports share one rounded edge on odd window sizes");
+
+        ViewportPlacement contained = ViewportPlacement.Calculate(
+            1600, 900, 800, 600, ViewportRect.FullScreen, ViewportFitMode.Contain);
+        Check(contained == new ViewportPlacement(
+                0, 75, 800, 450, new System.Numerics.Vector4(0, 0, 1, 1)) &&
+              !contained.Contains(400, 20) && contained.Contains(400, 300),
+            "Contain preserves aspect ratio and excludes letterbox input");
+        ViewportPlacement covered = ViewportPlacement.Calculate(
+            1600, 900, 800, 600, ViewportRect.FullScreen, ViewportFitMode.Cover);
+        Check(MathF.Abs(covered.SourceBounds.X - 0.125f) < 0.0001f &&
+              MathF.Abs(covered.SourceBounds.Z - 0.75f) < 0.0001f,
+            "Cover fills the slot with a centered horizontal source crop");
+        var sourcePoint = covered.ScreenToSource(0, 0, 1600, 900);
+        Check(MathF.Abs(sourcePoint.X - 200f) < 0.001f && sourcePoint.Y == 0f,
+            "Screen coordinates map through the Cover crop into source pixels");
 
         // ---------- 4. LayerRenderState ----------
         Console.WriteLine("4. LayerRenderState");

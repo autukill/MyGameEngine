@@ -32,7 +32,9 @@ this.RequestPresentSurface(
             ToneMappingEffectDescriptor.DefaultKey),
         scene.RaiseEvent,
         layer: 0,
-        blend: PresentationBlendMode.Opaque);
+        blend: PresentationBlendMode.Opaque,
+        viewport: ViewportRect.LeftHalf,
+        fit: ViewportFitMode.Cover);
 
 // GuiPresentationController.OnCreate（另一个 GameInstance）
 this.RequestPresentSurface(
@@ -44,7 +46,9 @@ this.RequestPresentSurface(
 
 一个 owner 在同一 EffectKey 下只能持有一个描述符；需要同时呈现多个 Surface 时，应使用多个职责单一的 GameInstance。所有请求共享唯一 `present:main` Runtime。
 
-多个 owner 声明完全相同的 Source、Viewport、Layer 和 Blend 时会合并为一个绘制条目；不同条目按 Layer、再按 owner ID 稳定排序。Presentation 仅接受 RGBA8/Display 输入，HDR Surface 必须先经过 Tone Mapping。
+多个 owner 声明完全相同的 Source、Viewport、Fit、Layer 和 Blend 时会合并为一个绘制条目；不同条目按 Layer、再按 owner ID 稳定排序。Presentation 仅接受 RGBA8/Display 输入，HDR Surface 必须先经过 Tone Mapping。
+
+`ViewportFitMode.Stretch/Contain/Cover` 分别表示拉伸、完整留边和居中裁剪。合成器使用同一份 `ViewportPlacement` 计算目标像素矩形与源 UV，因此渲染、输入映射和诊断不会产生不同的裁剪语义。
 
 ## 组合根装配
 
@@ -88,4 +92,4 @@ Presentation Runtime 自己拥有动态 `ViewportCompositorPass`，执行前清�
 - 仅支持一个 `present:main` 屏幕终端。
 - 输入固定为 RGBA8/Display；没有隐式 Tone Mapping、色域转换或 sRGB framebuffer。
 - Viewport 使用 `[0,1]` 归一化矩形，必须完全位于屏幕内。
-- 暂无 letterbox 策略对象、离屏最终输出、跨 Scene 呈现或多窗口终端。
+- 已支持单 Camera Surface 到多个 Viewport 的 Stretch/Contain/Cover；尚无真正多 Camera、离屏最终输出或多窗口终端。

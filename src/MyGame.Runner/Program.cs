@@ -8,6 +8,7 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Features.Bloom.Domain;
+using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.StencilMasking.Domain;
 using GameEngine.Features.ToneMapping.Domain;
 using GameEngine.Hosting;
@@ -19,6 +20,7 @@ internal static class Program {
         bool consoleDiagnostics = args.Contains( "--diagnostics", StringComparer.Ordinal );
         bool contentHotReload = args.Contains( "--content-hot-reload", StringComparer.Ordinal );
         bool shaderHotReload = args.Contains( "--shader-hot-reload", StringComparer.Ordinal );
+        bool mirroredViewports = args.Contains( "--mirrored-viewports", StringComparer.Ordinal );
         string? diagnosticsJson = GetOptionValue( args, "--diagnostics-json" );
         using var telemetrySink = consoleDiagnostics || diagnosticsJson is not null ||
                                   contentHotReload || shaderHotReload
@@ -31,6 +33,7 @@ internal static class Program {
         Console.WriteLine( "  鼠标位置 = Spotlight 中心 (Stencil ShowInside)" );
         Console.WriteLine( "  HDR Scene → Bloom → ACES Tone Mapping 由 Hosting 默认预设装配" );
         Console.WriteLine( "  ESC: 退出" );
+        if ( mirroredViewports ) Console.WriteLine( "  Single Camera → two Cover Viewports" );
 
         var windowOptions = smoke
             ? EngineWindowOptions.Default
@@ -48,7 +51,8 @@ internal static class Program {
                 telemetrySink,
                 consoleDiagnostics || diagnosticsJson is not null,
                 contentHotReload,
-                shaderHotReload ) )
+                shaderHotReload,
+                mirroredViewports ) )
             .ConfigureScene( "MainScene", context => ConfigureScene( context, smoke ) )
             .Build();
 
@@ -60,7 +64,8 @@ internal static class Program {
         RunnerPerformanceTelemetrySink? telemetrySink,
         bool performanceTelemetry,
         bool contentHotReload,
-        bool shaderHotReload ) {
+        bool shaderHotReload,
+        bool mirroredViewports ) {
         renderer
             .UseContent( GameAssets.Packages.Root )
             .UseShaderAssets( GameShaders.ManifestPath )
@@ -73,6 +78,11 @@ internal static class Program {
                     2,
                     BloomResolution.Half ) )
             .EnableStencilMasking();
+        if ( mirroredViewports ) {
+            renderer.UseSingleCameraViewports( views => views
+                .Add( "left", ViewportRect.LeftHalf, ViewportFitMode.Cover )
+                .Add( "right", ViewportRect.RightHalf, ViewportFitMode.Cover ) );
+        }
         if ( performanceTelemetry ) {
             renderer.EnablePerformanceTelemetry( new PerformanceTelemetryOptions(
                 telemetrySink!,
@@ -128,9 +138,14 @@ internal static class Program {
         scene.Add( new SpotlightController(
             spotlightGroup,
             scene.RaiseEvent,
+            context,
             center,
             120f,
             context.Close ) );
+        context.PresentWorldSurface(
+            spotlightGroup.Output,
+            layer: 100,
+            blend: GameEngine.Features.Presentation.Domain.PresentationBlendMode.AlphaBlend );
         if ( smoke ) scene.Add( new SmokeExitController( context, context.Close ) );
     }
 
@@ -147,6 +162,7 @@ internal static class Program {
                      diagnostics.Effects.Effects.Count == 0 ||
                      diagnostics.Effects.Surfaces.Count == 0 ||
                      diagnostics.RenderTargets.ActiveLeases.Count == 0 ||
+                     diagnostics.Viewports.Count == 0 ||
                      diagnostics.FrameStatistics is not { DrawCalls: > 0, BatchFlushes: > 0, ActivePasses: > 0 } ) {
                     throw new InvalidOperationException(
                         "Hosting render diagnostics did not capture the active runtime graph." );

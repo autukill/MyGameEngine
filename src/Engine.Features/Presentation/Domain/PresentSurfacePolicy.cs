@@ -9,6 +9,7 @@ internal static class PresentSurfacePolicy
         InstanceId FirstOwner,
         RenderSurfaceKey Source,
         ViewportRect Viewport,
+        ViewportFitMode Fit,
         int Layer,
         PresentationBlendMode Blend);
 
@@ -31,6 +32,7 @@ internal static class PresentSurfacePolicy
                 owner,
                 present.Source,
                 present.Viewport,
+                present.Fit,
                 present.Layer,
                 present.Blend));
         }
@@ -42,6 +44,7 @@ internal static class PresentSurfacePolicy
             {
                 entry.Source,
                 entry.Viewport,
+                entry.Fit,
                 entry.Layer,
                 entry.Blend
             })

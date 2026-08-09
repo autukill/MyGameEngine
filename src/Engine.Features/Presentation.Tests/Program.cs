@@ -32,10 +32,11 @@ internal static class Program
             RenderSurfaceKey.SceneGui,
             ViewportRect.FullScreen,
             1000,
-            PresentationBlendMode.AlphaBlend);
+            PresentationBlendMode.AlphaBlend,
+            ViewportFitMode.Contain);
         Check(descriptor.Key == new RenderEffectKey("present", "main") &&
               descriptor.Source == RenderSurfaceKey.SceneGui &&
-              descriptor.Layer == 1000,
+              descriptor.Layer == 1000 && descriptor.Fit == ViewportFitMode.Contain,
             "Descriptor identifies the unique terminal and its logical source");
         CheckThrows<ArgumentException>(
             () => new PresentSurfaceDescriptor(
@@ -73,7 +74,8 @@ internal static class Program
             events.Add,
             layer: 7,
             blend: PresentationBlendMode.Additive,
-            viewport: ViewportRect.TopRightQuarter);
+            viewport: ViewportRect.TopRightQuarter,
+            fit: ViewportFitMode.Cover);
         Check(events.Single() is RenderEffectRequestedEvent
             {
                 Descriptor: PresentSurfaceDescriptor
@@ -81,7 +83,8 @@ internal static class Program
                     Source: var source,
                     Layer: 7,
                     Blend: PresentationBlendMode.Additive,
-                    Viewport: var viewport
+                    Viewport: var viewport,
+                    Fit: ViewportFitMode.Cover
                 }
             } && source == RenderSurfaceKey.SceneGui &&
                  viewport == ViewportRect.TopRightQuarter,
@@ -126,6 +129,19 @@ internal static class Program
             owners);
         Check(entries.Length == 3 && entries[1].Layer == 1,
             "Different layer or blend remains an independent presentation entry");
+
+        owners[duplicateOwner] = new PresentSurfaceDescriptor(
+            PresentSurfaceDescriptor.DefaultKey,
+            tone,
+            ViewportRect.FullScreen,
+            0,
+            PresentationBlendMode.Opaque,
+            ViewportFitMode.Cover);
+        entries = PresentSurfacePolicy.ValidateOrderAndDeduplicate(
+            PresentSurfaceDescriptor.DefaultKey,
+            owners);
+        Check(entries.Length == 3 && entries.Any(entry => entry.Fit == ViewportFitMode.Cover),
+            "Different fit modes remain independent presentation entries");
     }
 
     private static PresentSurfaceDescriptor Descriptor(

@@ -4,29 +4,23 @@ using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
-using GameEngine.Features.Presentation.Application;
-using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.StencilMasking.Application;
 using GameEngine.Features.StencilMasking.Domain;
+using GameEngine.Hosting;
 
 /// <summary>只声明 Spotlight 意图；不持有 Pass、RenderTarget 或其他 GPU 对象。</summary>
-public sealed class SpotlightController( StencilMaskGroupRef group, Action<IDomainEvent> raiseEvent, Vector2D initialCenter, float radius, Action closeWindow )
+public sealed class SpotlightController( StencilMaskGroupRef group, Action<IDomainEvent> raiseEvent, Default2DGameContext context, Vector2D initialCenter, float radius, Action closeWindow )
     : GameInstance {
     public override void OnCreate() {
         Request( initialCenter );
-        this.RequestPresentSurface(
-            group.Output,
-            raiseEvent,
-            layer: 100,
-            blend: PresentationBlendMode.AlphaBlend );
     }
 
     public override void OnStep( double deltaTime ) {
-        Request( Controls.MousePosition );
+        if ( context.TryScreenToView( Controls.MousePosition, out ViewportHit hit ) )
+            Request( hit.WorldPosition );
     }
 
     public override void OnDestroy() {
-        this.ReleasePresentSurface( raiseEvent );
         this.ReleaseStencilMask( group, raiseEvent );
     }
 

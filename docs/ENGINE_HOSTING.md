@@ -50,11 +50,27 @@ game.Run();
 
 SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()`，避免创建对应 RenderTarget 和 Pass。
 
+## 单 Camera 多 Viewport
+
+同一份最终世界画面可以零重复 Scene/后处理地呈现到多个槽位：
+
+```csharp
+.UseDefault2DRenderer(renderer => renderer
+    .UseSingleCameraViewports(views => views
+        .Add("left", ViewportRect.LeftHalf, ViewportFitMode.Cover)
+        .Add("right", ViewportRect.RightHalf, ViewportFitMode.Contain)))
+```
+
+`Stretch` 拉伸、`Contain` 留边、`Cover` 居中裁剪。每个额外槽位只增加一次最终 blit；SceneGui 仍只在全屏绘制一次，不随世界槽位复制。该入口是多 Camera 的第一阶段基础，本身不会产生不同视角。完整语义见 [Camera 与 Viewport 渐进式路线](CAMERA_VIEWPORT_STATUS.md)。
+
+自定义的世界空间 LDR Surface（例如 Stencil 输出）应在 Scene 配置期使用 `context.PresentWorldSurface(surface, layer, blend)`；Host 会为每个槽位建立对应 owner。直接调用单个 GameInstance 的 `RequestPresentSurface` 仍只声明一个显式 Viewport，适合 GUI、调试覆盖层或完全自定义布局。
+
 ## Default2DGameContext
 
 Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后执行。Context 提供：
 
 - `Scene`、`Camera` 和当前 `Window`。
+- `Viewports`、`TryScreenToView/TryScreenToWorld` 与 `CaptureViewportDiagnostics()`，用于布局感知的输入和诊断。
 - `Textures`、`Sprites` 与可选 `Content` 包租约。
 - `GetTexture/GetSprite` 便利方法；未配置 Content 时给出明确异常。
 - `GetMaterial` 取得声明式清单中已装配的逻辑 Material 引用；未声明时给出明确异常。
@@ -117,8 +133,8 @@ Shader
 
 ## 当前边界
 
-- v1 只提供单窗口、单初始 Scene 和 OpenGL 默认 2D Runtime。
-- 尚未提供 Scene 切换栈、暂停策略、后台加载或多窗口。
+- v1 只提供单窗口和 OpenGL 默认 2D Runtime；已支持 Scene 目录/切换，但没有 Scene 栈或后台加载。
+- 支持单 Camera 渲染一次并呈现到多个 Viewport；真正多 Camera 仍在后续阶段。
 - Host 不自动注册未启用的可选 Feature；请求缺失 Factory 会沿用 Builder 的明确诊断。
 - 内容路径相对 `AppContext.BaseDirectory` 解析；绝对路径视为开发者显式选择。
 - 高级用户可以继续不使用 Hosting，直接组合现有底层模块。

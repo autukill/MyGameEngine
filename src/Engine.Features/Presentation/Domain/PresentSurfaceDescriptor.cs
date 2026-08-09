@@ -18,6 +18,7 @@ public sealed record PresentSurfaceDescriptor : IRenderEffectDescriptor
     public RenderEffectKey Key { get; }
     public RenderSurfaceKey Source { get; }
     public ViewportRect Viewport { get; }
+    public ViewportFitMode Fit { get; }
     public int Layer { get; }
     public PresentationBlendMode Blend { get; }
 
@@ -26,7 +27,8 @@ public sealed record PresentSurfaceDescriptor : IRenderEffectDescriptor
         RenderSurfaceKey source,
         ViewportRect viewport,
         int layer,
-        PresentationBlendMode blend)
+        PresentationBlendMode blend,
+        ViewportFitMode fit = ViewportFitMode.Stretch)
     {
         if (key != DefaultKey)
             throw new ArgumentException(
@@ -36,9 +38,12 @@ public sealed record PresentSurfaceDescriptor : IRenderEffectDescriptor
         ValidateViewport(viewport);
         if (!Enum.IsDefined(blend))
             throw new ArgumentOutOfRangeException(nameof(blend));
+        if (!Enum.IsDefined(fit))
+            throw new ArgumentOutOfRangeException(nameof(fit));
         Key = key;
         Source = source;
         Viewport = viewport;
+        Fit = fit;
         Layer = layer;
         Blend = blend;
     }

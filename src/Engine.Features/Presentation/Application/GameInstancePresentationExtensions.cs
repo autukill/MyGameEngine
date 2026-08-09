@@ -13,7 +13,8 @@ public static class GameInstancePresentationExtensions
         Action<IDomainEvent> raiseEvent,
         int layer = 0,
         PresentationBlendMode blend = PresentationBlendMode.AlphaBlend,
-        ViewportRect? viewport = null)
+        ViewportRect? viewport = null,
+        ViewportFitMode fit = ViewportFitMode.Stretch)
     {
         ArgumentNullException.ThrowIfNull(instance);
         ArgumentNullException.ThrowIfNull(raiseEvent);
@@ -25,7 +26,8 @@ public static class GameInstancePresentationExtensions
                 source,
                 viewport ?? ViewportRect.FullScreen,
                 layer,
-                blend)));
+                blend,
+                fit)));
     }
 
     public static void ReleasePresentSurface(
