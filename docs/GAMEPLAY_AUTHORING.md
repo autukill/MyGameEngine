@@ -22,6 +22,8 @@ public override void OnStep(double deltaTime)
 - `InputAxis2D()` 默认使用 WASD，返回每轴 `-1/0/1`，不会自动归一化对角线。
 - `MoveBy/RotateBy/ScaleBy` 直接更新逻辑 Transform，不创建 GPU 状态。
 
+需要有限时长插值、摄像机/对象平滑跟随或固定速度追踪时，使用无状态 `Easing`、`Tween` 和 `Motion`。时间参数直接接受 `OnStep` 的 `double deltaTime`，不需要 Gameplay 类每帧强转；完整选择与示例见[缓动、插值与平滑运动](EASING_TWEEN_MOTION.md)。
+
 ## 实例级 Gameplay Context
 
 Scene 会为已添加或已排队生成的实例注入窄化 `IGameplayContext`。`GameInstance` 子类通过以下 protected API 使用它：
@@ -79,4 +81,4 @@ public override void OnAlarm(AlarmId alarm)
 - 本阶段不引入全局 Service Locator、协程、完整物理、导航或 UI。
 - 声明式 Scene 切换、类型安全 Prefab、Box/Circle 和区域/半径查询已经落地，详见 [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)。
 - `FindAll<T>()` 与当前空间查询创建稳定结果数组，高频大规模查询将在性能数据证明必要后透明迁移到 Spatial Hash。
-- Gameplay Cookbook 和强类型 Prefab 自定义参数已经落地；下一步聚焦 Scene 参数传递与生命周期遍历分配，离线 Shader 编译方向继续暂缓。
+- Gameplay Cookbook、强类型 Prefab 自定义参数和无状态缓动/运动辅助已经落地；下一步聚焦 Scene 参数传递与生命周期遍历分配，离线 Shader 编译方向继续暂缓。

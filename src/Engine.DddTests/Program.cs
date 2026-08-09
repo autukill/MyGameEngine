@@ -146,6 +146,7 @@ internal sealed class Program
         VerifyMaterialParameterBlocks();
         VerifyGameplayAuthoringExperience();
         VerifyPrefabCollisionAndSceneTransition();
+        VerifyEasingTweenAndMotion();
         if (args.Contains("--benchmark-spatial", StringComparer.Ordinal))
             MeasureSpatialQueries();
 
@@ -430,9 +431,72 @@ internal sealed class Program
         Console.WriteLine("   [PASS] logical Scene request + persistent transition semantics");
     }
 
+    private static void VerifyEasingTweenAndMotion()
+    {
+        foreach (EasingKind kind in Enum.GetValues<EasingKind>())
+        {
+            Assert(Nearly(Easing.Evaluate(kind, 0f), 0f) &&
+                   Nearly(Easing.Evaluate(kind, 1f), 1f),
+                $"{kind} preserves normalized endpoints");
+        }
+
+        Assert(Easing.Evaluate(EasingKind.Linear, -1f) == 0f &&
+               Easing.Evaluate(EasingKind.Linear, 2f) == 1f,
+            "Easing clamps finite progress to the normalized interval");
+        Assert(Nearly(Easing.Evaluate(EasingKind.QuadIn, .25f), .0625f) &&
+               Nearly(Easing.Evaluate(EasingKind.QuadOut, .25f), .4375f) &&
+               Easing.Evaluate(EasingKind.BackOut, .6f) > 1f,
+            "Representative ease-in, ease-out, and overshoot curves remain distinct");
+
+        Assert(Nearly(Tween.Progress(.5f, 2f), .25f) &&
+               Nearly(Tween.EasedProgress(.5f, 2f, EasingKind.QuadIn), .0625f) &&
+               Nearly(Tween.Lerp(10f, 20f, .5f), 15f) &&
+               Nearly(Tween.Lerp(10f, 20f, .5d, 2d, EasingKind.QuadIn), 10.625f) &&
+               Tween.Lerp(Vector2D.Zero, new Vector2D(10, 20), .25f) ==
+                   new Vector2D(2.5f, 5f) &&
+               Tween.Lerp(Vector4.Zero, Vector4.One, .5f, EasingKind.QuadIn) ==
+                   new Vector4(.25f),
+            "Tween separates normalized/eased progress and interpolates scalar, position, and color values");
+
+        float degrees = MathF.PI / 180f;
+        Assert(Nearly(Tween.AngleRadians(350f * degrees, 10f * degrees, .5f), MathF.Tau),
+            "Angle tween takes the shortest path across the radians wrap boundary");
+
+        Assert(Nearly(Motion.MoveTowards(0f, 10f, 3f), 3f) &&
+               Motion.MoveTowards(9f, 10f, 3f) == 10f &&
+               Motion.MoveTowards(Vector2D.Zero, new Vector2D(3, 4), 2f) ==
+                   new Vector2D(1.2f, 1.6f),
+            "MoveTowards caps scalar and vector travel without overshooting");
+
+        float halfStep = Motion.Damp(0f, 10f, .5f, .5f);
+        float quarterSteps = Motion.Damp(Motion.Damp(0f, 10f, .5f, .25f), 10f, .5f, .25f);
+        Assert(Nearly(halfStep, 5f) && Nearly(quarterSteps, halfStep) &&
+               Motion.Damp(0f, 10f, 0f, .1f) == 10f &&
+               Motion.Damp(0f, 10f, 0f, 0f) == 0f,
+            "Half-life damping is frame-rate independent and has explicit zero-time behavior");
+        Assert(Nearly(Motion.DampAngleRadians(
+                350f * degrees, 10f * degrees, .5f, .5f), MathF.Tau),
+            "Angle damping uses the shortest radians path");
+
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => Easing.Evaluate(EasingKind.Linear, float.NaN),
+            "Easing rejects non-finite progress");
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => Tween.Progress(1f, 0f),
+            "Tween duration must be positive");
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => Motion.Damp(0f, 1f, -.1f, .016f),
+            "Damping rejects a negative half-life");
+
+        Console.WriteLine("\n15. Easing, Tween, and frame-rate independent Motion");
+        Console.WriteLine("   [PASS] normalized curve families + strict inputs");
+        Console.WriteLine("   [PASS] scalar/vector/color/shortest-angle interpolation");
+        Console.WriteLine("   [PASS] bounded movement + composable half-life damping");
+    }
+
     private static void MeasureSpatialQueries()
     {
-        Console.WriteLine("\n15. Spatial query benchmark (linear scan)");
+        Console.WriteLine("\n16. Spatial query benchmark (linear scan)");
         foreach (int count in new[] { 100, 1_000, 10_000 })
         {
             var scene = new SceneAggregate($"Spatial-{count}");
@@ -481,6 +545,9 @@ internal sealed class Program
     {
         if (!condition) throw new InvalidOperationException($"[FAIL] {message}");
     }
+
+    private static bool Nearly(float actual, float expected, float tolerance = .00001f) =>
+        MathF.Abs(actual - expected) <= tolerance;
 
     private sealed class LifecycleProbe : GameInstance
     {

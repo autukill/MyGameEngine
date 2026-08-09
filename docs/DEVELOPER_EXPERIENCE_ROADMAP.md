@@ -79,10 +79,11 @@ GameAssets.Packages.SharedPrimitives
 - Box/Circle Collider，以及按类型的相交、区域和半径查询。
 - AirplaneShooter 与 Asteroids 分别验证直线射击和旋转推进/周期生成/重启流程。
 - Gameplay Cookbook 收敛常见配方；Release 基准记录 100/1,000/10,000 Collider 线性查询成本。
+- `Easing`、`Tween` 与 `Motion` 提供归一化曲线、值/最短弧度角插值、限速追踪和半衰期平滑，不引入全局 Manager。
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：无状态 Easing/Tween/Motion 辅助 → 强类型 Scene 参数传递与暂停策略 → 降低 SceneAggregate 生命周期遍历分配 → 根据真实游戏遥测复核 Spatial Hash。当前 1,000 Collider 基线约 0.0201 ms/查询，不提前引入索引。逐帧多区域与 Sprite 异形碰撞的需求已记录在 [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)，但碰撞细化不是当前主要矛盾。暂不进入 UI、完整协程或物理系统。
+下一步优先级：强类型 Scene 参数传递与暂停策略 → 降低 SceneAggregate 生命周期遍历分配 → 根据真实游戏遥测复核 Spatial Hash。无状态 Easing/Tween/Motion 辅助已经落地，见[缓动、插值与平滑运动](EASING_TWEEN_MOTION.md)。当前 1,000 Collider 基线约 0.0201 ms/查询，不提前引入索引。逐帧多区域与 Sprite 异形碰撞的需求已记录在 [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)，但碰撞细化不是当前主要矛盾。暂不进入 UI、完整协程或物理系统。
 
 ## 设计约束
 
