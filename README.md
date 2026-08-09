@@ -69,6 +69,9 @@ src/
 ├── build/GameEngine.Content.targets     # Build/Run/Publish 增量资产集成
 ├── Engine.DddTests/                     # 聚合、生命周期、输入与状态调度验证
 └── MyGame.Runner/                       # Stencil + Bloom 综合 Demo
+
+playgrounds/
+└── AirplaneShooter/                     # 方向键移动、空格发射与 Alarm 回收示例
 ```
 
 Feature 依赖保持单向：
@@ -91,7 +94,7 @@ Engine.Core
 Engine.Hosting -> Core + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 45 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 46 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -106,6 +109,14 @@ dotnet restore MyGameEngine.slnx
 dotnet build MyGameEngine.slnx
 dotnet run --project src/MyGame.Runner/MyGame.Runner.csproj
 ```
+
+面向游戏开发者的最小示例可以直接运行：
+
+```bash
+dotnet run --project playgrounds/AirplaneShooter/AirplaneShooter.csproj
+```
+
+使用方向键或 `WASD` 移动飞机，按住空格连续发射子弹。示例完整展示 Hosting、强类型 Content、输入、`Spawn` 和 `Alarm`，详见 [Airplane Shooter Playground](playgrounds/AirplaneShooter/README.md)。
 
 Runner 内容：4 个彩色方块绕场景中心运动，鼠标控制圆形 Stencil 聚光灯；世界颜色先进入 RGBA16F Scene，随后经过 HDR Bloom 与 ACES Tone Mapping 输出到屏幕。
 

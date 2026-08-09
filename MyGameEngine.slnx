@@ -84,4 +84,7 @@
     <Project Path="src/Engine.Tools.Cli/Engine.Tools.Cli.csproj" />
   </Folder>
   <Project Path="src/MyGame.Runner/MyGame.Runner.csproj" />
+  <Folder Name="/Playgrounds/">
+    <Project Path="playgrounds/AirplaneShooter/AirplaneShooter.csproj" />
+  </Folder>
 </Solution>

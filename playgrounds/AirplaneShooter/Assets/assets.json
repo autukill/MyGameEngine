@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "id": "playground.airplane-shooter",
+  "dependencies": [],
+  "textures": [
+    {
+      "name": "airplane.player.texture",
+      "path": "player-plane.webp",
+      "sampling": "pixelArt"
+    },
+    {
+      "name": "airplane.bullet.texture",
+      "path": "white.webp",
+      "sampling": "pixelArt"
+    }
+  ],
+  "sprites": [
+    {
+      "name": "player.plane",
+      "layout": "single",
+      "texture": "airplane.player.texture",
+      "size": { "width": 112, "height": 112 },
+      "origin": { "x": 56, "y": 56 }
+    },
+    {
+      "name": "player.bullet",
+      "layout": "single",
+      "texture": "airplane.bullet.texture",
+      "size": { "width": 8, "height": 24 },
+      "origin": { "x": 4, "y": 12 }
+    }
+  ]
+}
