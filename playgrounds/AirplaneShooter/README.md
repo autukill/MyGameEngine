@@ -3,6 +3,7 @@
 一个刻意保持简单的 MyGameEngine 可运行示例：
 
 - 方向键或 `WASD` 移动飞机。
+- `GameInputs` 与 `ConfigureInput` 把移动、射击和重开意图从具体键位中分离。
 - 按住空格连续发射子弹。
 - 飞机被限制在窗口范围内。
 - 子弹通过类型安全的 `PrefabRef<PlayerBullet>` 创建，并通过实例 Alarm 自动销毁。

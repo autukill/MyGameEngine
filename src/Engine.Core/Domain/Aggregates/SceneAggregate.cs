@@ -75,6 +75,7 @@ public class SceneAggregate : IInstanceDrawTracker
     private List<PendingInstanceMutation> _pendingMutations = new();
     private List<PendingInstanceMutation> _committingMutations = new();
     private IInputProvider? _input;
+    private InputMap? _inputMap;
     private ISpriteResolver? _sprites;
     private IInstanceFactory _instanceFactory = new InstanceFactory().Build();
     private ISceneSwitchRequester? _sceneSwitchRequester;
@@ -197,6 +198,7 @@ public class SceneAggregate : IInstanceDrawTracker
 
         instance.AttachGameplayContext(_gameplay);
         instance.Input ??= _input;
+        instance.MappedInput ??= _inputMap;
         instance.SpriteResolver ??= _sprites;
         _instances.Add(instance.Id, instance);
         try
@@ -394,6 +396,14 @@ public class SceneAggregate : IInstanceDrawTracker
         _input = input;
         foreach (var instance in _instances.Values)
             instance.Input ??= input;
+    }
+
+    /// <summary>Sets the shared immutable logical input map for existing and future instances.</summary>
+    public void SetInputMap(InputMap? inputMap)
+    {
+        _inputMap = inputMap;
+        foreach (var instance in _instances.Values)
+            instance.MappedInput ??= inputMap;
     }
 
     /// <summary>设置场景共享 Sprite 解析器（对已有实例补注入；之后 Add 自动注入）。</summary>

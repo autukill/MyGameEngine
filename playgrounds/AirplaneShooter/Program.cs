@@ -4,6 +4,7 @@ using System.Numerics;
 using AirplaneShooter.Content;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Hosting;
@@ -23,6 +24,21 @@ internal static class Program
 
         using var game = GameApplication
             .Create(options)
+            .ConfigureInput(input => input
+                .BindAxis2D(
+                    GameInputs.Move,
+                    InputKey.A,
+                    InputKey.D,
+                    InputKey.W,
+                    InputKey.S)
+                .BindAxis2D(
+                    GameInputs.Move,
+                    InputKey.Left,
+                    InputKey.Right,
+                    InputKey.Up,
+                    InputKey.Down)
+                .BindAction(GameInputs.Fire, InputKey.Space)
+                .BindAction(GameInputs.Restart, InputKey.Enter))
             .UseDefault2DRenderer(renderer => renderer
                 .UseContent(GameAssets.Packages.Root))
             .ConfigureInstances(instances => instances.Register(

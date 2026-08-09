@@ -15,7 +15,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Gameplay Query：保留便利结果数组，同时提供可复用 Buffer、无集合计数和按真实 Step 聚合的可选查询统计。
 - Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
-- 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件。
+- 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件；不可变逻辑 Action/Axis 把玩法意图与 WASD、方向键等物理绑定分离。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
 - 类型化 Shader 材质：逻辑 `MaterialRef`、多材质共享 Program、参数 Revision 批处理与热替换自动重放。
 - Shader 契约诊断：GL 反射校验材质 Uniform 名称/类型/数组，编译错误携带源码路径、行号与原始驱动日志。
@@ -131,7 +131,7 @@ dotnet run --project playgrounds/AirplaneShooter/AirplaneShooter.csproj
 dotnet run --project playgrounds/Asteroids/Asteroids.csproj
 ```
 
-完整配方见 [Gameplay Cookbook](docs/GAMEPLAY_COOKBOOK.md)，空间查询的实测基线与 Spatial Hash 决策见 [Gameplay 空间查询基准](docs/GAMEPLAY_QUERY_PERFORMANCE.md)。
+完整配方见 [Gameplay Cookbook](docs/GAMEPLAY_COOKBOOK.md)，输入装配见 [逻辑 Input Actions](docs/INPUT_ACTIONS.md)，空间查询的实测基线与 Spatial Hash 决策见 [Gameplay 空间查询基准](docs/GAMEPLAY_QUERY_PERFORMANCE.md)。
 
 Runner 内容：4 个彩色方块绕场景中心运动，鼠标控制圆形 Stencil 聚光灯；世界颜色先进入 RGBA16F Scene，随后经过 HDR Bloom 与 ACES Tone Mapping 输出到屏幕。
 

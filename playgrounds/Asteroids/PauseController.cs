@@ -2,7 +2,6 @@ namespace AsteroidsPlayground;
 
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
-using GameEngine.Core.Domain.Input;
 
 /// <summary>Unscaled input controller proving that Gameplay pause does not require a UI layer.</summary>
 public sealed class PauseController : GameInstance
@@ -13,7 +12,7 @@ public sealed class PauseController : GameInstance
 
     public override void OnStep(double deltaTime)
     {
-        if (KeyPressed(InputKey.P))
+        if (ActionPressed(GameInputs.Pause))
             ToggleGameplayPause(PlayerPause);
     }
 }

@@ -2,7 +2,6 @@ namespace AirplaneShooter;
 
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
-using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
 public sealed class PlayerPlane : GameInstance
@@ -32,13 +31,7 @@ public sealed class PlayerPlane : GameInstance
     public override void OnStep(double deltaTime)
     {
         float dt = (float)deltaTime;
-        Vector2D direction = InputAxis2D(
-            InputKey.Left,
-            InputKey.Right,
-            InputKey.Up,
-            InputKey.Down);
-        if (direction == Vector2D.Zero)
-            direction = InputAxis2D();
+        Vector2D direction = InputAxis2D(GameInputs.Move);
 
         if (direction != Vector2D.Zero)
             MoveBy(direction.Normalize() * (MoveSpeed * dt));
@@ -48,7 +41,7 @@ public sealed class PlayerPlane : GameInstance
             Math.Clamp(Position.Y, HalfSize, _worldHeight - HalfSize));
 
         _fireCooldown = MathF.Max(0f, _fireCooldown - dt);
-        if (KeyDown(InputKey.Space) && _fireCooldown <= 0f)
+        if (ActionDown(GameInputs.Fire) && _fireCooldown <= 0f)
         {
             Spawn(BulletPrefab, Position + new Vector2D(0f, -HalfSize));
             _fireCooldown = FireInterval;

@@ -2,7 +2,6 @@ namespace AsteroidsPlayground;
 
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
-using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
 public sealed class PlayerShip : GameInstance
@@ -35,19 +34,19 @@ public sealed class PlayerShip : GameInstance
     {
         _survivalSeconds += deltaTime;
         float dt = (float)deltaTime;
-        float turn = (KeyDown(InputKey.Right) || KeyDown(InputKey.D) ? 1f : 0f) -
-                     (KeyDown(InputKey.Left) || KeyDown(InputKey.A) ? 1f : 0f);
+        float turn = (ActionDown(GameInputs.TurnRight) ? 1f : 0f) -
+                     (ActionDown(GameInputs.TurnLeft) ? 1f : 0f);
         RotateBy(turn * TurnSpeed * dt);
 
         Vector2D forward = Forward();
-        if (KeyDown(InputKey.Up) || KeyDown(InputKey.W))
+        if (ActionDown(GameInputs.Thrust))
             _velocity += forward * (Thrust * dt);
         _velocity = _velocity * MathF.Pow(0.35f, dt);
         MoveBy(_velocity * dt);
         WrapAround();
 
         _fireCooldown = MathF.Max(0f, _fireCooldown - dt);
-        if (KeyDown(InputKey.Space) && _fireCooldown <= 0f)
+        if (ActionDown(GameInputs.Fire) && _fireCooldown <= 0f)
         {
             var spawn = new LaserSpawnArgs(
                 Position + forward * 38f,

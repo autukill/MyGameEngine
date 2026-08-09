@@ -171,8 +171,13 @@ public class GameInstance
     /// </summary>
     public IInputProvider? Input { get; set; }
 
+    /// <summary>Optional immutable logical action/axis map injected by the Scene.</summary>
+    public InputMap? MappedInput { get; set; }
+
     /// <summary>Non-null input access for ordinary gameplay code.</summary>
     protected IInputProvider Controls => Input ?? NullInputProvider.Instance;
+
+    private InputMap LogicalControls => MappedInput ?? InputMap.Empty;
 
     /// <summary>True after the instance has been added or queued for a Scene.</summary>
     protected bool HasGameplayContext => _gameplay is not null;
@@ -272,6 +277,18 @@ public class GameInstance
     protected bool KeyPressed(InputKey key) => Controls.WasKeyPressed(key);
 
     protected bool KeyReleased(InputKey key) => Controls.WasKeyReleased(key);
+
+    protected bool ActionDown(InputActionRef action) =>
+        LogicalControls.ActionDown(Controls, action);
+
+    protected bool ActionPressed(InputActionRef action) =>
+        LogicalControls.ActionPressed(Controls, action);
+
+    protected bool ActionReleased(InputActionRef action) =>
+        LogicalControls.ActionReleased(Controls, action);
+
+    protected Vector2D InputAxis2D(InputAxis2DRef axis) =>
+        LogicalControls.Axis2D(Controls, axis);
 
     protected Vector2D InputAxis2D(
         InputKey left = InputKey.A,

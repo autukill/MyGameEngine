@@ -1,7 +1,6 @@
 namespace AirplaneShooter;
 
 using GameEngine.Core.Domain.Entities;
-using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
 public sealed class VictoryMarker : GameInstance
@@ -16,7 +15,7 @@ public sealed class VictoryMarker : GameInstance
     public override void OnStep(double deltaTime)
     {
         RotateBy((float)deltaTime);
-        if (KeyPressed(InputKey.Enter))
+        if (ActionPressed(GameInputs.Restart))
             SwitchScene(GameScenes.Main);
     }
 }

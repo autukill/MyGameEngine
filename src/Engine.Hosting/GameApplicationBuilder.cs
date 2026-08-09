@@ -2,6 +2,7 @@ namespace GameEngine.Hosting;
 
 using System.Collections.ObjectModel;
 using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Infrastructure.Windowing;
 
 public sealed class GameApplicationBuilder
@@ -12,6 +13,8 @@ public sealed class GameApplicationBuilder
     private readonly InstanceFactory _instances = new();
     private ISceneActivation? _initialScene;
     private bool _instancesConfigured;
+    private InputMap _inputMap = InputMap.Empty;
+    private bool _inputConfigured;
 
     internal GameApplicationBuilder(EngineWindowOptions windowOptions)
     {
@@ -94,6 +97,21 @@ public sealed class GameApplicationBuilder
         return this;
     }
 
+    public GameApplicationBuilder ConfigureInput(Action<InputMapBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (_inputConfigured)
+            throw new InvalidOperationException("Input bindings are already configured.");
+        var builder = new InputMapBuilder();
+        configure(builder);
+        InputMap inputMap = builder.Build();
+        if (inputMap.IsEmpty)
+            throw new InvalidOperationException("ConfigureInput requires at least one binding.");
+        _inputMap = inputMap;
+        _inputConfigured = true;
+        return this;
+    }
+
     public GameApplication Build() => new(BuildPlan());
 
     internal GameApplicationPlan BuildPlan()
@@ -126,7 +144,8 @@ public sealed class GameApplicationBuilder
             renderer,
             initial,
             scenes,
-            _instances.Build());
+            _instances.Build(),
+            _inputMap);
     }
 }
 
@@ -135,7 +154,8 @@ internal sealed record GameApplicationPlan(
     Default2DRendererPlan Renderer,
     ISceneActivation InitialSceneActivation,
     IReadOnlyDictionary<string, ISceneDefinition> Scenes,
-    IInstanceFactory Instances)
+    IInstanceFactory Instances,
+    InputMap InputMap)
 {
     public SceneRef InitialScene => InitialSceneActivation.Scene;
     public string SceneName => InitialScene.Name;

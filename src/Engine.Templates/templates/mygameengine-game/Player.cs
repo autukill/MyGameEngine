@@ -18,10 +18,10 @@ public sealed class Player : GameInstance
 
     public override void OnStep(double deltaTime)
     {
-        MoveBy(InputAxis2D() * (MoveSpeed * (float)deltaTime));
+        MoveBy(InputAxis2D(GameInputs.Move) * (MoveSpeed * (float)deltaTime));
         RotateBy((float)deltaTime);
 
-        if (KeyPressed(GameEngine.Core.Domain.Input.InputKey.Space))
+        if (ActionPressed(GameInputs.Fire))
             Spawn(BulletPrefab, Position);
     }
 }

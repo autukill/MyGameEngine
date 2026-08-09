@@ -222,6 +222,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             ViewportHeight = height
         };
         _scene.SetInput(_window.Input);
+        _scene.SetInputMap(_plan.InputMap);
         _scene.SetSprites(_sprites);
         _scene.SetInstanceFactory(_plan.Instances);
         _scene.SetGameplayQueryStatisticsEnabled(renderer.PerformanceTelemetry is not null);
@@ -351,6 +352,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _renderViews,
             _scenes,
             _plan.Instances,
+            _plan.InputMap,
             _close);
         if (renderer.ShaderHotReload is { } shaderHotReload)
         {

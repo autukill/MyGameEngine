@@ -4,6 +4,7 @@ using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
@@ -29,6 +30,7 @@ internal static class Program
         Console.WriteLine("=== Engine Hosting Smoke Test ===\n");
         TestBuilderPlans();
         TestBuilderValidation();
+        TestLogicalInputMap();
         TestSceneCatalogAndPrefabs();
         TestResourceOwnership();
         TestDefaultPresentationControllers();
@@ -201,6 +203,107 @@ internal static class Program
               primaryEffects.StencilMaskingEnabled &&
               primaryEffects.RenderViews!.All(view => view.CameraFollow is null),
             "Primary HDR/Bloom/Stencil can coexist with lazy secondary LDR Views");
+    }
+
+    private static void TestLogicalInputMap()
+    {
+        Console.WriteLine("3. Logical input actions and axes");
+        var fire = new InputActionRef("player.fire");
+        var move = new InputAxis2DRef("player.move");
+        InputKey[] fireKeys = [InputKey.Space, InputKey.Control];
+        InputMap map = new InputMapBuilder()
+            .BindAction(fire, fireKeys)
+            .BindAxis2D(move, InputKey.A, InputKey.D, InputKey.W, InputKey.S)
+            .BindAxis2D(move, InputKey.Left, InputKey.Right, InputKey.Up, InputKey.Down)
+            .Build();
+        fireKeys[0] = InputKey.Escape;
+
+        var input = new MappedInputProbe();
+        input.Down.Add(InputKey.Space);
+        input.Pressed.Add(InputKey.Control);
+        input.Released.Add(InputKey.Space);
+        Check(map.ActionDown(input, fire) &&
+              map.ActionPressed(input, fire) &&
+              map.ActionReleased(input, fire),
+            "Action bindings use OR semantics and freeze caller-owned key arrays");
+
+        input.Down.Clear();
+        input.Down.Add(InputKey.D);
+        input.Down.Add(InputKey.Right);
+        input.Down.Add(InputKey.W);
+        Check(map.Axis2D(input, move) == new Vector2D(1, -1),
+            "Multiple digital axis schemes combine and clamp to [-1,1]");
+        input.Down.Add(InputKey.Left);
+        input.Down.Add(InputKey.A);
+        Check(map.Axis2D(input, move) == new Vector2D(0, -1),
+            "Opposing keys across schemes cancel deterministically");
+        input.Down.Add(InputKey.Space);
+
+        var gameplayProbe = new LogicalInputProbe(fire, move);
+        Check(!gameplayProbe.FireDown && gameplayProbe.Move == Vector2D.Zero,
+            "Instances outside a Scene use an inert logical input Null Object");
+        var scene = new SceneAggregate("MappedInput");
+        scene.SetInput(input);
+        scene.SetInputMap(map);
+        scene.Add(gameplayProbe);
+        Check(ReferenceEquals(gameplayProbe.MappedInput, map) &&
+              gameplayProbe.FireDown && gameplayProbe.Move == new Vector2D(0, -1),
+            "Scene injects one immutable map into GameInstance convenience queries");
+
+        var plan = GameApplication.Create()
+            .ConfigureInput(bindings => bindings
+                .BindAction(fire, InputKey.Space)
+                .BindAxis2D(move, InputKey.A, InputKey.D, InputKey.W, InputKey.S))
+            .UseDefault2DRenderer()
+            .ConfigureScene("InputPlan", _ => { })
+            .BuildPlan();
+        Check(plan.InputMap.ActionCount == 1 && plan.InputMap.Axis2DCount == 1,
+            "Application plan freezes logical input bindings before window creation");
+
+        CheckThrows<KeyNotFoundException>(
+            () => map.ActionDown(input, new InputActionRef("unknown")),
+            "Configured maps reject unknown logical actions");
+        CheckThrows<ArgumentException>(
+            () => new InputMapBuilder()
+                .BindAction(new InputActionRef("same"), InputKey.Space)
+                .BindAxis2D(
+                    new InputAxis2DRef("same"),
+                    InputKey.A,
+                    InputKey.D,
+                    InputKey.W,
+                    InputKey.S),
+            "One logical name cannot change control kind");
+        CheckThrows<ArgumentException>(
+            () => new InputMapBuilder().BindAction(
+                fire, InputKey.Space, InputKey.Space),
+            "Duplicate physical bindings fail during composition");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create().ConfigureInput(_ => { }),
+            "An explicitly configured empty input map is rejected");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create()
+                .ConfigureInput(bindings => bindings.BindAction(fire, InputKey.Space))
+                .ConfigureInput(bindings => bindings.BindAction(fire, InputKey.Enter)),
+            "Input bindings cannot be configured twice");
+
+        for (int i = 0; i < 64; i++)
+        {
+            _ = map.ActionDown(input, fire);
+            _ = map.ActionPressed(input, fire);
+            _ = map.ActionReleased(input, fire);
+            _ = map.Axis2D(input, move);
+        }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            _ = map.ActionDown(input, fire);
+            _ = map.ActionPressed(input, fire);
+            _ = map.ActionReleased(input, fire);
+            _ = map.Axis2D(input, move);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Logical action and axis queries remain allocation-free ({allocated:N0} B)");
     }
 
     private static void TestSceneCatalogAndPrefabs()
@@ -784,6 +887,28 @@ internal static class Program
     private sealed class HostingPrefabProbe : GameInstance
     {
         public HostingPrefabProbe(Vector2D position) => Position = position;
+    }
+
+    private sealed class LogicalInputProbe(
+        InputActionRef fire,
+        InputAxis2DRef move) : GameInstance
+    {
+        public bool FireDown => ActionDown(fire);
+        public Vector2D Move => InputAxis2D(move);
+    }
+
+    private sealed class MappedInputProbe : IInputProvider
+    {
+        public HashSet<InputKey> Down { get; } = [];
+        public HashSet<InputKey> Pressed { get; } = [];
+        public HashSet<InputKey> Released { get; } = [];
+        public Vector2D MousePosition => Vector2D.Zero;
+        public float MouseScrollDelta => 0f;
+
+        public bool IsKeyDown(InputKey key) => Down.Contains(key);
+        public bool WasKeyPressed(InputKey key) => Pressed.Contains(key);
+        public bool WasKeyReleased(InputKey key) => Released.Contains(key);
+        public bool IsMouseButtonDown(MouseButton button) => false;
     }
 
     private readonly record struct ResultsSceneArgs(int Score, double ElapsedSeconds);

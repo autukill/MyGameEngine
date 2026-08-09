@@ -4,6 +4,7 @@ using System.Numerics;
 using AsteroidsPlayground.Content;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Hosting;
@@ -25,6 +26,13 @@ internal static class Program
 
         using var game = GameApplication
             .Create(options)
+            .ConfigureInput(input => input
+                .BindAction(GameInputs.TurnLeft, InputKey.A, InputKey.Left)
+                .BindAction(GameInputs.TurnRight, InputKey.D, InputKey.Right)
+                .BindAction(GameInputs.Thrust, InputKey.W, InputKey.Up)
+                .BindAction(GameInputs.Fire, InputKey.Space)
+                .BindAction(GameInputs.Pause, InputKey.P)
+                .BindAction(GameInputs.Restart, InputKey.Enter))
             .UseDefault2DRenderer(renderer =>
             {
                 renderer.UseContent(GameAssets.Packages.Root);

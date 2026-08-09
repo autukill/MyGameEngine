@@ -4,6 +4,7 @@ using System.Numerics;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
@@ -35,6 +36,7 @@ public sealed class Default2DGameContext
     public RenderTargetPool RenderTargets { get; }
     public SceneNavigator Scenes { get; }
     public IInstanceFactory Instances { get; }
+    public InputMap InputMap { get; }
     public GameplayTimeController Time => Scene.Time;
     public IReadOnlyList<SingleCameraViewportDefinition> Viewports { get; }
     public IReadOnlyList<RenderView> RenderViews { get; }
@@ -56,6 +58,7 @@ public sealed class Default2DGameContext
         IReadOnlyList<RenderView> renderViews,
         SceneNavigator scenes,
         IInstanceFactory instances,
+        InputMap inputMap,
         Action close)
     {
         Window = window;
@@ -101,6 +104,7 @@ public sealed class Default2DGameContext
         }
         Scenes = scenes ?? throw new ArgumentNullException(nameof(scenes));
         Instances = instances ?? throw new ArgumentNullException(nameof(instances));
+        InputMap = inputMap ?? throw new ArgumentNullException(nameof(inputMap));
         _rootRenderTargets = new RenderTarget2D[renderViews.Count + (guiTarget is null ? 0 : 1)];
         for (int i = 0; i < renderViews.Count; i++)
             _rootRenderTargets[i] = renderViews[i].Target;

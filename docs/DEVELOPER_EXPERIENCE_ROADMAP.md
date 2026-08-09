@@ -69,6 +69,7 @@ GameAssets.Packages.SharedPrimitives
 
 - `Position/Rotation/Scale` 与 `MoveBy/RotateBy/ScaleBy` 提供直接变换入口。
 - 非空 `Controls`、`KeyDown/KeyPressed/KeyReleased` 和 WASD `InputAxis2D` 收敛输入查询。
+- 不可变 `InputMap`、`InputActionRef` 与 `InputAxis2DRef` 已把玩法意图从物理键位解耦；Hosting 集中绑定，Scene 注入现有和后续实例，稳态查询保持 0 B。
 - Scene 注入实例级 `IGameplayContext`，提供 `Spawn/DestroySelf/Destroy/Find`，不引入全局 Service Locator。
 - Gameplay Spawn/Destroy 在 End Step 后按请求顺序确定性提交；新实例下一帧 Step，待销毁实例完成当前 End Step。
 - `AlarmId`、`SetAlarm/CancelAlarm/OnAlarm` 提供无协程依赖的轻量计时。

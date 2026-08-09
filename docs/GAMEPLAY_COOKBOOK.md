@@ -1,5 +1,7 @@
 # Gameplay Cookbook
 
+示例项目通过 `GameInputs` 集中定义逻辑 Action/Axis，并在 `ConfigureInput` 中绑定物理键位。玩法类使用 `ActionDown/ActionPressed/ActionReleased` 和 `InputAxis2D(GameInputs.Move)`；详见[逻辑 Input Actions](INPUT_ACTIONS.md)。
+
 这些配方来自可运行 Playground，目标是让常见玩法代码短、明确且保持帧边界语义。完整项目见 [`AirplaneShooter`](../playgrounds/AirplaneShooter/README.md) 与 [`Asteroids`](../playgrounds/Asteroids/README.md)。
 
 ## 使用 deltaTime 移动
