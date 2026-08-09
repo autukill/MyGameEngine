@@ -86,5 +86,6 @@
   <Project Path="src/MyGame.Runner/MyGame.Runner.csproj" />
   <Folder Name="/Playgrounds/">
     <Project Path="playgrounds/AirplaneShooter/AirplaneShooter.csproj" />
+    <Project Path="playgrounds/Asteroids/Asteroids.csproj" />
   </Folder>
 </Solution>

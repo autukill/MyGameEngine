@@ -1,0 +1,119 @@
+# Gameplay Cookbook
+
+这些配方来自可运行 Playground，目标是让常见玩法代码短、明确且保持帧边界语义。完整项目见 [`AirplaneShooter`](../playgrounds/AirplaneShooter/README.md) 与 [`Asteroids`](../playgrounds/Asteroids/README.md)。
+
+## 使用 deltaTime 移动
+
+```csharp
+public override void OnStep(double deltaTime)
+{
+    Vector2D direction = InputAxis2D().Normalize();
+    MoveBy(direction * (Speed * (float)deltaTime));
+}
+```
+
+数字输入轴在对角移动时长度大于一，因此需要等速移动时先 `Normalize()`。坐标系 Y 轴向下，向上移动使用负 Y。
+
+## 面向旋转方向移动
+
+项目约定旋转使用弧度，正值逆时针。Sprite 默认朝上时：
+
+```csharp
+Vector2D forward = new(MathF.Sin(Rotation), -MathF.Cos(Rotation));
+if (KeyDown(InputKey.Up))
+    velocity += forward * (acceleration * dt);
+```
+
+## 连续射击冷却
+
+```csharp
+fireCooldown = MathF.Max(0f, fireCooldown - dt);
+if (KeyDown(InputKey.Space) && fireCooldown <= 0f)
+{
+    Spawn(BulletPrefab, spawnArgs);
+    fireCooldown = FireInterval;
+}
+```
+
+`KeyPressed` 适合一次性动作；`KeyDown + cooldown` 适合按住连续触发。
+
+## 带强类型参数的 Prefab
+
+参数应是表达一次创建所需信息的不可变值，而不是通用属性字典：
+
+```csharp
+public readonly record struct LaserSpawnArgs(Vector2D Position, Vector2D Velocity);
+public static readonly PrefabRef<Laser, LaserSpawnArgs> LaserPrefab =
+    new("asteroids.laser");
+
+builder.ConfigureInstances(instances => instances.Register(
+    LaserPrefab,
+    (in LaserSpawnArgs spawn) =>
+        new Laser(GameAssets.Sprites.AsteroidsLaser, spawn)));
+```
+
+实例中调用 `Spawn(LaserPrefab, spawnArgs)`。泛型注册和 `in TArgs` 调用路径不会把 struct 参数装箱；创建结果仍在当前 End Step 后提交。
+
+只需要 Position 时继续使用较短的 `PrefabRef<T>`：
+
+```csharp
+instances.Register(BulletPrefab,
+    spawn => new Bullet(sprite, spawn.Position));
+Spawn(BulletPrefab, Position);
+```
+
+## Alarm 生命周期和周期生成
+
+```csharp
+private static readonly AlarmId SpawnTimer = new("spawn");
+public override void OnCreate() => SetAlarm(SpawnTimer, 0d);
+
+public override void OnAlarm(AlarmId alarm)
+{
+    if (alarm != SpawnTimer) return;
+    Spawn(AsteroidPrefab, CreateSpawnArgs());
+    SetAlarm(SpawnTimer, 0.45d);
+}
+```
+
+Alarm 到期后先移除再回调，所以可以在 `OnAlarm` 中安全重设同一个 ID。inactive 实例的 Alarm 会暂停。
+
+## 碰撞响应
+
+```csharp
+Collider = CollisionShape2D.Circle(5f);
+
+public override void OnStep(double deltaTime)
+{
+    MoveBy(velocity * (float)deltaTime);
+    if (FirstCollision<Asteroid>() is not { } asteroid) return;
+    Destroy(asteroid);
+    DestroySelf();
+}
+```
+
+Destroy 在当前 Step 结束后提交，因此对象仍能安全完成当前回调。多个对象可能在同一帧请求销毁同一目标；重复销毁是安全 no-op，玩法代码仍应避免重复计分等非幂等副作用。
+
+## Scene 结束与重开
+
+```csharp
+if (FirstCollision<Asteroid>() is not null)
+    SwitchScene(GameScenes.GameOver);
+
+if (KeyPressed(InputKey.Enter))
+    SwitchScene(GameScenes.Main);
+```
+
+Scene 请求在 Step 后提交。普通实例销毁，新定义重新创建；只有明确设置 `IsPersistent = true` 的实例跨 Scene 保留。
+
+## 世界边缘环绕
+
+```csharp
+if (x < 0f) x += worldWidth;
+else if (x > worldWidth) x -= worldWidth;
+if (y < 0f) y += worldHeight;
+else if (y > worldHeight) y -= worldHeight;
+Position = new Vector2D(x, y);
+```
+
+这属于玩法规则，不应隐藏进 Transform 或 Scene。需要反弹、夹紧或删除时，各对象可以选择不同策略。

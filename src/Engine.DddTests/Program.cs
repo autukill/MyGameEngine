@@ -1,6 +1,7 @@
 namespace Engine.DddTests;
 
 using System.Numerics;
+using System.Diagnostics;
 using GameEngine.Core.Application.Commands;
 using GameEngine.Core.Application.Handlers;
 using GameEngine.Core.Domain.Aggregates;
@@ -25,7 +26,7 @@ using GameEngine.Core.Infrastructure.Windowing;
 /// </summary>
 internal sealed class Program
 {
-    private static void Main()
+    private static void Main(string[] args)
     {
         Console.WriteLine("=== Phase 1.4 DDD Tactical Design Smoke Test ===\n");
 
@@ -145,6 +146,8 @@ internal sealed class Program
         VerifyMaterialParameterBlocks();
         VerifyGameplayAuthoringExperience();
         VerifyPrefabCollisionAndSceneTransition();
+        if (args.Contains("--benchmark-spatial", StringComparer.Ordinal))
+            MeasureSpatialQueries();
 
         Console.WriteLine("\n=== All Phase 1.4 DDD tactical design smoke tests passed ===");
     }
@@ -350,8 +353,13 @@ internal sealed class Program
     private static void VerifyPrefabCollisionAndSceneTransition()
     {
         var projectilePrefab = new PrefabRef<PrefabProjectile>("test.projectile");
+        var directedPrefab = new PrefabRef<PrefabProjectile, ProjectileArgs>(
+            "test.projectile.directed");
         var factory = new InstanceFactory();
         factory.Register(projectilePrefab, spawn => new PrefabProjectile(spawn.Position));
+        factory.Register(
+            directedPrefab,
+            (in ProjectileArgs args) => new PrefabProjectile(args.Position, args.Radius));
         AssertThrows<ArgumentException>(
             () => factory.Register(projectilePrefab, spawn => new PrefabProjectile(spawn.Position)),
             "Duplicate logical Prefab names are rejected");
@@ -388,6 +396,16 @@ internal sealed class Program
             () => CollisionShape2D.Circle(0),
             "Invalid collider dimensions fail during authoring");
 
+        var typedScene = new SceneAggregate("TypedPrefabArgs");
+        typedScene.SetInstanceFactory(factory);
+        var typedArgs = new ProjectileArgs(new Vector2D(40, 50), 7f);
+        typedScene.Add(new ParameterizedSpawner(directedPrefab, typedArgs));
+        typedScene.PerformStep(.016d);
+        PrefabProjectile typedProjectile = typedScene.FindByType<PrefabProjectile>().Single();
+        Assert(typedProjectile.Position == typedArgs.Position &&
+               typedProjectile.Collider == CollisionShape2D.Circle(typedArgs.Radius),
+            "Generic Prefab arguments flow through the typed in-parameter Spawn path");
+
         SceneRef? requested = null;
         scene.SetSceneSwitchRequester(next => requested = next);
         var switcher = scene.Add(new SceneSwitchProbe());
@@ -407,8 +425,42 @@ internal sealed class Program
 
         Console.WriteLine("\n14. Scene, Prefab, and collision authoring");
         Console.WriteLine("   [PASS] frozen typed Prefab catalog + boundary Spawn");
+        Console.WriteLine("   [PASS] zero-boxing typed Prefab argument path");
         Console.WriteLine("   [PASS] Box/Circle collision + area/radius queries");
         Console.WriteLine("   [PASS] logical Scene request + persistent transition semantics");
+    }
+
+    private static void MeasureSpatialQueries()
+    {
+        Console.WriteLine("\n15. Spatial query benchmark (linear scan)");
+        foreach (int count in new[] { 100, 1_000, 10_000 })
+        {
+            var scene = new SceneAggregate($"Spatial-{count}");
+            for (int i = 0; i < count; i++)
+            {
+                scene.Add(new SpatialProbe(new Vector2D(
+                    (i % 100) * 20f,
+                    (i / 100) * 20f)));
+            }
+
+            const int queries = 500;
+            // Warm through tiered JIT/PGO before timing so different population sizes compare fairly.
+            for (int i = 0; i < 500; i++)
+                _ = scene.QueryRadius<SpatialProbe>(new Vector2D(1_000, 1_000), 6f);
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            long started = Stopwatch.GetTimestamp();
+            int hits = 0;
+            for (int i = 0; i < queries; i++)
+            {
+                Vector2D center = new((i % 100) * 20f, ((i * 17) % count / 100) * 20f);
+                hits += scene.QueryRadius<SpatialProbe>(center, 6f).Count;
+            }
+            double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+            Console.WriteLine(
+                $"   {count,6:N0} colliders: {elapsedMs / queries,8:F4} ms/query, " +
+                $"{allocated / queries,6:N0} B/query, hits={hits}");
+        }
     }
 
     private static void AssertThrows<TException>(Action action, string message)
@@ -554,10 +606,26 @@ internal sealed class Program
 
     private sealed class PrefabProjectile : GameInstance
     {
-        public PrefabProjectile(Vector2D position)
+        public PrefabProjectile(Vector2D position, float radius = 4f)
         {
             Position = position;
-            Collider = CollisionShape2D.Circle(4);
+            Collider = CollisionShape2D.Circle(radius);
+        }
+    }
+
+    private readonly record struct ProjectileArgs(Vector2D Position, float Radius);
+
+    private sealed class ParameterizedSpawner(
+        PrefabRef<PrefabProjectile, ProjectileArgs> prefab,
+        ProjectileArgs args) : GameInstance
+    {
+        private bool _spawned;
+
+        public override void OnStep(double deltaTime)
+        {
+            if (_spawned) return;
+            _spawned = true;
+            Spawn(prefab, args);
         }
     }
 
@@ -576,6 +644,15 @@ internal sealed class Program
     private sealed class SceneSwitchProbe : GameInstance
     {
         public void Go(SceneRef scene) => SwitchScene(scene);
+    }
+
+    private sealed class SpatialProbe : GameInstance
+    {
+        public SpatialProbe(Vector2D position)
+        {
+            Position = position;
+            Collider = CollisionShape2D.Circle(4f);
+        }
     }
 
     private sealed class RecordingSpriteBatch : ISpriteBatch

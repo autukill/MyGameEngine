@@ -5,9 +5,14 @@ using GameEngine.Core.Domain.ValueObjects;
 
 public readonly record struct PrefabSpawnContext(Vector2D Position);
 
+public delegate T ParameterizedPrefabFactory<T, TArgs>(in TArgs args)
+    where T : GameInstance;
+
 public interface IInstanceFactory
 {
     T Create<T>(PrefabRef<T> prefab, in PrefabSpawnContext context)
+        where T : GameInstance;
+    T Create<T, TArgs>(PrefabRef<T, TArgs> prefab, in TArgs args)
         where T : GameInstance;
 }
 
@@ -39,6 +44,26 @@ public sealed class InstanceFactory : IInstanceFactory
         return this;
     }
 
+    public InstanceFactory Register<T, TArgs>(
+        PrefabRef<T, TArgs> prefab,
+        ParameterizedPrefabFactory<T, TArgs> create)
+        where T : GameInstance
+    {
+        if (_frozen)
+            throw new InvalidOperationException("The Instance factory catalog is frozen.");
+        if (prefab.IsEmpty)
+            throw new ArgumentException("Prefab reference cannot be empty.", nameof(prefab));
+        ArgumentNullException.ThrowIfNull(create);
+        if (!_registrations.TryAdd(
+                prefab.Name,
+                new ParameterizedRegistration<T, TArgs>(create)))
+        {
+            throw new ArgumentException(
+                $"Prefab '{prefab.Name}' is already registered.", nameof(prefab));
+        }
+        return this;
+    }
+
     public IInstanceFactory Build()
     {
         _frozen = true;
@@ -63,6 +88,24 @@ public sealed class InstanceFactory : IInstanceFactory
             $"Prefab '{prefab.Name}' returned null.");
     }
 
+    public T Create<T, TArgs>(PrefabRef<T, TArgs> prefab, in TArgs args)
+        where T : GameInstance
+    {
+        if (prefab.IsEmpty)
+            throw new ArgumentException("Prefab reference cannot be empty.", nameof(prefab));
+        if (!_registrations.TryGetValue(prefab.Name, out IRegistration? registration))
+            throw new KeyNotFoundException($"Prefab '{prefab.Name}' is not registered.");
+        if (registration is not ParameterizedRegistration<T, TArgs> typed)
+        {
+            throw new InvalidOperationException(
+                $"Prefab '{prefab.Name}' expects a different Instance or argument type.");
+        }
+
+        T instance = typed.Create(args);
+        return instance ?? throw new InvalidOperationException(
+            $"Prefab '{prefab.Name}' returned null.");
+    }
+
     private interface IRegistration
     {
         Type InstanceType { get; }
@@ -74,5 +117,14 @@ public sealed class InstanceFactory : IInstanceFactory
         public Type InstanceType => typeof(T);
 
         public T Create(in PrefabSpawnContext context) => create(context);
+    }
+
+    private sealed class ParameterizedRegistration<T, TArgs>(
+        ParameterizedPrefabFactory<T, TArgs> create) : IRegistration
+        where T : GameInstance
+    {
+        public Type InstanceType => typeof(T);
+
+        public T Create(in TArgs args) => create(args);
     }
 }

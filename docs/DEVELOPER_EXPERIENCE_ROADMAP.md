@@ -75,12 +75,14 @@ GameAssets.Packages.SharedPrimitives
 - 项目模板使用 WASD 移动、Space 生成 Bullet 和 Alarm 自动销毁展示黄金路径。
 - 声明式 Scene 目录、安全帧边界切换和持久实例语义。
 - 类型安全、构建后冻结的 Instance Factory / Prefab。
+- `PrefabRef<T, TArgs>` 与 `in TArgs` 提供不装箱的强类型构造参数。
 - Box/Circle Collider，以及按类型的相交、区域和半径查询。
-- `playgrounds/AirplaneShooter` 作为首个完整 Gameplay Authoring 样例。
+- AirplaneShooter 与 Asteroids 分别验证直线射击和旋转推进/周期生成/重启流程。
+- Gameplay Cookbook 收敛常见配方；Release 基准记录 100/1,000/10,000 Collider 线性查询成本。
 
-当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结、Collider 组合和 Scene 请求；AirplaneShooter 冒烟真实跨越 Main → Victory。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)和 [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)。
+当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：更多 Gameplay Cookbook → 基于真实用例扩展 Prefab Spawn 参数 → 用性能遥测决定 Spatial Hash 引入阈值 → Scene 参数传递与暂停策略。暂不进入 UI、完整协程或物理系统。
+下一步优先级：无状态 Easing/Tween/Motion 辅助 → 强类型 Scene 参数传递与暂停策略 → 降低 SceneAggregate 生命周期遍历分配 → 根据真实游戏遥测复核 Spatial Hash。当前 1,000 Collider 基线约 0.0201 ms/查询，不提前引入索引。逐帧多区域与 Sprite 异形碰撞的需求已记录在 [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)，但碰撞细化不是当前主要矛盾。暂不进入 UI、完整协程或物理系统。
 
 ## 设计约束
 

@@ -227,6 +227,9 @@ public class GameInstance
     protected T Spawn<T>(PrefabRef<T> prefab, Vector2D position) where T : GameInstance =>
         RequireGameplay().Spawn(prefab, position);
 
+    protected T Spawn<T, TArgs>(PrefabRef<T, TArgs> prefab, in TArgs args)
+        where T : GameInstance => RequireGameplay().Spawn(prefab, args);
+
     protected void DestroySelf() => RequireGameplay().Destroy(Id);
 
     protected void Destroy(GameInstance instance)

@@ -17,3 +17,21 @@ public readonly record struct PrefabRef<T> where T : GameInstance
 
     public override string ToString() => Name ?? string.Empty;
 }
+
+/// <summary>
+/// A type-safe logical Prefab reference with explicit, caller-supplied construction arguments.
+/// </summary>
+public readonly record struct PrefabRef<T, TArgs> where T : GameInstance
+{
+    public string Name { get; }
+
+    public PrefabRef(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        Name = name;
+    }
+
+    public bool IsEmpty => string.IsNullOrWhiteSpace(Name);
+
+    public override string ToString() => Name ?? string.Empty;
+}

@@ -79,4 +79,4 @@ public override void OnAlarm(AlarmId alarm)
 - 本阶段不引入全局 Service Locator、协程、完整物理、导航或 UI。
 - 声明式 Scene 切换、类型安全 Prefab、Box/Circle 和区域/半径查询已经落地，详见 [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)。
 - `FindAll<T>()` 与当前空间查询创建稳定结果数组，高频大规模查询将在性能数据证明必要后透明迁移到 Spatial Hash。
-- 下一步聚焦 Gameplay Cookbook、Prefab 自定义参数和 Scene 参数传递；离线 Shader 编译方向继续暂缓。
+- Gameplay Cookbook 和强类型 Prefab 自定义参数已经落地；下一步聚焦 Scene 参数传递与生命周期遍历分配，离线 Shader 编译方向继续暂缓。

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AsteroidsPlayground</RootNamespace>
+    <AssemblyName>AsteroidsPlayground</AssemblyName>
+    <GameEngineContentPackagesRoot>$(MSBuildProjectDirectory)\Assets</GameEngineContentPackagesRoot>
+    <GameEngineContentManifest>assets.json</GameEngineContentManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\..\src\Engine.Hosting\Engine.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\Engine.Tools.AssetCompiler\Engine.Tools.AssetCompiler.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Import Project="..\..\build\GameEngine.Content.targets" />
+</Project>

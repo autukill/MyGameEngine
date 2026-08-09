@@ -8,6 +8,9 @@
 - [Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)：Hosting、强类型资产、项目模板、诊断与热重载演进顺序。
 - [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)：实例变换、输入、Spawn/Destroy/Find、帧边界语义与轻量 Alarm。
 - [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)：声明式 Scene 切换、类型安全实例工厂、Box/Circle 与区域/半径查询。
+- [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)：移动、旋转推进、射击冷却、参数化 Prefab、Alarm、碰撞和 Scene 重启配方。
+- [Gameplay 空间查询基准](GAMEPLAY_QUERY_PERFORMANCE.md)：线性扫描测量方法、当前基线和 Spatial Hash 引入条件。
+- [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)：逐帧多区域、Polygon/Alpha Mask、查询分层与动画帧一致性；当前明确延后。
 - [可选离线 Shader 编译方向](OFFLINE_SHADER_COMPILATION.md)：暂缓原因、适配边界、诊断缓存与恢复条件。
 - [Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)：运行时聚合包、模板安装、仓库外项目与分发验证边界。
 - [`gameengine doctor` 开发环境诊断](GAMEENGINE_DOCTOR.md)：项目、包版本、Content 产物、OpenGL Probe 与退出码。

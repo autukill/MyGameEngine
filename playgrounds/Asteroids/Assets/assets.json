@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "playground.asteroids",
+  "dependencies": [],
+  "textures": [
+    {
+      "name": "asteroids.ship.texture",
+      "path": "ship.webp",
+      "sampling": "pixelArt"
+    },
+    {
+      "name": "asteroids.white.texture",
+      "path": "white.webp",
+      "sampling": "pixelArt"
+    }
+  ],
+  "sprites": [
+    {
+      "name": "asteroids.ship",
+      "layout": "single",
+      "texture": "asteroids.ship.texture",
+      "size": { "width": 88, "height": 88 },
+      "origin": { "x": 44, "y": 44 }
+    },
+    {
+      "name": "asteroids.laser",
+      "layout": "single",
+      "texture": "asteroids.white.texture",
+      "size": { "width": 5, "height": 16 },
+      "origin": { "x": 2.5, "y": 8 }
+    },
+    {
+      "name": "asteroids.rock",
+      "layout": "single",
+      "texture": "asteroids.white.texture",
+      "size": { "width": 48, "height": 48 },
+      "origin": { "x": 24, "y": 24 }
+    }
+  ]
+}

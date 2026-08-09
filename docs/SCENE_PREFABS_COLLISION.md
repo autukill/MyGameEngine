@@ -55,7 +55,19 @@ if (KeyDown(InputKey.Space))
     Spawn(Bullet, Position + new Vector2D(0, -40));
 ```
 
-目录在 `Build()` 时冻结。重名、未知名称、类型不匹配和返回 `null` 都会显式失败；创建出的实例仍走 Scene 的确定性帧末 Spawn 队列。v1 的 `PrefabSpawnContext` 只包含 Position，复杂参数暂时使用显式玩法工厂表达，不引入无类型属性字典。
+目录在 `Build()` 时冻结。重名、未知名称、类型不匹配和返回 `null` 都会显式失败；创建出的实例仍走 Scene 的确定性帧末 Spawn 队列。只需要 Position 时使用 `PrefabRef<T>` 与 `PrefabSpawnContext`。
+
+需要方向、速度或其他构造数据时使用参数化引用：
+
+```csharp
+public readonly record struct BulletArgs(Vector2D Position, Vector2D Velocity);
+public static readonly PrefabRef<Bullet, BulletArgs> Bullet = new("bullet.directed");
+
+instances.Register(Bullet,
+    (in BulletArgs args) => new Bullet(sprite, args));
+```
+
+`Spawn(Bullet, args)` 保持实例和参数类型的编译期关联；struct 参数通过 `in` 路径传递，不装箱，也不需要无类型属性字典。
 
 ## Collider 与空间查询
 
@@ -86,4 +98,6 @@ v1 规则：
 - 非均匀缩放 Circle 时采用最大绝对缩放，避免漏判。
 - 查询当前采用线性扫描，结果正确且没有索引陈旧问题；Spatial Hash 将在性能数据证明必要后置于同一查询接口后方。
 
-完整可运行示例见 [`playgrounds/AirplaneShooter`](../playgrounds/AirplaneShooter/README.md)。
+当前数据与复测命令见 [Gameplay 空间查询基准](GAMEPLAY_QUERY_PERFORMANCE.md)。
+
+完整可运行示例见 [`playgrounds/AirplaneShooter`](../playgrounds/AirplaneShooter/README.md) 和 [`playgrounds/Asteroids`](../playgrounds/Asteroids/README.md)。

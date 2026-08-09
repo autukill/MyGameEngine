@@ -691,6 +691,10 @@ public class SceneAggregate
                 prefab,
                 new PrefabSpawnContext(position)));
 
+        public T Spawn<T, TArgs>(PrefabRef<T, TArgs> prefab, in TArgs args)
+            where T : GameInstance =>
+            owner.QueueSpawn(owner._instanceFactory.Create(prefab, args));
+
         public void Destroy(InstanceId id) => owner.QueueDestroy(id);
 
         public GameInstance? FindById(InstanceId id) => owner.FindById(id);
