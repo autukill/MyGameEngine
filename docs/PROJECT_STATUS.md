@@ -74,6 +74,7 @@
 - 每个 Render View 已在绘制前执行保守 Camera 可见性剔除：默认从 Sprite Size/Origin 推导，支持自定义 `LocalDrawBounds` 与 `AlwaysVisible` 退出，未知边界 fail-open；旋转、缩放、负缩放与震屏均按实际绘制边界处理。10,000 实例、每 View 可见 20% 的样本把 Draw 回调由 20,000 次降至 4,000 次；无 GPU 假 Batch 的边界检查成本约 0.10 ms，保持 0 B/frame。
 - Layer 索引现已在实例加入、切层和改 Depth 时维护稳定有序关系，普通 View Draw 不再重复排序；相同 Depth 保持 Scene 加入顺序，同帧后续 Layer 仍能看到变更。10,000 实例双 View 本机调度由 Layer 索引阶段约 1.185 ms 进一步降至 0.470 ms，排序比较为 0/0。
 - Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；`UseRenderViews` 可声明每个 View 的静态跟随策略，Hosting 惰性创建控制器，Gameplay 仍显式提供和切换运行时目标。
+- 独立 `Engine.PerformanceBenchmarks` 已把多 View 性能实验与 DDD 烟测分离：100/1,000/10,000 实例场景同时报告无剔除/剔除耗时、每 View 候选/Draw/拒绝数与分配量，并以确定性计数、零排序和 `0 B/frame` 作为回归守卫。
 
 ## 仍在演进
 
@@ -91,7 +92,8 @@
 2. 已完成多 Render View 的独立 Camera、Scene Surface、RenderScale、resize 与 Presentation 装配。
 3. 已允许主 View 使用 HDR/Stencil，并让次级 View 显式选择 Direct 或独立 HDR/Bloom/Tone Mapping；效果租约跟随各自输入 Surface 尺寸。
 4. 已完成 Layer 过滤、小地图式样例、显式效果成本、Scene Draw 分项诊断、Layer/Depth 有序索引、保守 Camera 可见性剔除，以及独立 Camera 跟随/Dead Zone/边界/震屏控制器。
-5. 已把静态跟随策略接入声明式 RenderView 配置，同时保留 Gameplay 运行时换目标的出口。下一步用多 View 稳定基准验证当前调度成本，再决定是否需要跨 View 可见性缓存。
+5. 已把静态跟随策略接入声明式 RenderView 配置，同时保留 Gameplay 运行时换目标的出口。
+6. 已建立独立多 View 稳定基准；本机 10,000 实例、双 View、剔除路径约 `0.431 ms` 且 `0 B/frame`，不足以证明跨 View 缓存值得引入，当前明确保留简单逐 View 检查。下一步补充双 View resize、效果释放的 GPU 回归。
 
 ## 已知限制
 
@@ -100,4 +102,4 @@
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Gameplay 查询性能](GAMEPLAY_QUERY_PERFORMANCE.md)、[Camera/Viewport 边界](CAMERA_VIEWPORT_STATUS.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Gameplay 查询性能](GAMEPLAY_QUERY_PERFORMANCE.md)、[Camera/Viewport 边界](CAMERA_VIEWPORT_STATUS.md)、[多 View 性能基准](MULTI_VIEW_PERFORMANCE.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

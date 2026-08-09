@@ -87,7 +87,7 @@ GameAssets.Packages.SharedPrimitives
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：多 Camera/Viewport 已支持镜像呈现、独立 Render View、每 View 零分配 Layer 过滤，以及显式 Direct/HDR/Bloom/Tone Mapping Profile；配置可读取额外 Pass/RT，运行诊断可读取 Scene 候选、排序、Draw 与可选耗时。下一阶段使用 100/1,000/10,000 实例建立多 View 稳定基准，再决定是否引入跨 View 可见性/排序缓存，详见 [Camera 与 Viewport 渐进式路线](CAMERA_VIEWPORT_STATUS.md)。查询 Buffer、真实负载统计、强类型状态机、暂停时间域和 Scene 生命周期零稳态分配已经落地；当前 1,000 Collider 线性扫描约 0.0209 ms/查询，不提前引入 Spatial Hash。逐帧多区域与 Sprite 异形碰撞继续保持需求记录。暂不进入 UI、完整协程或物理系统。
+下一步优先级：多 Camera/Viewport 已支持镜像呈现、独立 Render View、声明式跟随策略、每 View 零分配 Layer 过滤，以及显式 Direct/HDR/Bloom/Tone Mapping Profile。独立 100/1,000/10,000 实例基准已建立；10,000 实例双 View 调度低于 `0.5 ms` 且 `0 B/frame`，当前不引入跨 View 缓存，详见[多 View 性能基准](MULTI_VIEW_PERFORMANCE.md)。下一步优先补足双 View resize/效果释放 GPU 回归，再回到直接改善 Gameplay Authoring 的能力。查询 Buffer、真实负载统计、强类型状态机、暂停时间域和 Scene 生命周期零稳态分配已经落地；当前 1,000 Collider 线性扫描约 0.0209 ms/查询，不提前引入 Spatial Hash。逐帧多区域与 Sprite 异形碰撞继续保持需求记录。暂不进入 UI、完整协程或物理系统。
 
 ## 设计约束
 

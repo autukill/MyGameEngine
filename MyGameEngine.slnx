@@ -63,6 +63,7 @@
   <!-- 引擎综合测试 & 主程序 -->
   <Project Path="src/Engine.DddTests/Engine.DddTests.csproj" />
   <Folder Name="/Engine.Testing/">
+    <Project Path="src/Engine.PerformanceBenchmarks/Engine.PerformanceBenchmarks.csproj" />
     <Project Path="src/Engine.Testing.Visual/Engine.Testing.Visual.csproj" />
     <Project Path="src/Engine.VisualRegressionTests/Engine.VisualRegressionTests.csproj" />
   </Folder>
