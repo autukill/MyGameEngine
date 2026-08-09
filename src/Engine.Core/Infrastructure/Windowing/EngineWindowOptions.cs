@@ -2,6 +2,7 @@ namespace GameEngine.Core.Infrastructure.Windowing;
 
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
+using GameEngine.Core.Infrastructure.Diagnostics;
 
 public record EngineWindowOptions(
     string Title = "Custom C# 2D Engine",
@@ -12,20 +13,22 @@ public record EngineWindowOptions(
     bool IsVisible = true,
     double FramesPerSecond = 0,
     double UpdatesPerSecond = 0,
-    double? FixedDeltaTime = null)
+    double? FixedDeltaTime = null,
+    FrameStatisticsOptions? FrameStatistics = null)
 {
     public static EngineWindowOptions Default => new(
         Size: new Vector2D<int>(1280, 720));
 
     public WindowOptions ToSilkWindowOptions()
     {
+        FrameRateSettings frameRate = GetFrameRate();
         var opts = WindowOptions.Default;
         opts.Title = Title;
         opts.Size = Size;
-        opts.VSync = VSync;
+        opts.VSync = frameRate.VSync;
         opts.IsVisible = IsVisible;
-        opts.FramesPerSecond = FramesPerSecond;
-        opts.UpdatesPerSecond = UpdatesPerSecond;
+        opts.FramesPerSecond = frameRate.FramesPerSecond;
+        opts.UpdatesPerSecond = frameRate.UpdatesPerSecond;
 
         // 配置 OpenGL 3.3 Core Profile
         opts.API = new GraphicsAPI(
@@ -40,4 +43,17 @@ public record EngineWindowOptions(
 
         return opts;
     }
+
+    public FrameRateSettings GetFrameRate() =>
+        new(FramesPerSecond, UpdatesPerSecond, VSync);
+
+    public EngineWindowOptions WithFrameRate(FrameRateSettings settings) => this with
+    {
+        VSync = settings.VSync,
+        FramesPerSecond = settings.FramesPerSecond,
+        UpdatesPerSecond = settings.UpdatesPerSecond
+    };
+
+    public EngineWindowOptions WithFrameStatistics(FrameStatisticsOptions? options = null) =>
+        this with { FrameStatistics = options ?? FrameStatisticsOptions.Default };
 }

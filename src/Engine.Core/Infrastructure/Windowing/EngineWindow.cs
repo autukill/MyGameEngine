@@ -5,6 +5,7 @@ using Silk.NET.Windowing;
 using Silk.NET.Input;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Input;
+using GameEngine.Core.Infrastructure.Diagnostics;
 
 /// <summary>
 /// 引擎主窗口：把 Silk.NET 的 Update/Render 事件拆解为
@@ -14,6 +15,8 @@ public class EngineWindow
 {
     private readonly IWindow _nativeWindow;
     private readonly double? _fixedDeltaTime;
+    private readonly FrameStatisticsCollector? _frameStatistics;
+    private FrameRateSettings _frameRate;
     public GraphicsDevice Graphics { get; private set; } = null!;
 
     /// <summary>
@@ -35,6 +38,7 @@ public class EngineWindow
 
     public EngineWindow(EngineWindowOptions options)
     {
+        _frameRate = options.GetFrameRate();
         if (options.FixedDeltaTime is { } fixedDeltaTime &&
             (!double.IsFinite(fixedDeltaTime) || fixedDeltaTime <= 0))
         {
@@ -43,6 +47,9 @@ public class EngineWindow
                 "Fixed delta time must be finite and positive.");
         }
         _fixedDeltaTime = options.FixedDeltaTime;
+        _frameStatistics = options.FrameStatistics is null
+            ? null
+            : new FrameStatisticsCollector(options.FrameStatistics);
         _nativeWindow = Window.Create(options.ToSilkWindowOptions());
         _nativeWindow.Load += HandleLoad;
         _nativeWindow.Update += HandleUpdate;
@@ -53,11 +60,23 @@ public class EngineWindow
 
     public int Width => _nativeWindow.Size.X;
     public int Height => _nativeWindow.Size.Y;
+    public FrameRateSettings FrameRate => _frameRate;
+    public IFrameStatisticsProvider? FrameStatistics => _frameStatistics;
+    public IFrameStatisticsSink? FrameStatisticsSink => _frameStatistics;
 
     /// <summary>暴露原生 Silk.NET IWindow 给上层做 Input 等扩展</summary>
     public Silk.NET.Windowing.IWindow NativeWindow => _nativeWindow;
 
     public void Run() => _nativeWindow.Run();
+
+    /// <summary>在窗口线程上立即更新 VSync、渲染 FPS 与更新 UPS 目标。</summary>
+    public void SetFrameRate(FrameRateSettings settings)
+    {
+        _nativeWindow.VSync = settings.VSync;
+        _nativeWindow.FramesPerSecond = settings.FramesPerSecond;
+        _nativeWindow.UpdatesPerSecond = settings.UpdatesPerSecond;
+        _frameRate = settings;
+    }
 
     private void HandleLoad()
     {
@@ -69,6 +88,7 @@ public class EngineWindow
 
     private void HandleUpdate(double deltaTime)
     {
+        ((IFrameStatisticsSink?)_frameStatistics)?.RecordUpdate(deltaTime);
         deltaTime = _fixedDeltaTime ?? deltaTime;
         Input?.BeginFrame();
         OnPreStep?.Invoke(deltaTime);
@@ -78,10 +98,19 @@ public class EngineWindow
 
     private void HandleRender(double deltaTime)
     {
-        Graphics.ClearBuffers();
-        OnDrawBegin?.Invoke();
-        OnDraw?.Invoke();
-        OnDrawGUI?.Invoke();
+        IFrameStatisticsSink? statistics = _frameStatistics;
+        statistics?.BeginRenderFrame(deltaTime);
+        try
+        {
+            Graphics.ClearBuffers();
+            OnDrawBegin?.Invoke();
+            OnDraw?.Invoke();
+            OnDrawGUI?.Invoke();
+        }
+        finally
+        {
+            statistics?.EndRenderFrame();
+        }
     }
 
     private void HandleResize(Vector2D<int> size)

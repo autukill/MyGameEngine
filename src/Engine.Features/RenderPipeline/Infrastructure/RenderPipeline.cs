@@ -1,5 +1,6 @@
 namespace GameEngine.Features.RenderPipeline.Infrastructure;
 
+using GameEngine.Features.RenderPipeline.Domain;
 using Silk.NET.OpenGL;
 
 /// <summary>Pass 调度器：支持在帧边界精确挂接/卸载，再按 RenderTarget 依赖执行。</summary>
@@ -22,6 +23,56 @@ public sealed class RenderPipeline : IDisposable
     }
 
     public IReadOnlyList<RenderPass> Passes => _passes;
+
+    /// <summary>显式分配一个不含 GPU 句柄的只读管线快照。</summary>
+    public RenderPipelineDiagnostics CaptureDiagnostics()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        List<RenderPass>? executionOrder = null;
+        string? dependencyError = null;
+        try
+        {
+            executionOrder = TopologicalSort(_passes);
+        }
+        catch (InvalidOperationException ex)
+        {
+            dependencyError = ex.Message;
+        }
+
+        var executionIndices = executionOrder?
+            .Select((pass, index) => (pass, index))
+            .ToDictionary(item => item.pass, item => item.index);
+        var handles = _passHandles.ToDictionary(
+            pair => pair.Value,
+            pair => pair.Key);
+        var passes = _passes.Select((pass, attachmentIndex) =>
+        {
+            RenderTarget2D? output = pass.Output;
+            RenderTargetDescriptor? descriptor = output is null
+                ? null
+                : new RenderTargetDescriptor(
+                    output.Width,
+                    output.Height,
+                    output.ColorFormat,
+                    output.HasDepthStencil
+                        ? RenderTargetDepthStencilFormat.Depth24Stencil8
+                        : RenderTargetDepthStencilFormat.None);
+            int? executionIndex = executionIndices is not null &&
+                                  executionIndices.TryGetValue(pass, out int index)
+                ? index
+                : null;
+            return new RenderPassDiagnostics(
+                handles[pass],
+                attachmentIndex,
+                executionIndex,
+                pass.Name,
+                pass.IsEnabled,
+                output is null,
+                pass.Inputs.Count(),
+                descriptor);
+        });
+        return new RenderPipelineDiagnostics(passes, dependencyError);
+    }
 
     public RenderPassHandle AddPass(RenderPass pass)
     {
@@ -81,6 +132,7 @@ public sealed class RenderPipeline : IDisposable
             foreach (var pass in sorted)
             {
                 if (!pass.IsEnabled) continue;
+                ctx.Statistics?.RecordPassExecuted();
 
                 if (pass.Output is { } rt)
                     rt.SetAsTarget();

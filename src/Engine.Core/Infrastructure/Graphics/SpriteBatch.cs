@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Core.Infrastructure.Diagnostics;
 
 /// <summary>
 /// 高性能 2D Sprite Batch：零 GC、动态 VBO、静态 EBO、自动状态打断。
@@ -42,6 +43,9 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
 
     /// <summary>SpriteRef → 元数据/GPU 帧解析器（由组合根注入 SpriteLibrary）</summary>
     public ISpriteResolver? SpriteResolver { get; set; }
+
+    /// <summary>可选帧统计入口；为 null 时不采集。</summary>
+    public IFrameStatisticsSink? Statistics { get; set; }
 
     public SpriteBatch(GL gl)
     {
@@ -110,7 +114,10 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
 
         // 纹理切换 → 立即 Flush
         if (_currentTextureHandle != 0 && _currentTextureHandle != textureHandle)
+        {
+            Statistics?.RecordTextureSwitch();
             Flush();
+        }
 
         // 缓冲溢出 → 立即 Flush
         if (_quadCount >= MaxQuads)
@@ -154,7 +161,10 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
         if (!SpriteResolver.TryResolve(command.Sprite, subImage, out var frame)) return;
 
         if (_currentTextureHandle != 0 && _currentTextureHandle != frame.TextureHandle)
+        {
+            Statistics?.RecordTextureSwitch();
             Flush();
+        }
         if (_quadCount >= MaxQuads)
             Flush();
 
@@ -259,6 +269,9 @@ public unsafe class SpriteBatch : ISpriteBatch, IDisposable
         _gl.BindVertexArray(_vao);
         _gl.DrawElements(PrimitiveType.Triangles,
             (uint)(_quadCount * 6), DrawElementsType.UnsignedShort, null);
+
+        Statistics?.RecordDrawCall();
+        Statistics?.RecordBatchFlush();
 
         _quadCount = 0;
     }

@@ -82,6 +82,58 @@ public sealed class ScenePipelineBuilder : IDisposable
     public int GetOwnerCount(RenderEffectKey key) =>
         _active.TryGetValue(key, out var effect) ? effect.Owners.Count : 0;
 
+    /// <summary>从当前活动图生成逻辑 Surface、Effect owner 与 Pass 关联快照。</summary>
+    public ScenePipelineDiagnostics CaptureDiagnostics()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var consumers = new Dictionary<RenderSurfaceKey, List<RenderEffectKey>>();
+        foreach (var key in _activeOrder)
+        {
+            foreach (RenderSurfaceSpec input in _active[key].Plan.InputSurfaces)
+            {
+                if (!consumers.TryGetValue(input.Key, out var keys))
+                    consumers.Add(input.Key, keys = new List<RenderEffectKey>());
+                keys.Add(key);
+            }
+        }
+
+        var effects = _activeOrder.Select((key, order) =>
+        {
+            ActiveEffect effect = _active[key];
+            return new RenderEffectDiagnostics(
+                order,
+                key,
+                effect.Owners.Keys.OrderBy(owner => owner.Value),
+                effect.Plan.InputSurfaces,
+                effect.Plan.OutputSurfaces,
+                effect.PassHandles);
+        }).ToArray();
+
+        var surfaces = new List<RenderSurfaceDiagnostics>();
+        foreach (RenderSurfaceRegistration root in _rootSurfaces.Values
+                     .OrderBy(value => value.Spec.Key.ToString(), StringComparer.Ordinal))
+        {
+            surfaces.Add(new RenderSurfaceDiagnostics(
+                root.Spec,
+                isRoot: true,
+                producer: null,
+                consumers.GetValueOrDefault(root.Spec.Key) ?? []));
+        }
+        foreach (RenderEffectKey key in _activeOrder)
+        {
+            foreach (RenderSurfaceSpec output in _active[key].Plan.OutputSurfaces)
+            {
+                surfaces.Add(new RenderSurfaceDiagnostics(
+                    output,
+                    isRoot: false,
+                    producer: key,
+                    consumers.GetValueOrDefault(output.Key) ?? []));
+            }
+        }
+
+        return new ScenePipelineDiagnostics(_width, _height, effects, surfaces);
+    }
+
     public void ApplyEvents(IEnumerable<IDomainEvent> events)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

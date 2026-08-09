@@ -82,7 +82,8 @@ internal sealed class Default2DGameRuntime : IDisposable
         _spriteShader,
         _batch,
         _window.Width,
-        _window.Height));
+        _window.Height,
+        _window.FrameStatisticsSink));
 
     public void Resize(int width, int height)
     {
@@ -131,7 +132,11 @@ internal sealed class Default2DGameRuntime : IDisposable
             ? _resources.Add(new ToneMappingShader(gl))
             : null;
         var blitShader = _resources.Add(new BlitShader(gl));
-        _batch = _resources.Add(new SpriteBatch(gl) { DefaultShader = _spriteShader });
+        _batch = _resources.Add(new SpriteBatch(gl)
+        {
+            DefaultShader = _spriteShader,
+            Statistics = _window.FrameStatisticsSink
+        });
         _textures = _resources.Add(new TextureLibrary(gl));
         _sprites = new SpriteLibrary(_textures);
         _batch.SpriteResolver = _sprites;

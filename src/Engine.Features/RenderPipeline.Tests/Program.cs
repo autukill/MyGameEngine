@@ -96,6 +96,7 @@ internal static class Program
 
         TestResourcePoolCore();
         TestRenderEffectGraphPlanner();
+        TestRenderPipelineDiagnostics();
         TestScenePipelineBuilder();
 
         Console.WriteLine();
@@ -128,6 +129,11 @@ internal static class Program
         Check(ReferenceEquals(first, reused), "Same descriptor reuses returned resource");
         var depth = pool.Rent("depth");
         Check(!ReferenceEquals(reused, depth), "Different descriptors stay isolated");
+        var poolDiagnostics = pool.CaptureDiagnostics();
+        Check(poolDiagnostics.Count == 2 &&
+              poolDiagnostics.Single(item => item.Key == "rgba").LeasedCount == 1 &&
+              poolDiagnostics.Single(item => item.Key == "depth").AvailableCount == 0,
+            "Pool diagnostics group leased and available resources by descriptor");
 
         bool foreignRejected = false;
         try { pool.Return(new FakeResource("foreign")); }
@@ -148,9 +154,32 @@ internal static class Program
         Check(depth.DisposeCount == 1, "Pool disposal is idempotent");
     }
 
+    private static void TestRenderPipelineDiagnostics()
+    {
+        Console.WriteLine("8. Read-only RenderPass diagnostics");
+        using var pipeline = new RenderPipeline(null!, 800, 600);
+        var first = new FakePass("first");
+        var second = new FakePass("second") { IsEnabled = false };
+        RenderPassHandle firstHandle = pipeline.AddPass(first);
+        RenderPassHandle secondHandle = pipeline.AddPass(second);
+
+        RenderPipelineDiagnostics snapshot = pipeline.CaptureDiagnostics();
+        Check(snapshot.DependencyError is null && snapshot.Passes.Count == 2,
+            "Pipeline snapshot captures an executable graph without running it");
+        Check(snapshot.Passes[0].Handle == firstHandle &&
+              snapshot.Passes[0].AttachmentIndex == 0 &&
+              snapshot.Passes[0].ExecutionIndex == 0 &&
+              snapshot.Passes[0].WritesToScreen,
+            "Pass snapshot exposes stable handle and attachment/execution order");
+        Check(snapshot.Passes[1].Handle == secondHandle &&
+              !snapshot.Passes[1].IsEnabled &&
+              snapshot.Passes[1].ExecutionIndex == 1,
+            "Disabled state is observable without changing graph ordering");
+    }
+
     private static void TestScenePipelineBuilder()
     {
-        Console.WriteLine("8. Dynamic effect owner reconciliation");
+        Console.WriteLine("9. Dynamic effect owner reconciliation");
         var graph = new FakeGraphEditor();
         var targets = new FakeTargetPool();
         var factory = new FakeEffectFactory("test");
@@ -166,6 +195,13 @@ internal static class Program
         });
         Check(builder.ActiveEffectCount == 1 && factory.CreateCount == 1,
             "First owner creates one runtime");
+        ScenePipelineDiagnostics firstSnapshot = builder.CaptureDiagnostics();
+        Check(firstSnapshot.Width == 800 && firstSnapshot.Height == 600 &&
+              firstSnapshot.Effects.Count == 1 &&
+              firstSnapshot.Effects[0].Key == key &&
+              firstSnapshot.Effects[0].Owners.SequenceEqual(new[] { ownerA }) &&
+              firstSnapshot.Effects[0].Passes.Count == 1,
+            "Builder snapshot captures effect order, owners, viewport, and pass handles");
 
         var firstRuntime = factory.LastRuntime!;
         builder.ApplyEvents(new IDomainEvent[]
@@ -175,6 +211,10 @@ internal static class Program
         });
         Check(factory.CreateCount == 1 && builder.GetOwnerCount(key) == 2,
             "Updates and second owner share the existing runtime");
+        ScenePipelineDiagnostics sharedSnapshot = builder.CaptureDiagnostics();
+        Check(sharedSnapshot.Effects[0].Owners.Count == 2 &&
+              sharedSnapshot.Surfaces.Count == 0,
+            "Builder snapshot reflects shared owners without inventing physical surfaces");
         Check(firstRuntime.OwnerCount == 2 && firstRuntime.UpdateCount >= 2,
             "Owner descriptors are pushed into the runtime");
 

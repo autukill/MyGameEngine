@@ -3,6 +3,7 @@ namespace GameEngine.Hosting;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
@@ -56,6 +57,30 @@ public sealed class Default2DGameContext
         Effects.RegisterFactory(factory);
 
     public RenderPassHandle AddRenderPass(RenderPass pass) => Pipeline.AddPass(pass);
+
+    /// <summary>显式捕获当前 Pass、Surface、Effect owner 与临时目标租约。</summary>
+    public Default2DRenderDiagnostics CaptureRenderDiagnostics()
+    {
+        FrameStatisticsSnapshot? frame = TryCaptureFrameStatistics(out var snapshot)
+            ? snapshot
+            : null;
+        return new Default2DRenderDiagnostics(
+            Pipeline.CaptureDiagnostics(),
+            Effects.CaptureDiagnostics(),
+            RenderTargets.CaptureDiagnostics(),
+            frame);
+    }
+
+    /// <summary>运行时更新 VSync、渲染 FPS 与更新 UPS 目标；0 表示不限速。</summary>
+    public void SetFrameRate(FrameRateSettings settings) => Window.SetFrameRate(settings);
+
+    public bool TryCaptureFrameStatistics(out FrameStatisticsSnapshot snapshot)
+    {
+        if (Window.FrameStatistics is { } statistics)
+            return statistics.TryCapture(out snapshot);
+        snapshot = default;
+        return false;
+    }
 
     /// <summary>请求在当前 Step/Draw 回调完成后的安全帧边界关闭窗口。</summary>
     public void Close() => _close();

@@ -176,6 +176,10 @@ RenderTarget2D target = lease.Target;
 
 Factory 创建的 Runtime 持有 Lease；Pass 只借用 `RenderTarget2D`。挂接后 Pass 由 `RenderPipeline` 负责释放，Runtime 负责归还 Lease。
 
+## 只读诊断
+
+`ScenePipelineBuilder.CaptureDiagnostics()` 会复制当前效果拓扑、owner ID、输入/输出 Surface 契约和 Pass Handle。它不返回 Descriptor、Runtime、Shader 或 RenderTarget 对象，因此旧快照不会阻止后续 owner 更新、图重建或资源释放。Hosting 用户通常直接调用 `Default2DGameContext.CaptureRenderDiagnostics()` 获取聚合快照；详细字段见[运行时渲染诊断快照](RUNTIME_RENDER_DIAGNOSTICS.md)。
+
 ## Resize 与关闭
 
 ```csharp

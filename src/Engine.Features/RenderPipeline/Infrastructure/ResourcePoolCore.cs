@@ -16,6 +16,24 @@ internal sealed class ResourcePoolCore<TKey, TResource> : IDisposable
     public int LeasedCount => _leased.Count;
     public int AvailableCount => TotalCount - LeasedCount;
 
+    public IReadOnlyList<ResourcePoolKeyDiagnostics<TKey>> CaptureDiagnostics()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _owned
+            .GroupBy(pair => pair.Value)
+            .Select(group =>
+            {
+                int total = group.Count();
+                int leased = group.Count(pair => _leased.Contains(pair.Key));
+                return new ResourcePoolKeyDiagnostics<TKey>(
+                    group.Key,
+                    total,
+                    leased,
+                    total - leased);
+            })
+            .ToArray();
+    }
+
     public ResourcePoolCore(Func<TKey, TResource> create, Action<TResource> destroy)
     {
         _create = create ?? throw new ArgumentNullException(nameof(create));
@@ -78,3 +96,9 @@ internal sealed class ResourcePoolCore<TKey, TResource> : IDisposable
         _owned.Clear();
     }
 }
+
+internal readonly record struct ResourcePoolKeyDiagnostics<TKey>(
+    TKey Key,
+    int TotalCount,
+    int LeasedCount,
+    int AvailableCount);

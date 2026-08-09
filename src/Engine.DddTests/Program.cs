@@ -9,6 +9,8 @@ using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Core.Infrastructure.Diagnostics;
+using GameEngine.Core.Infrastructure.Windowing;
 
 /// <summary>
 /// Phase 1.4 DDD 战术设计验证 Demo（控制台版，无需 OpenGL）。
@@ -138,6 +140,7 @@ internal sealed class Program
         Console.WriteLine($"   After End(), non-persistent count: {scene.ActiveInstances.Count()}");
 
         VerifyInstanceLifecycleAndRenderState();
+        VerifyFrameRateAndStatistics();
 
         Console.WriteLine("\n=== All Phase 1.4 DDD tactical design smoke tests passed ===");
     }
@@ -187,6 +190,57 @@ internal sealed class Program
         Console.WriteLine("   [PASS] unified input injection + edge events");
         Console.WriteLine("   [PASS] Begin/Step/End and Draw lifecycle order");
         Console.WriteLine("   [PASS] Blend/Depth/Shader/Sprite render state dispatch");
+    }
+
+    private static void VerifyFrameRateAndStatistics()
+    {
+        var rate = new FrameRateSettings(120d, 60d, vSync: false);
+        var options = EngineWindowOptions.Default.WithFrameRate(rate).WithFrameStatistics();
+        Assert(options.GetFrameRate() == rate, "Frame-rate settings round-trip through window options");
+        Assert(options.FrameStatistics is not null, "Frame statistics are explicitly enabled");
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => _ = new FrameRateSettings(-1d, 60d, false),
+            "Negative frame limits are rejected");
+
+        var collector = new FrameStatisticsCollector(new FrameStatisticsOptions(.5d));
+        IFrameStatisticsSink sink = collector;
+        sink.RecordUpdate(.25d);
+        sink.RecordUpdate(.25d);
+        sink.BeginRenderFrame(.25d);
+        sink.RecordDrawCall();
+        sink.RecordDrawCall();
+        sink.RecordDrawCall();
+        sink.RecordBatchFlush();
+        sink.RecordBatchFlush();
+        sink.RecordTextureSwitch();
+        for (int i = 0; i < 4; i++) sink.RecordPassExecuted();
+        sink.EndRenderFrame();
+
+        Assert(collector.TryCapture(out var snapshot), "Completed frame statistics can be captured");
+        Assert(snapshot.FrameNumber == 1, "Frame number advances");
+        Assert(snapshot.FramesPerSecond == 4d && snapshot.UpdatesPerSecond == 4d,
+            "FPS and UPS use independent elapsed samples");
+        Assert(snapshot.DrawCalls == 3 && snapshot.BatchFlushes == 2 &&
+               snapshot.TextureSwitches == 1 && snapshot.ActivePasses == 4,
+            "Optional render counters preserve the completed frame");
+
+        Console.WriteLine("\n11. Frame-rate control / optional frame statistics");
+        Console.WriteLine("   [PASS] startup settings + strict validation");
+        Console.WriteLine("   [PASS] FPS/UPS + Draw/Flush/Texture/Pass counters");
+    }
+
+    private static void AssertThrows<TException>(Action action, string message)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+        throw new InvalidOperationException($"[FAIL] {message}");
     }
 
     private static void Assert(bool condition, string message)

@@ -44,10 +44,13 @@ GameAssets.Packages.SharedPrimitives
 
 ## 阶段 4：诊断与可观察性
 
-- 输出 RenderSurface 依赖图、Effect owner、Pass 顺序和 RenderTarget 租约快照。
+- 输出 RenderSurface 依赖图、Effect owner、Pass 顺序和 RenderTarget 租约快照。（已实现）
 - 为未知资源、缺失 Factory、格式不匹配和依赖循环提供带上下文的诊断。
-- 可选帧统计：Draw Call、Flush、纹理切换、活跃 Pass 和显存估算。
+- 可选帧统计：FPS/UPS、Draw Call、有效 Batch Flush、纹理切换和活跃 Pass。（已实现）
+- 显存占用估算与低频遥测导出。
 - 诊断 API 默认只读，不改变运行时状态。
+
+当前验收：`Default2DGameContext.CaptureRenderDiagnostics()` 聚合 Pipeline、Builder、Pool 与可选最近帧统计；`FrameRateSettings` 支持启动及运行时 FPS/UPS/VSync 控制。统计默认关闭，开启后以零帧分配值快照记录内置 SpriteBatch 与后处理 Draw Call。Runner smoke 在真实效果图验证统计，GPU 生命周期回归通过快照验证租约计数。下一步若继续本阶段，应聚焦显存估算和低频遥测出口。
 
 ## 阶段 5：开发期热重载
 

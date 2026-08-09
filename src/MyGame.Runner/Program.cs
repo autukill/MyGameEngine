@@ -4,6 +4,7 @@ using System.Numerics;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.StencilMasking.Domain;
 using GameEngine.Features.ToneMapping.Domain;
@@ -20,13 +21,12 @@ internal static class Program {
         Console.WriteLine( "  ESC: 退出" );
 
         var windowOptions = smoke
-            ? EngineWindowOptions.Default with {
-                IsVisible = false,
-                VSync = false,
-                FramesPerSecond = 60,
-                UpdatesPerSecond = 60,
-                FixedDeltaTime = 1d / 60d
-            }
+            ? EngineWindowOptions.Default
+                .WithFrameRate(new FrameRateSettings(60, 60, vSync: false))
+                .WithFrameStatistics(new FrameStatisticsOptions(0.25d)) with {
+                    IsVisible = false,
+                    FixedDeltaTime = 1d / 60d
+                }
             : EngineWindowOptions.Default;
 
         using var game = GameApplication
@@ -78,13 +78,36 @@ internal static class Program {
             center,
             120f,
             context.Close ) );
-        if ( smoke ) scene.Add( new SmokeExitController( context.Close ) );
+        if ( smoke ) scene.Add( new SmokeExitController( context, context.Close ) );
     }
 
-    private sealed class SmokeExitController( Action close ) : GameInstance {
+    private sealed class SmokeExitController(
+        Default2DGameContext context,
+        Action close ) : GameInstance {
         private int _steps;
 
         public override void OnStep( double deltaTime ) {
+            if ( _steps == 1 ) {
+                var diagnostics = context.CaptureRenderDiagnostics();
+                if ( diagnostics.Pipeline.DependencyError is not null ||
+                     diagnostics.Pipeline.Passes.Count == 0 ||
+                     diagnostics.Effects.Effects.Count == 0 ||
+                     diagnostics.Effects.Surfaces.Count == 0 ||
+                     diagnostics.RenderTargets.ActiveLeases.Count == 0 ||
+                     diagnostics.FrameStatistics is not { DrawCalls: > 0, BatchFlushes: > 0, ActivePasses: > 0 } ) {
+                    throw new InvalidOperationException(
+                        "Hosting render diagnostics did not capture the active runtime graph." );
+                }
+                Console.WriteLine(
+                    $"[Diagnostics] passes={diagnostics.Pipeline.Passes.Count}, " +
+                    $"effects={diagnostics.Effects.Effects.Count}, " +
+                    $"surfaces={diagnostics.Effects.Surfaces.Count}, " +
+                    $"leases={diagnostics.RenderTargets.ActiveLeases.Count}, " +
+                    $"drawCalls={diagnostics.FrameStatistics.Value.DrawCalls}, " +
+                    $"flushes={diagnostics.FrameStatistics.Value.BatchFlushes}, " +
+                    $"textureSwitches={diagnostics.FrameStatistics.Value.TextureSwitches}, " +
+                    $"activePasses={diagnostics.FrameStatistics.Value.ActivePasses}" );
+            }
             if ( ++_steps >= 3 ) close();
         }
     }

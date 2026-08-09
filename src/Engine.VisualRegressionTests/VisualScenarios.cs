@@ -387,8 +387,8 @@ internal sealed class BloomPingPongFixture : IDisposable
     public int TotalOwnerCount =>
         _builder.GetOwnerCount(UpstreamKey) + _builder.GetOwnerCount(DownstreamKey);
     public int ActiveEffectCount => _builder.ActiveEffectCount;
-    public int TotalTargetCount => _pool.TotalCount;
-    public int LeasedTargetCount => _pool.LeasedCount;
+    public int TotalTargetCount => _pool.CaptureDiagnostics().TotalCount;
+    public int LeasedTargetCount => _pool.CaptureDiagnostics().LeasedCount;
 
     public BloomPingPongFixture(GL gl, int width, int height, bool chained = false)
     {
@@ -630,8 +630,8 @@ internal sealed class HdrToneMappingFixture : IDisposable
     private bool _disposed;
 
     public int ActiveEffectCount => _builder.ActiveEffectCount;
-    public int TotalTargetCount => _pool.TotalCount;
-    public int LeasedTargetCount => _pool.LeasedCount;
+    public int TotalTargetCount => _pool.CaptureDiagnostics().TotalCount;
+    public int LeasedTargetCount => _pool.CaptureDiagnostics().LeasedCount;
 
     public HdrToneMappingFixture(GL gl, int width, int height)
     {
@@ -860,8 +860,8 @@ internal sealed class DynamicStencilFixture : IDisposable
 
     public int OwnerCount => _builder.GetOwnerCount(EffectKey);
     public int ActiveEffectCount => _builder.ActiveEffectCount;
-    public int TotalTargetCount => _pool.TotalCount;
-    public int LeasedTargetCount => _pool.LeasedCount;
+    public int TotalTargetCount => _pool.CaptureDiagnostics().TotalCount;
+    public int LeasedTargetCount => _pool.CaptureDiagnostics().LeasedCount;
 
     public DynamicStencilFixture(
         GL gl,

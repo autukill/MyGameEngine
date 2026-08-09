@@ -55,6 +55,7 @@ internal sealed class ToneMappingPass : RenderPass
         _shader.SetSettings(_settings, _bloom is not null);
         _gl.BindVertexArray(_vao);
         _gl.DrawArrays(PrimitiveType.Triangles, 0, 6);
+        context.RecordDrawCall();
         _gl.BindVertexArray(0);
         _gl.ActiveTexture(TextureUnit.Texture0);
     }

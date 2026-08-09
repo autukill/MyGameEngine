@@ -44,6 +44,7 @@ public sealed class PostProcessPass : RenderPass
 
         _gl.BindVertexArray(_fullscreenVao);
         _gl.DrawArrays(PrimitiveType.Triangles, 0, 6);
+        ctx.RecordDrawCall();
         _gl.BindVertexArray(0);
     }
 

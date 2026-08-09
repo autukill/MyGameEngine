@@ -26,6 +26,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 强类型 Content：Build 自动生成 Package、Sprite 与 Texture 逻辑引用，并在编译期诊断重名。
 - 可分发 Game SDK 与模板：`MyGameEngine.GameSdk` 聚合运行时程序集，`dotnet new mygameengine-game` 可在仓库外创建完整项目。
 - 开发环境诊断：`gameengine doctor` 检查 SDK、包版本、内容产物，并可显式探测隐藏 OpenGL 3.3 Context。
+- 运行时渲染快照：显式读取 Pass 顺序、逻辑 Surface、Effect owner 与 RenderTarget 活动租约，不暴露 GPU 句柄。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
 文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
@@ -181,6 +182,8 @@ dotnet gameengine doctor MyFirstGame
 
 `gameengine doctor` 默认只读检查项目；增加 `--probe-opengl` 后会创建短生命周期隐藏窗口，真实验证 OpenGL 3.3 Core。诊断代码、退出码和 CI 用法见 [`gameengine doctor` 开发环境诊断](docs/GAMEENGINE_DOCTOR.md)。
 
+运行时可通过 `context.CaptureRenderDiagnostics()` 低频捕获渲染图快照，检查 Pass 执行顺序、Effect owner、Surface 关系和临时 RenderTarget 租约。窗口支持启动及运行时 FPS/UPS/VSync 控制；显式调用 `WithFrameStatistics()` 后还可读取 Draw Call、Batch Flush、纹理切换和活跃 Pass。完整 API、统计口径与性能边界见 [运行时渲染诊断快照](docs/RUNTIME_RENDER_DIAGNOSTICS.md)。
+
 ## Sprite 便利 API
 
 ```csharp
@@ -244,8 +247,8 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 增加 Render Graph、Effect owner 和 RenderTarget 租约诊断快照。
-2. 为无显示器 CI 固化软件 OpenGL 执行环境。
-3. 为内容与 Shader 热重载建立失败回退边界。
+1. 为无显示器 CI 固化软件 OpenGL 执行环境。
+2. 为内容与 Shader 热重载建立失败回退边界。
+3. 继续降低 SceneAggregate 每帧 LINQ 与排序分配。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

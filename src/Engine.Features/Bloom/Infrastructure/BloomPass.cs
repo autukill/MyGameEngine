@@ -50,32 +50,34 @@ internal sealed class BloomPass : RenderPass
 
     public override void Execute(in RenderPassContext context)
     {
-        RenderExtract();
+        RenderExtract(context.Statistics);
         RenderTarget2D current = _bright;
         for (int iteration = 0; iteration < _settings.Iterations; iteration++)
         {
-            RenderBlur(current, _ping, horizontal: true, multiplier: 1f);
+            RenderBlur(current, _ping, horizontal: true, multiplier: 1f, context.Statistics);
             float multiplier = iteration == _settings.Iterations - 1
                 ? _settings.Intensity
                 : 1f;
-            RenderBlur(_ping, _pong, horizontal: false, multiplier);
+            RenderBlur(_ping, _pong, horizontal: false, multiplier, context.Statistics);
             current = _pong;
         }
     }
 
-    private void RenderExtract()
+    private void RenderExtract(
+        GameEngine.Core.Infrastructure.Diagnostics.IFrameStatisticsSink? statistics)
     {
         PrepareTarget(_bright);
         BindTexture(_source.ColorTexture);
         _extractShader.SetThreshold(_settings.Threshold);
-        Draw();
+        Draw(statistics);
     }
 
     private void RenderBlur(
         RenderTarget2D source,
         RenderTarget2D target,
         bool horizontal,
-        float multiplier)
+        float multiplier,
+        GameEngine.Core.Infrastructure.Diagnostics.IFrameStatisticsSink? statistics)
     {
         PrepareTarget(target);
         BindTexture(source.ColorTexture);
@@ -83,7 +85,7 @@ internal sealed class BloomPass : RenderPass
             ? new Vector2(_settings.BlurRadius / target.Width, 0f)
             : new Vector2(0f, _settings.BlurRadius / target.Height);
         _blurShader.SetDirectionAndMultiplier(direction, multiplier);
-        Draw();
+        Draw(statistics);
     }
 
     private void PrepareTarget(RenderTarget2D target)
@@ -101,10 +103,12 @@ internal sealed class BloomPass : RenderPass
         _gl.BindTexture(TextureTarget.Texture2D, texture);
     }
 
-    private void Draw()
+    private void Draw(
+        GameEngine.Core.Infrastructure.Diagnostics.IFrameStatisticsSink? statistics)
     {
         _gl.BindVertexArray(_vao);
         _gl.DrawArrays(PrimitiveType.Triangles, 0, 6);
+        statistics?.RecordDrawCall();
         _gl.BindVertexArray(0);
     }
 

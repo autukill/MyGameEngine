@@ -2,6 +2,7 @@ namespace GameEngine.Features.RenderPipeline.Infrastructure;
 
 using Silk.NET.OpenGL;
 using GameEngine.Core.Infrastructure.Graphics;
+using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Features.RenderPipeline.Domain;
 
 /// <summary>Pass 执行上下文：避免每个 Pass 重新获取 GL/Shader/Batch 引用</summary>
@@ -10,7 +11,12 @@ public readonly record struct RenderPassContext(
     IShader DefaultShader,
     SpriteBatch Batch,
     int ScreenWidth,
-    int ScreenHeight);
+    int ScreenHeight,
+    IFrameStatisticsSink? Statistics = null)
+{
+    /// <summary>自定义 Pass 直接提交 GL 绘制后调用；SpriteBatch 会自动计数。</summary>
+    public void RecordDrawCall() => Statistics?.RecordDrawCall();
+}
 
 /// <summary>抽象管道节点</summary>
 public abstract class RenderPass : IDisposable

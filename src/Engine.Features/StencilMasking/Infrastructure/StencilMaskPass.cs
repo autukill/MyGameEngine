@@ -115,6 +115,7 @@ public sealed class StencilMaskPass : RenderPass
 
     public override void Execute(in RenderPassContext context)
     {
+        _batch.Statistics = context.Statistics;
         var gl = context.Gl;
         // Dynamic effect targets must remain transparent outside the stencil area.
         // Do not inherit a clear color left behind by a preceding scene pass.
