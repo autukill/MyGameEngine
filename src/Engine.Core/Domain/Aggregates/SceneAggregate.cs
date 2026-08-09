@@ -427,13 +427,48 @@ public class SceneAggregate
     /// </summary>
     public void DrawActive(ISpriteBatch batch, SceneLayerFilter layerFilter)
     {
+        _ = DrawActiveCore(batch, layerFilter, measureTime: false);
+    }
+
+    /// <summary>
+    /// Draws the same Scene path while returning exact traversal, sorting, and callback metrics.
+    /// No collections are allocated; callers can sample every frame when diagnostics are enabled.
+    /// </summary>
+    public SceneDrawStatistics DrawActiveMeasured(
+        ISpriteBatch batch,
+        SceneLayerFilter layerFilter,
+        bool measureTime = true) => DrawActiveCore(batch, layerFilter, measureTime);
+
+    private SceneDrawStatistics DrawActiveCore(
+        ISpriteBatch batch,
+        SceneLayerFilter layerFilter,
+        bool measureTime)
+    {
         ArgumentNullException.ThrowIfNull(batch);
         ArgumentNullException.ThrowIfNull(layerFilter);
+        int visibleLayers = 0;
+        int candidateVisits = 0;
+        int selectedInstances = 0;
+        int drawnInstances = 0;
+        int sortComparisons = 0;
+        long traversalTicks = 0;
+        long sortTicks = 0;
+        long drawTicks = 0;
         foreach (var layer in _layers)
         {
             if (!layer.IsVisible || !layerFilter.Allows(layer.Name)) continue;
 
-            CaptureDrawEntries(layer.Name);
+            visibleLayers++;
+            long started = measureTime ? Stopwatch.GetTimestamp() : 0L;
+            candidateVisits += CaptureDrawEntries(layer.Name);
+            if (measureTime) traversalTicks += Stopwatch.GetTimestamp() - started;
+
+            started = measureTime ? Stopwatch.GetTimestamp() : 0L;
+            sortComparisons += SortDrawEntries();
+            if (measureTime) sortTicks += Stopwatch.GetTimestamp() - started;
+            selectedInstances += _drawSnapshot.Count;
+
+            started = measureTime ? Stopwatch.GetTimestamp() : 0L;
             foreach (DrawEntry entry in _drawSnapshot)
             {
                 GameInstance instance = entry.Instance;
@@ -441,8 +476,21 @@ public class SceneAggregate
                 instance.OnBeginDraw(batch);
                 instance.OnDraw(batch);
                 instance.OnEndDraw(batch);
+                drawnInstances++;
             }
+            if (measureTime) drawTicks += Stopwatch.GetTimestamp() - started;
         }
+
+        return new SceneDrawStatistics(
+            measureTime,
+            visibleLayers,
+            candidateVisits,
+            selectedInstances,
+            drawnInstances,
+            sortComparisons,
+            ToElapsedTime(traversalTicks),
+            ToElapsedTime(sortTicks),
+            ToElapsedTime(drawTicks));
     }
 
     /// <summary>
@@ -471,6 +519,7 @@ public class SceneAggregate
             if (layer.Name != layerName || !layer.IsVisible) continue;
 
             CaptureDrawEntries(layer.Name);
+            SortDrawEntries();
             foreach (DrawEntry entry in _drawSnapshot)
             {
                 GameInstance instance = entry.Instance;
@@ -844,7 +893,7 @@ public class SceneAggregate
             destination.Add(instance);
     }
 
-    private void CaptureDrawEntries(string layerName)
+    private int CaptureDrawEntries(string layerName)
     {
         _drawSnapshot.Clear();
         int sequence = 0;
@@ -854,33 +903,40 @@ public class SceneAggregate
                 _drawSnapshot.Add(new DrawEntry(instance, sequence));
             sequence++;
         }
-        SortDrawEntries();
+        return sequence;
     }
 
-    private void SortDrawEntries()
+    private int SortDrawEntries()
     {
+        int comparisons = 0;
         int count = _drawSnapshot.Count;
         for (int root = count / 2 - 1; root >= 0; root--)
-            SiftDrawEntryDown(root, count);
+            SiftDrawEntryDown(root, count, ref comparisons);
 
         for (int end = count - 1; end > 0; end--)
         {
             (_drawSnapshot[0], _drawSnapshot[end]) = (_drawSnapshot[end], _drawSnapshot[0]);
-            SiftDrawEntryDown(0, end);
+            SiftDrawEntryDown(0, end, ref comparisons);
         }
+        return comparisons;
     }
 
-    private void SiftDrawEntryDown(int root, int count)
+    private void SiftDrawEntryDown(int root, int count, ref int comparisons)
     {
         while (true)
         {
             int child = root * 2 + 1;
             if (child >= count) return;
-            if (child + 1 < count && CompareDrawEntries(
-                    _drawSnapshot[child], _drawSnapshot[child + 1]) < 0)
+            if (child + 1 < count)
             {
-                child++;
+                comparisons++;
+                if (CompareDrawEntries(
+                        _drawSnapshot[child], _drawSnapshot[child + 1]) < 0)
+                {
+                    child++;
+                }
             }
+            comparisons++;
             if (CompareDrawEntries(_drawSnapshot[root], _drawSnapshot[child]) >= 0)
                 return;
 
@@ -889,6 +945,11 @@ public class SceneAggregate
             root = child;
         }
     }
+
+    private static TimeSpan ToElapsedTime(long timestampTicks) =>
+        timestampTicks == 0
+            ? TimeSpan.Zero
+            : TimeSpan.FromSeconds(timestampTicks / (double)Stopwatch.Frequency);
 
     private long BeginQuery() =>
         _gameplayQueryStatisticsEnabled ? Stopwatch.GetTimestamp() : 0L;

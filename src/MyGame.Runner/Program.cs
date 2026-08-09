@@ -225,7 +225,16 @@ internal static class Program {
                          !diagnostics.Viewports[1].Effects.IsHdr ||
                          diagnostics.Viewports[1].Effects.Bloom is not null ||
                          diagnostics.Viewports[1].Effects.AdditionalPassCount != 1 ||
-                         diagnostics.Viewports[1].Effects.AdditionalRenderTargetCount != 1 ) {
+                         diagnostics.Viewports[1].Effects.AdditionalRenderTargetCount != 1 ||
+                         diagnostics.Viewports[0].SceneDraw.VisibleLayerCount != 4 ||
+                         diagnostics.Viewports[1].SceneDraw.VisibleLayerCount != 3 ||
+                         diagnostics.Viewports[0].SceneDraw.DrawnInstanceCount !=
+                             diagnostics.Viewports[1].SceneDraw.DrawnInstanceCount + 1 ||
+                         diagnostics.Viewports[0].SceneDraw.CandidateVisitCount <=
+                             diagnostics.Viewports[1].SceneDraw.CandidateVisitCount ||
+                         diagnostics.Viewports[0].SceneDraw.SortComparisonCount == 0 ||
+                         !diagnostics.Viewports[1].SceneDraw.TimingEnabled ||
+                         diagnostics.Viewports[1].SceneDraw.TotalTime <= TimeSpan.Zero ) {
                         throw new InvalidOperationException(
                             "Multi-Camera Viewport mapping or RenderScale diagnostics are invalid." );
                     }
@@ -274,7 +283,13 @@ internal static class Program {
                     $"drawCalls={diagnostics.FrameStatistics.Value.DrawCalls}, " +
                     $"flushes={diagnostics.FrameStatistics.Value.BatchFlushes}, " +
                     $"textureSwitches={diagnostics.FrameStatistics.Value.TextureSwitches}, " +
-                    $"activePasses={diagnostics.FrameStatistics.Value.ActivePasses}" );
+                    $"activePasses={diagnostics.FrameStatistics.Value.ActivePasses}, " +
+                    $"sceneCandidates={string.Join( '/', diagnostics.Viewports.Select(
+                        view => view.SceneDraw.CandidateVisitCount ) )}, " +
+                    $"sceneDrawn={string.Join( '/', diagnostics.Viewports.Select(
+                        view => view.SceneDraw.DrawnInstanceCount ) )}, " +
+                    $"sceneMs={string.Join( '/', diagnostics.Viewports.Select(
+                        view => view.SceneDraw.TotalTime.TotalMilliseconds.ToString( "F3" ) ) )}" );
                 var performance = context.CapturePerformanceSnapshot();
                 if ( performance.GpuMemory.TextureCount == 0 ||
                      performance.GpuMemory.RootRenderTargetCount != context.RenderViews.Count + 1 ||

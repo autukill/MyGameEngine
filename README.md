@@ -285,8 +285,8 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 为多 Render View 增加 Scene 遍历、Layer 排序与 Draw 的分项诊断，建立真实成本基线。
-2. 根据测量结果评估跨 View 可见性/排序缓存，避免在实例量较小时引入无收益复杂度。
+1. 使用 100/1,000/10,000 实例运行多 Render View 基准，建立遍历、排序和 Draw 的稳定成本曲线。
+2. 根据新增分项诊断评估跨 View 可见性/排序缓存，避免在实例量较小时引入无收益复杂度。
 3. 保持唯一 Presentation 屏幕终端，并补充双视图 resize、效果释放的 GPU 回归场景。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。

@@ -132,4 +132,5 @@ public readonly record struct ViewportSlotDiagnostics(
     int RenderWidth,
     int RenderHeight,
     SceneLayerFilter SceneLayers,
-    RenderViewEffects Effects);
+    RenderViewEffects Effects,
+    SceneDrawStatistics SceneDraw);

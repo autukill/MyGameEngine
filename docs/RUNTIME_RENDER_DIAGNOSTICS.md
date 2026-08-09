@@ -16,7 +16,13 @@ foreach (RenderEffectDiagnostics effect in snapshot.Effects.Effects)
 Console.WriteLine($"leases={snapshot.RenderTargets.ActiveLeases.Count}");
 
 foreach (ViewportSlotDiagnostics viewport in snapshot.Viewports)
-    Console.WriteLine($"{viewport.Slot}: {viewport.Width}x{viewport.Height} fit={viewport.Fit}");
+{
+    SceneDrawStatistics draw = viewport.SceneDraw;
+    Console.WriteLine(
+        $"{viewport.Slot}: {viewport.Width}x{viewport.Height} " +
+        $"candidates={draw.CandidateVisitCount} drawn={draw.DrawnInstanceCount} " +
+        $"sort={draw.SortComparisonCount} sceneMs={draw.TotalTime.TotalMilliseconds:F3}");
+}
 
 if (snapshot.FrameStatistics is { } frame)
     Console.WriteLine($"fps={frame.FramesPerSecond:F1} draw={frame.DrawCalls}");
@@ -25,6 +31,18 @@ if (snapshot.FrameStatistics is { } frame)
 高级组合根也可分别调用 `RenderPipeline.CaptureDiagnostics()`、`ScenePipelineBuilder.CaptureDiagnostics()` 与 `RenderTargetPool.CaptureDiagnostics()`。
 
 `Viewports` 保存 Render View、标准化布局、实际呈现像素矩形、内部 RenderWidth/RenderHeight、Fit、合成 Layer、不可变 `SceneLayers` 过滤器与 `Effects` Profile；也可单独调用 `context.CaptureViewportDiagnostics()`。`Effects.AdditionalPassCount/AdditionalRenderTargetCount` 可在不解析底层图的情况下展示配置成本。Contain 的像素矩形只包含真实画面，不包含 letterbox 黑边。RenderScale 只改变内部渲染尺寸，不改变呈现槽位。
+
+## 每 View Scene Draw 分项
+
+`ViewportSlotDiagnostics.SceneDraw` 是最近完成帧的 `SceneDrawStatistics` 值快照：
+
+- `VisibleLayerCount`：同时满足全局可见与 View Layer Filter 的层数。
+- `CandidateVisitCount`：收集阶段实际访问的实例候选总数。当前实现为每个允许层扫描一次 Scene，因此它能直接暴露重复遍历。
+- `SelectedInstanceCount/DrawnInstanceCount`：进入排序列表和完成 Draw 回调的实例数。
+- `SortComparisonCount`：稳定 Depth 排序执行的精确比较次数。
+- `TraversalTime/SortTime/DrawTime/TotalTime`：对应 CPU 分项耗时。
+
+计数路径始终开启且逐帧零分配。只有启用 `FrameStatisticsOptions`（或通过 Hosting 性能遥测间接启用）时，`TimingEnabled` 才为 `true` 并采集高频时间戳；普通运行仍提供计数，但时间字段保持零。数据只覆盖每个 View 的基础 `SceneRenderPass`，Stencil 等效果内部的额外场景重绘仍通过总 Draw Call/Pass 统计观察，避免错误归属到某个普通 View。
 
 ## Pipeline 快照
 

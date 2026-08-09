@@ -183,6 +183,7 @@ public sealed class RenderViewLayoutBuilder
 public sealed class RenderView
 {
     private readonly RenderTarget2D _target;
+    private SceneRenderPass? _scenePass;
 
     public RenderViewRef Ref { get; }
     public ViewportSlotRef Slot { get; }
@@ -195,6 +196,7 @@ public sealed class RenderView
     public RenderViewEffects Effects { get; }
     public RenderSurfaceKey SceneColor { get; }
     public RenderSurfaceKey DisplayColor { get; }
+    public SceneDrawStatistics LastSceneDraw => _scenePass?.LastDrawStatistics ?? default;
     public Vector2D RenderSize => new(_target.Width, _target.Height);
     internal RenderTarget2D Target => _target;
     internal int DeclarationOrder { get; }
@@ -222,5 +224,13 @@ public sealed class RenderView
                 new RenderEffectKey(ToneMappingEffectDescriptor.EffectKind, definition.Ref.Name))
             : SceneColor;
         _target = target;
+    }
+
+    internal void AttachScenePass(SceneRenderPass scenePass)
+    {
+        ArgumentNullException.ThrowIfNull(scenePass);
+        if (_scenePass is not null)
+            throw new InvalidOperationException($"Render View '{Ref}' already has a Scene Pass.");
+        _scenePass = scenePass;
     }
 }

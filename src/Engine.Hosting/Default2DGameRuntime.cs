@@ -273,13 +273,16 @@ internal sealed class Default2DGameRuntime : IDisposable
         for (int i = 0; i < _renderViews.Count; i++)
         {
             RenderView view = _renderViews[i];
-            _pipeline.AddPass(new SceneRenderPass(
+            var scenePass = new SceneRenderPass(
                 $"Hosting.Scene:{view.Ref}",
                 gl,
                 _scene,
                 view.Camera,
                 view.Target,
-                view.SceneLayers));
+                view.SceneLayers,
+                measureTiming: _window.FrameStatisticsSink is not null);
+            view.AttachScenePass(scenePass);
+            _pipeline.AddPass(scenePass);
         }
         if (_guiTarget is not null)
         {

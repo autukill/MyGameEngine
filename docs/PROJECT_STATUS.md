@@ -70,6 +70,7 @@
 - Hosting 第二阶段多 Camera 已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Runner `--split-cameras` 验证两台真实 Camera。
 - 多 View 效果策略已显式化：主 View 由 `UseHdr` 配置；次级 View 默认 Direct，也可独立选择 HDR + Tone Mapping 与可选 Bloom。配置报告额外 Pass/租约，工厂按输入 Surface 尺寸创建目标，次级 View 不承担未声明成本。
 - 每 View `SceneLayerFilter.Include/Exclude/All` 已落地，Scene 与主 Stencil 重绘共享过滤语义；名单装配期校验、逐帧 0 B。Runner observer 排除 `MainOnly` 验证小地图式黄金路径。
+- 每 View `SceneDrawStatistics` 已接入 Render 诊断：候选访问、选中/绘制、排序比较始终零分配计数，启用 Frame Statistics 后增加遍历/排序/绘制耗时。Runner 双 View 样本报告 `48/36` candidates 与 `12/11` drawn。
 
 ## 仍在演进
 
@@ -86,7 +87,7 @@
 1. 已完成单 Camera 多呈现槽位与 Fit/输入映射。
 2. 已完成多 Render View 的独立 Camera、Scene Surface、RenderScale、resize 与 Presentation 装配。
 3. 已允许主 View 使用 HDR/Stencil，并让次级 View 显式选择 Direct 或独立 HDR/Bloom/Tone Mapping；效果租约跟随各自输入 Surface 尺寸。
-4. 已完成 Layer 过滤、小地图式样例和显式成本诊断；下一步测量跨 View 重复遍历与排序成本，不提前引入通用剔除。
+4. 已完成 Layer 过滤、小地图式样例、显式效果成本和 Scene Draw 分项诊断；下一步用 100/1,000/10,000 实例基准测量跨 View 重复遍历与排序，不提前引入通用剔除。
 
 ## 已知限制
 

@@ -731,10 +731,35 @@ internal sealed class Program
         Assert(filteredDrawAllocated == 0,
             $"Filtered Scene drawing remains allocation-free ({filteredDrawAllocated:N0} B)");
 
+        order.Clear();
+        SceneDrawStatistics drawStatistics =
+            drawScene.DrawActiveMeasured(batch, observerLayers);
+        Assert(drawStatistics.VisibleLayerCount == 3 &&
+               drawStatistics.CandidateVisitCount == 15 &&
+               drawStatistics.SelectedInstanceCount == 4 &&
+               drawStatistics.DrawnInstanceCount == 4 &&
+               drawStatistics.SortComparisonCount > 0,
+            "Measured Scene drawing reports exact traversal, selection, sorting, and draw counts");
+        for (int i = 0; i < 64; i++)
+        {
+            order.Clear();
+            _ = drawScene.DrawActiveMeasured(batch, observerLayers);
+        }
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+        {
+            order.Clear();
+            _ = drawScene.DrawActiveMeasured(batch, observerLayers);
+        }
+        long measuredDrawAllocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert(measuredDrawAllocated == 0,
+            $"Measured Scene drawing remains allocation-free ({measuredDrawAllocated:N0} B)");
+
         Console.WriteLine("\n17. Scene lifecycle steady-state allocations");
         Console.WriteLine("   [PASS] Input + Step + Draw + DrawGUI remain at 0 B/frame after warm-up");
         Console.WriteLine("   [PASS] phase mutation visibility and stable depth ordering are preserved");
         Console.WriteLine("   [PASS] per-View Scene layer filtering remains at 0 B/frame");
+        Console.WriteLine("   [PASS] measured traversal/sort/draw diagnostics remain at 0 B/frame");
     }
 
     private static void RunLifecycleFrame(
