@@ -31,12 +31,16 @@ GameAssets.Packages.SharedPrimitives
 
 验收结果：AssetCompiler 从编译后的 Manifest 依赖图生成确定性 `.g.cs`；已打入 Atlas 的源 Texture 与内部 Atlas 页不会泄漏为公开引用，标识符冲突在构建期失败。Runner 已使用 `GameAssets.Packages.Root` 和 `GameAssets.Sprites.RunnerOrbiting`，Hosting 会校验包 ID。
 
-## 阶段 3：项目模板与命令行体验
+## 阶段 3：项目模板与命令行体验（分发与模板已实现）
 
-- 提供 `dotnet new mygameengine-game` 最小项目模板。
-- 默认包含 `Assets/assets.json`、首个 Scene、实例示例和内容构建配置。
+- `MyGameEngine.GameSdk` 聚合正式运行时程序集并声明第三方运行依赖；源码 Feature 仍保持垂直切片。
+- `MyGameEngine.Templates` 提供 `dotnet new mygameengine-game` 最小项目模板。
+- 模板默认包含 `Assets/assets.json`、真实 WebP、首个 Scene、实例示例和内容构建配置。
+- 隔离式分发测试执行 Pack → 安装模板 → 仓库外创建 → Restore/Build/Run/Publish，并拒绝仓库路径与 `ProjectReference` 泄漏。
 - 增加 `gameengine doctor`，检查 SDK、OpenGL、内容工具链和输出目录。
 - 给出 Debug、Release、Publish 的可复制命令。
+
+验收结果：三个分发包共享版本；模板项目只引用 GameSdk 与 ContentPipeline，Build 自动生成强类型 Content，`--smoke` 可隐藏窗口运行三帧并正常释放，Publish 只携带运行时程序集与编译后资产。当前阶段剩余项为 `gameengine doctor`。
 
 ## 阶段 4：诊断与可观察性
 

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <IsPackable>true</IsPackable>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <PackageId>MyGameEngine.Templates</PackageId>
+    <Version>$(GameEnginePackageVersion)</Version>
+    <PackageType>Template</PackageType>
+    <Authors>MyGameEngine</Authors>
+    <Description>dotnet new templates for MyGameEngine games.</Description>
+    <PackageTags>dotnet-new;templates;game-engine;2d</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="templates\mygameengine-game\**\*"
+             Exclude="templates\mygameengine-game\Assets\white.webp"
+             Pack="true"
+             PackagePath="content\templates\mygameengine-game\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Content Include="..\MyGame.Runner\Assets\white.webp"
+             Pack="true"
+             PackagePath="content\templates\mygameengine-game\Assets\white.webp" />
+    <None Include="..\..\docs\GAME_SDK_AND_TEMPLATES.md"
+          Pack="true"
+          PackagePath="README.md" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "mygame.assets",
+  "dependencies": [],
+  "textures": [
+    {
+      "name": "mygame.white",
+      "path": "white.webp",
+      "sampling": "smooth"
+    }
+  ],
+  "sprites": [
+    {
+      "name": "player",
+      "layout": "single",
+      "texture": "mygame.white",
+      "size": { "width": 96, "height": 96 },
+      "origin": { "x": 48, "y": 48 }
+    }
+  ]
+}

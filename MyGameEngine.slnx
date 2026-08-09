@@ -66,6 +66,11 @@
     <Project Path="src/Engine.Build.ContentPipeline/Engine.Build.ContentPipeline.csproj" />
     <Project Path="src/Engine.Build.ContentPipeline.Tests/Engine.Build.ContentPipeline.Tests.csproj" />
   </Folder>
+  <Folder Name="/Engine.Distribution/">
+    <Project Path="src/Engine.Distribution.GameSdk/Engine.Distribution.GameSdk.csproj" />
+    <Project Path="src/Engine.Distribution.Tests/Engine.Distribution.Tests.csproj" />
+    <Project Path="src/Engine.Templates/Engine.Templates.csproj" />
+  </Folder>
   <Folder Name="/Engine.Tools/AssetCompiler/">
     <Project Path="src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj" />
     <Project Path="src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.csproj" />

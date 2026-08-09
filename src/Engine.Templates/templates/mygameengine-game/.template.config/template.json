@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "MyGameEngine",
+  "classifications": [ "Games", "2D", "OpenGL" ],
+  "identity": "MyGameEngine.Templates.Game",
+  "name": "MyGameEngine 2D Game",
+  "shortName": "mygameengine-game",
+  "sourceName": "MyGameTemplate",
+  "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "project"
+  }
+}

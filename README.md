@@ -24,6 +24,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 可分发内容工具链：`gameengine-assets` .NET Tool 与内置编译器的 `buildTransitive` NuGet 包。
 - Engine Hosting：声明式启动、默认 2D 渲染预设、强类型 Scene Context、帧循环与资源清理。
 - 强类型 Content：Build 自动生成 Package、Sprite 与 Texture 逻辑引用，并在编译期诊断重名。
+- 可分发 Game SDK 与模板：`MyGameEngine.GameSdk` 聚合运行时程序集，`dotnet new mygameengine-game` 可在仓库外创建完整项目。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
 文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
@@ -53,6 +54,9 @@ src/
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
 ├── Engine.Build.ContentPipeline/        # 可跨仓库引用的 NuGet buildTransitive 包
 ├── Engine.Build.ContentPipeline.Tests/  # 本地 Feed、Tool 安装与外部消费项目集成验证
+├── Engine.Distribution.GameSdk/         # 聚合正式运行时程序集的 NuGet 包
+├── Engine.Distribution.Tests/           # Pack/模板安装/仓库外 Build/Run/Publish 验证
+├── Engine.Templates/                    # dotnet new mygameengine-game 项目模板包
 ├── build/GameEngine.Content.targets     # Build/Run/Publish 增量资产集成
 ├── Engine.DddTests/                     # 聚合、生命周期、输入与状态调度验证
 └── MyGame.Runner/                       # Stencil + Bloom 综合 Demo
@@ -77,7 +81,7 @@ Engine.Core
 Engine.Hosting -> Core + Camera/Content/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 38 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 41 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -119,6 +123,7 @@ dotnet run --project src/Engine.Features/TextureAtlas.Tests/TextureAtlas.Tests.c
 dotnet run --project src/Engine.Features/ToneMapping.Tests/ToneMapping.Tests.csproj
 dotnet run --project src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj
 dotnet run --project src/Engine.Build.ContentPipeline.Tests/Engine.Build.ContentPipeline.Tests.csproj
+dotnet run --project src/Engine.Distribution.Tests/Engine.Distribution.Tests.csproj
 
 # 隐藏窗口运行三帧，验证 Hosting + Runner 的真实 GL 启动与安全关闭
 dotnet run --project src/MyGame.Runner/MyGame.Runner.csproj -- --smoke
@@ -155,6 +160,18 @@ game.Run();
 ```
 
 Host 统一接管 Load、Step、Draw、resize、内容包和 GPU 资源释放；高级用户仍可通过 Context 添加自定义 Factory 与 RenderPass。完整说明见 [Engine Hosting 与默认 2D 启动套件](docs/ENGINE_HOSTING.md)。
+
+## Game SDK 与项目模板
+
+```powershell
+dotnet pack src/Engine.Distribution.GameSdk/Engine.Distribution.GameSdk.csproj -c Release -o artifacts/packages
+dotnet pack src/Engine.Build.ContentPipeline/Engine.Build.ContentPipeline.csproj -c Release -o artifacts/packages
+dotnet pack src/Engine.Templates/Engine.Templates.csproj -c Release -o artifacts/packages
+dotnet new install artifacts/packages/MyGameEngine.Templates.0.1.0-alpha.1.nupkg
+dotnet new mygameengine-game -n MyFirstGame
+```
+
+生成项目只引用 `MyGameEngine.GameSdk` 与 `MyGameEngine.ContentPipeline`，默认带有 Hosting 启动代码、GameInstance 示例、真实 WebP 资产和强类型 `GameAssets`。完整打包、本地 Feed 与模板说明见 [Game SDK 与项目模板](docs/GAME_SDK_AND_TEMPLATES.md)。
 
 ## Sprite 便利 API
 
@@ -219,9 +236,8 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 提供默认接入 Hosting、强类型 Content 与内容管线的 `dotnet new` 项目模板。
-2. 增加 `gameengine doctor`，诊断 SDK、OpenGL 与内容工具链环境。
+1. 增加 `gameengine doctor`，诊断 SDK、OpenGL、GameSdk 与内容工具链环境。
+2. 增加 Render Graph、Effect owner 和 RenderTarget 租约诊断快照。
 3. 为无显示器 CI 固化软件 OpenGL 执行环境。
-4. 增加 Render Graph、Effect owner 和 RenderTarget 租约诊断快照。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。
