@@ -1,6 +1,6 @@
 # 性能预算与低频遥测
 
-性能遥测用于开发期日志、自动测试和外部工具，不提供游戏 UI。它复用可选帧统计，并在完成渲染帧后按固定间隔捕获 Texture、Atlas 页和 RenderTarget 的显存估算。默认关闭；关闭时不创建采样器，也不订阅完成帧事件。
+性能遥测用于开发期日志、自动测试和外部工具，不提供游戏 UI。它复用可选帧统计，并在完成渲染帧后按固定间隔捕获 Gameplay 查询、Texture、Atlas 页和 RenderTarget 的统计。默认关闭；关闭时不创建采样器，也不订阅完成帧事件。
 
 ## Hosting 配置
 
@@ -39,11 +39,14 @@ RuntimePerformanceSnapshot snapshot =
     context.CapturePerformanceSnapshot(budget);
 
 Console.WriteLine(snapshot.GpuMemory.TotalBytes);
+Console.WriteLine(snapshot.GameplayQueries.AverageMillisecondsPerStep);
 foreach (PerformanceBudgetViolation violation in snapshot.BudgetViolations)
     Console.WriteLine($"{violation.Metric}: {violation.Actual} > {violation.Limit}");
 ```
 
 预算采用严格“大于”比较，等于上限不算超限。帧统计未启用或尚无完成帧时，只评估显存预算。
+
+`GameplayQueries` 将 Find、Collision、Area 和 Radius 分开统计调用数、扫描候选、命中及累计耗时。自动遥测每次发布后重置查询区间；`SampledSteps` 和 `AverageMillisecondsPerStep` 可用于判断查询是否进入更新帧预算。显式捕获默认不重置，如需区间采样可调用 `CapturePerformanceSnapshot(resetGameplayQueryStatistics: true)`。
 
 ## 显存估算口径
 
@@ -86,7 +89,7 @@ dotnet run --project src/MyGame.Runner -- --diagnostics-json artifacts/performan
 
 ## 性能边界
 
-- 每个已启用遥测的渲染帧只读取单调时钟并做间隔判断；未到采样时间不创建快照。
+- 每个已启用遥测的渲染帧读取单调时钟并做间隔判断；查询统计启用时，每次查询额外读取起止时间并更新值计数器。
 - 到达间隔时才复制 Texture/Pool 诊断集合并评估预算。
 - 第一份快照在第一帧完整结束后立即发布，后续按 `SampleInterval` 限频。
 - 当前实现是单窗口线程模型，不提供后台并发注册或无界遥测队列。

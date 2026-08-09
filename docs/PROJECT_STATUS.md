@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 47 个 .NET 项目、仓库共 232 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 47 个 .NET 项目、仓库共 234 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -65,6 +65,7 @@
 - `GameplayTimeController` 提供 Gameplay/Unscaled 时间域、owner/key 暂停、`(0,8]` TimeScale 和帧快照；暂停冻结默认实例的 Step/Alarm/动画/输入但继续 Draw，Asteroids 以 `P` 键无 UI 验证。
 - SceneAggregate 的 Input、Step、Draw 与 DrawGUI 使用可复用快照；预热后 128 实例回归为 0 B/帧，绘制采用无分配 O(n log n) 原地排序并保持相同 Depth 的加入顺序。
 - `GameplayStateMachine<TState>` 提供强类型 Enter/Step/Exit、`Elapsed`、显式 Restart 和回调后确定性切换；冲突与循环快速失败，稳态 Update/Change 为 0 B，AirplaneShooter Target 已用于验证 Spawning → Active。
+- `GameplayQueryBuffer<T>` 与 `CountInstances<T>()` 为高频 Find/Collision/Area/Radius 提供 0 B 结果复用；便利数组 API 保持不变，Hosting 遥测按采样 Step 汇总查询次数、候选、命中和耗时，Asteroids 提供 `--diagnostics` 出口。
 
 ## 仍在演进
 
@@ -74,13 +75,14 @@
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
 - 各交互式 VisualTests 仍需人工观察；自动基线已覆盖八条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - Hosting v1 仅支持单窗口；已有声明式及强类型参数 Scene 切换和无 UI 暂停策略，但尚无 Scene 栈或后台加载。
+- Camera2D、SceneRenderPass、ViewportRect 和合成器底层可手工组成多视图，但 Hosting 仍只装配单主 Camera、单 SceneColor 根 Surface，分屏/小地图尚无推荐的声明式入口。
 
-## 下一里程碑：Gameplay 查询体验与真实负载遥测
+## 下一里程碑：声明式多 Camera/View
 
-1. 在真实 Playground 记录每帧查询次数和累计耗时，确认查询是否进入帧预算 5%。
-2. 评估增加调用方复用结果缓冲区的查询重载，保留现有便利 API，不迫使普通玩法代码提前优化。
-3. 只有真实负载证明线性扫描成为瓶颈时才引入 Spatial Hash。
-4. 时间回溯保持可选 Playground 实验方向，不通过负 delta 或反向执行普通 Step 实现。
+1. 建立稳定 `ViewRef` 与声明式 View 注册，每个 View 明确 Camera、Viewport、RenderScale 和逻辑输出 Surface。
+2. 由 Hosting 为每个 View 拥有 Scene RenderTarget/Pass，并通过唯一 Presentation 终端组合分屏和小地图。
+3. 定义 resize、每 View 后处理、Layer 过滤及 Screen/World 坐标转换边界。
+4. 用双人分屏与小地图 VisualTests 验证资源释放和成本统计；不在首版引入通用剔除系统。
 
 ## 已知限制
 
@@ -89,4 +91,4 @@
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Gameplay 查询性能](GAMEPLAY_QUERY_PERFORMANCE.md)、[Camera/Viewport 边界](CAMERA_VIEWPORT_STATUS.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

@@ -109,13 +109,22 @@ public sealed class Default2DGameContext
         return false;
     }
 
+    public void SetGameplayQueryStatisticsEnabled(bool enabled) =>
+        Scene.SetGameplayQueryStatisticsEnabled(enabled);
+
+    public GameplayQueryStatisticsSnapshot CaptureGameplayQueryStatistics(bool reset = false) =>
+        Scene.CaptureGameplayQueryStatistics(reset);
+
     /// <summary>低频捕获帧计数、Texture/Atlas、根目标、Pool 与自定义资源估算。</summary>
     public RuntimePerformanceSnapshot CapturePerformanceSnapshot(
-        PerformanceBudget? budget = null)
+        PerformanceBudget? budget = null,
+        bool resetGameplayQueryStatistics = false)
     {
         FrameStatisticsSnapshot? frame = TryCaptureFrameStatistics(out var frameSnapshot)
             ? frameSnapshot
             : null;
+        GameplayQueryStatisticsSnapshot gameplayQueries =
+            Scene.CaptureGameplayQueryStatistics(resetGameplayQueryStatistics);
         TextureLibraryDiagnostics textures = Textures.CaptureDiagnostics();
         RenderTargetPoolDiagnostics pool = RenderTargets.CaptureDiagnostics();
         long rootBytes = 0;
@@ -160,6 +169,7 @@ public sealed class Default2DGameContext
         return new RuntimePerformanceSnapshot(
             DateTimeOffset.UtcNow,
             frame,
+            gameplayQueries,
             textures,
             memory,
             Array.AsReadOnly(custom),

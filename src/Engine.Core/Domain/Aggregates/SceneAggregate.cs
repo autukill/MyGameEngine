@@ -1,5 +1,6 @@
 namespace GameEngine.Core.Domain.Aggregates;
 
+using System.Diagnostics;
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Graphics;
@@ -66,6 +67,7 @@ public class SceneAggregate
     private readonly List<GameInstance> _lifecycleSnapshot = new();
     private readonly List<GameInstance> _guiSnapshot = new();
     private readonly List<DrawEntry> _drawSnapshot = new();
+    private readonly QueryCounters[] _queryCounters = new QueryCounters[4];
     private readonly IGameplayContext _gameplay;
     private List<PendingInstanceMutation> _pendingMutations = new();
     private List<PendingInstanceMutation> _committingMutations = new();
@@ -73,12 +75,15 @@ public class SceneAggregate
     private ISpriteResolver? _sprites;
     private IInstanceFactory _instanceFactory = new InstanceFactory().Build();
     private ISceneSwitchRequester? _sceneSwitchRequester;
+    private bool _gameplayQueryStatisticsEnabled;
+    private long _querySampledSteps;
 
     public IReadOnlyCollection<IDomainEvent> UncommittedEvents => _uncommittedEvents.AsReadOnly();
     public IReadOnlyCollection<GameInstance> AllInstances => _instances.Values.ToList();
     public IEnumerable<GameInstance> ActiveInstances => _instances.Values.Where(i => i.IsActive);
     public int InstanceCount => _instances.Count;
     public GameplayTimeController Time { get; } = new();
+    public bool GameplayQueryStatisticsEnabled => _gameplayQueryStatisticsEnabled;
 
     // ============ Scene 级生命周期 Hook（委托） ============
 
@@ -339,6 +344,9 @@ public class SceneAggregate
 
         if (!time.IsPaused)
             OnAfterStep?.Invoke(time.DeltaTime);
+
+        if (_gameplayQueryStatisticsEnabled)
+            _querySampledSteps++;
     }
 
     /// <summary>
@@ -481,6 +489,32 @@ public class SceneAggregate
         }
     }
 
+    /// <summary>
+    /// Enables low-overhead query timing and counters. Changing the setting resets accumulated
+    /// measurements; Scene gameplay remains single-threaded.
+    /// </summary>
+    public void SetGameplayQueryStatisticsEnabled(bool enabled)
+    {
+        if (_gameplayQueryStatisticsEnabled == enabled) return;
+        _gameplayQueryStatisticsEnabled = enabled;
+        ResetGameplayQueryStatistics();
+    }
+
+    /// <summary>Captures query measurements accumulated since enable or the last reset.</summary>
+    public GameplayQueryStatisticsSnapshot CaptureGameplayQueryStatistics(bool reset = false)
+    {
+        var snapshot = new GameplayQueryStatisticsSnapshot(
+            _gameplayQueryStatisticsEnabled,
+            _querySampledSteps,
+            CaptureQueryMetric(QueryKind.Find),
+            CaptureQueryMetric(QueryKind.Collision),
+            CaptureQueryMetric(QueryKind.Area),
+            CaptureQueryMetric(QueryKind.Radius));
+        if (reset)
+            ResetGameplayQueryStatistics();
+        return snapshot;
+    }
+
     // ============ 查询（原有） ============
 
     public GameInstance? FindById(InstanceId id) =>
@@ -493,12 +527,80 @@ public class SceneAggregate
     public IEnumerable<T> FindByType<T>() where T : GameInstance =>
         _instances.Values.OfType<T>();
 
+    public T? FindFirst<T>() where T : GameInstance
+    {
+        long started = BeginQuery();
+        int candidates = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate is not T typed) continue;
+            RecordQuery(QueryKind.Find, started, candidates, 1);
+            return typed;
+        }
+        RecordQuery(QueryKind.Find, started, candidates, 0);
+        return null;
+    }
+
+    public IReadOnlyList<T> FindAll<T>() where T : GameInstance
+    {
+        long started = BeginQuery();
+        int candidates = 0;
+        List<T>? matches = null;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate is T typed)
+                (matches ??= new List<T>()).Add(typed);
+        }
+        T[] result = matches?.ToArray() ?? Array.Empty<T>();
+        RecordQuery(QueryKind.Find, started, candidates, result.Length);
+        return result;
+    }
+
+    public int FindAll<T>(GameplayQueryBuffer<T> results) where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        results.Clear();
+        long started = BeginQuery();
+        int candidates = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate is T typed)
+                results.Add(typed);
+        }
+        RecordQuery(QueryKind.Find, started, candidates, results.Count);
+        return results.Count;
+    }
+
+    public int CountInstances<T>() where T : GameInstance
+    {
+        long started = BeginQuery();
+        int candidates = 0;
+        int count = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate is T) count++;
+        }
+        RecordQuery(QueryKind.Find, started, candidates, count);
+        return count;
+    }
+
     public T? FirstCollision<T>(GameInstance source) where T : GameInstance
     {
         ArgumentNullException.ThrowIfNull(source);
-        if (source.Collider is not { } sourceShape) return null;
+        long started = BeginQuery();
+        int candidates = 0;
+        if (source.Collider is not { } sourceShape)
+        {
+            RecordQuery(QueryKind.Collision, started, candidates, 0);
+            return null;
+        }
         foreach (GameInstance candidate in _instances.Values)
         {
+            candidates++;
             if (candidate.Id == source.Id || !candidate.IsActive ||
                 candidate is not T typed || candidate.Collider is not { } candidateShape)
             {
@@ -510,19 +612,28 @@ public class SceneAggregate
                     candidateShape,
                     candidate.Transform))
             {
+                RecordQuery(QueryKind.Collision, started, candidates, 1);
                 return typed;
             }
         }
+        RecordQuery(QueryKind.Collision, started, candidates, 0);
         return null;
     }
 
     public IReadOnlyList<T> Collisions<T>(GameInstance source) where T : GameInstance
     {
         ArgumentNullException.ThrowIfNull(source);
-        if (source.Collider is not { } sourceShape) return Array.Empty<T>();
+        long started = BeginQuery();
+        int candidates = 0;
+        if (source.Collider is not { } sourceShape)
+        {
+            RecordQuery(QueryKind.Collision, started, candidates, 0);
+            return Array.Empty<T>();
+        }
         List<T>? matches = null;
         foreach (GameInstance candidate in _instances.Values)
         {
+            candidates++;
             if (candidate.Id == source.Id || !candidate.IsActive ||
                 candidate is not T typed || candidate.Collider is not { } candidateShape)
             {
@@ -537,14 +648,53 @@ public class SceneAggregate
                 (matches ??= new List<T>()).Add(typed);
             }
         }
-        return matches?.ToArray() ?? Array.Empty<T>();
+        T[] result = matches?.ToArray() ?? Array.Empty<T>();
+        RecordQuery(QueryKind.Collision, started, candidates, result.Length);
+        return result;
+    }
+
+    public int Collisions<T>(GameInstance source, GameplayQueryBuffer<T> results)
+        where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(results);
+        results.Clear();
+        long started = BeginQuery();
+        int candidates = 0;
+        if (source.Collider is not { } sourceShape)
+        {
+            RecordQuery(QueryKind.Collision, started, candidates, 0);
+            return 0;
+        }
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (candidate.Id == source.Id || !candidate.IsActive ||
+                candidate is not T typed || candidate.Collider is not { } candidateShape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(
+                    sourceShape,
+                    source.Transform,
+                    candidateShape,
+                    candidate.Transform))
+            {
+                results.Add(typed);
+            }
+        }
+        RecordQuery(QueryKind.Collision, started, candidates, results.Count);
+        return results.Count;
     }
 
     public IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance
     {
+        long started = BeginQuery();
+        int candidates = 0;
         List<T>? matches = null;
         foreach (GameInstance candidate in _instances.Values)
         {
+            candidates++;
             if (!candidate.IsActive || candidate is not T typed ||
                 candidate.Collider is not { } shape)
             {
@@ -553,7 +703,31 @@ public class SceneAggregate
             if (bounds.Intersects(CollisionMath2D.GetBounds(shape, candidate.Transform)))
                 (matches ??= new List<T>()).Add(typed);
         }
-        return matches?.ToArray() ?? Array.Empty<T>();
+        T[] result = matches?.ToArray() ?? Array.Empty<T>();
+        RecordQuery(QueryKind.Area, started, candidates, result.Length);
+        return result;
+    }
+
+    public int QueryArea<T>(Bounds2D bounds, GameplayQueryBuffer<T> results)
+        where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        results.Clear();
+        long started = BeginQuery();
+        int candidates = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (!candidate.IsActive || candidate is not T typed ||
+                candidate.Collider is not { } shape)
+            {
+                continue;
+            }
+            if (bounds.Intersects(CollisionMath2D.GetBounds(shape, candidate.Transform)))
+                results.Add(typed);
+        }
+        RecordQuery(QueryKind.Area, started, candidates, results.Count);
+        return results.Count;
     }
 
     public IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius)
@@ -561,9 +735,12 @@ public class SceneAggregate
     {
         CollisionShape2D query = CollisionShape2D.Circle(radius);
         Transform2D transform = Transform2D.Default with { Position = center };
+        long started = BeginQuery();
+        int candidates = 0;
         List<T>? matches = null;
         foreach (GameInstance candidate in _instances.Values)
         {
+            candidates++;
             if (!candidate.IsActive || candidate is not T typed ||
                 candidate.Collider is not { } shape)
             {
@@ -572,7 +749,35 @@ public class SceneAggregate
             if (CollisionMath2D.Intersects(query, transform, shape, candidate.Transform))
                 (matches ??= new List<T>()).Add(typed);
         }
-        return matches?.ToArray() ?? Array.Empty<T>();
+        T[] result = matches?.ToArray() ?? Array.Empty<T>();
+        RecordQuery(QueryKind.Radius, started, candidates, result.Length);
+        return result;
+    }
+
+    public int QueryRadius<T>(
+        Vector2D center,
+        float radius,
+        GameplayQueryBuffer<T> results) where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        CollisionShape2D query = CollisionShape2D.Circle(radius);
+        Transform2D transform = Transform2D.Default with { Position = center };
+        results.Clear();
+        long started = BeginQuery();
+        int candidates = 0;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            candidates++;
+            if (!candidate.IsActive || candidate is not T typed ||
+                candidate.Collider is not { } shape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(query, transform, shape, candidate.Transform))
+                results.Add(typed);
+        }
+        RecordQuery(QueryKind.Radius, started, candidates, results.Count);
+        return results.Count;
     }
 
     /// <summary>按图层名获取所有活跃实例。</summary>
@@ -677,6 +882,40 @@ public class SceneAggregate
         }
     }
 
+    private long BeginQuery() =>
+        _gameplayQueryStatisticsEnabled ? Stopwatch.GetTimestamp() : 0L;
+
+    private void RecordQuery(
+        QueryKind kind,
+        long started,
+        int candidates,
+        int hits)
+    {
+        if (!_gameplayQueryStatisticsEnabled) return;
+        ref QueryCounters counters = ref _queryCounters[(int)kind];
+        counters.QueryCount++;
+        counters.CandidateCount += candidates;
+        counters.HitCount += hits;
+        counters.ElapsedTimestampTicks += Stopwatch.GetTimestamp() - started;
+    }
+
+    private GameplayQueryMetric CaptureQueryMetric(QueryKind kind)
+    {
+        QueryCounters counters = _queryCounters[(int)kind];
+        return new GameplayQueryMetric(
+            counters.QueryCount,
+            counters.CandidateCount,
+            counters.HitCount,
+            TimeSpan.FromSeconds(
+                counters.ElapsedTimestampTicks / (double)Stopwatch.Frequency));
+    }
+
+    private void ResetGameplayQueryStatistics()
+    {
+        Array.Clear(_queryCounters);
+        _querySampledSteps = 0;
+    }
+
     private T QueueSpawn<T>(T instance) where T : GameInstance
     {
         ArgumentNullException.ThrowIfNull(instance);
@@ -766,6 +1005,22 @@ public class SceneAggregate
 
     private readonly record struct DrawEntry(GameInstance Instance, int Sequence);
 
+    private enum QueryKind
+    {
+        Find,
+        Collision,
+        Area,
+        Radius
+    }
+
+    private struct QueryCounters
+    {
+        public long QueryCount;
+        public long CandidateCount;
+        public long HitCount;
+        public long ElapsedTimestampTicks;
+    }
+
     private static int CompareDrawEntries(DrawEntry x, DrawEntry y)
     {
         int depth = y.Instance.Depth.Value.CompareTo(x.Instance.Depth.Value);
@@ -791,11 +1046,14 @@ public class SceneAggregate
 
         public GameInstance? FindById(InstanceId id) => owner.FindById(id);
 
-        public T? FindFirst<T>() where T : GameInstance =>
-            owner._instances.Values.OfType<T>().FirstOrDefault();
+        public T? FindFirst<T>() where T : GameInstance => owner.FindFirst<T>();
 
-        public IReadOnlyList<T> FindAll<T>() where T : GameInstance =>
-            owner._instances.Values.OfType<T>().ToArray();
+        public IReadOnlyList<T> FindAll<T>() where T : GameInstance => owner.FindAll<T>();
+
+        public int FindAll<T>(GameplayQueryBuffer<T> results) where T : GameInstance =>
+            owner.FindAll(results);
+
+        public int CountInstances<T>() where T : GameInstance => owner.CountInstances<T>();
 
         public T? FirstCollision<T>(GameInstance source) where T : GameInstance =>
             owner.FirstCollision<T>(source);
@@ -803,11 +1061,23 @@ public class SceneAggregate
         public IReadOnlyList<T> Collisions<T>(GameInstance source) where T : GameInstance =>
             owner.Collisions<T>(source);
 
+        public int Collisions<T>(GameInstance source, GameplayQueryBuffer<T> results)
+            where T : GameInstance => owner.Collisions(source, results);
+
         public IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance =>
             owner.QueryArea<T>(bounds);
 
+        public int QueryArea<T>(Bounds2D bounds, GameplayQueryBuffer<T> results)
+            where T : GameInstance => owner.QueryArea(bounds, results);
+
         public IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius)
             where T : GameInstance => owner.QueryRadius<T>(center, radius);
+
+        public int QueryRadius<T>(
+            Vector2D center,
+            float radius,
+            GameplayQueryBuffer<T> results) where T : GameInstance =>
+            owner.QueryRadius(center, radius, results);
 
         public void RequestScene(SceneRef scene)
         {

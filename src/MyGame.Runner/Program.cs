@@ -214,6 +214,8 @@ internal static class Program {
                     $"[Performance] fps={frame?.FramesPerSecond:F1}, " +
                     $"ups={frame?.UpdatesPerSecond:F1}, " +
                     $"draw={frame?.DrawCalls}, flush={frame?.BatchFlushes}, " +
+                    $"queries={snapshot.GameplayQueries.TotalQueries}, " +
+                    $"queryMs/step={snapshot.GameplayQueries.AverageMillisecondsPerStep:F4}, " +
                     $"textures={snapshot.GpuMemory.TextureCount}, " +
                     $"gpuMiB={snapshot.GpuMemory.TotalBytes / 1048576d:F2}, " +
                     $"violations={snapshot.BudgetViolations.Count}" );

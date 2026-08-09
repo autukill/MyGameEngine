@@ -34,6 +34,8 @@ Scene 会为已添加或已排队生成的实例注入窄化 `IGameplayContext`�
 - `DestroySelf()` / `Destroy(instance)`
 - `FindById(id)`
 - `FindFirst<T>()` / `FindAll<T>()`
+- `CountInstances<T>()`
+- `FindAll/Collisions/QueryArea/QueryRadius(..., GameplayQueryBuffer<T>)`
 
 Context 只暴露实例生命周期和查询，不暴露 Window、RenderPipeline、ShaderLibrary 或全局服务容器。脱离 Scene 的实例调用这些操作会收到明确异常。
 
@@ -82,5 +84,5 @@ public override void OnAlarm(AlarmId alarm)
 
 - 本阶段不引入全局 Service Locator、协程、完整物理、导航或 UI。
 - 声明式 Scene 切换、`SceneRef<TArgs>` 参数快照、类型安全 Prefab、Box/Circle 和区域/半径查询已经落地，详见 [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)。
-- `FindAll<T>()` 与当前空间查询创建稳定结果数组，高频大规模查询将在性能数据证明必要后透明迁移到 Spatial Hash。
-- Gameplay Cookbook、强类型 Prefab 自定义参数和无状态缓动/运动辅助已经落地；下一步聚焦 Scene 参数传递与生命周期遍历分配，离线 Shader 编译方向继续暂缓。
+- `FindAll<T>()` 与无 Buffer 的多结果空间查询返回独立稳定数组，适合普通低频代码；高频路径可复用 `GameplayQueryBuffer<T>`，只计数时使用 `CountInstances<T>()`。
+- 查询统计默认关闭；Hosting 性能遥测开启后按低频区间报告调用、候选、命中和耗时。当前实测未达到 Spatial Hash 引入门槛。

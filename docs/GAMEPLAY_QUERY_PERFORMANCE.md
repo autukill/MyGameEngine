@@ -2,7 +2,22 @@
 
 ## 目的
 
-当前 `FirstCollision`、`Collisions`、`QueryArea` 和 `QueryRadius` 使用 Scene 内已提交实例的线性扫描。引入 Spatial Hash 会增加位置同步、负缩放、Spawn/Destroy 和 Scene 切换的一致性成本，因此先用数据决定。
+当前 Find、Collision、Area 和 Radius 查询使用 Scene 内已提交实例的线性扫描。引入 Spatial Hash 会增加位置同步、负缩放、Spawn/Destroy 和 Scene 切换的一致性成本，因此先用数据决定。
+
+普通代码可继续使用返回稳定数组的便利 API。高频多结果查询可复用调用方 Buffer：
+
+```csharp
+private readonly GameplayQueryBuffer<Enemy> nearby = new(initialCapacity: 32);
+
+public override void OnStep(double deltaTime)
+{
+    QueryRadius(Position, 160f, nearby);
+    foreach (Enemy enemy in nearby)
+        Track(enemy);
+}
+```
+
+每次查询先清空内容但保留容量；具体 `GameplayQueryBuffer<T>` 上的 `foreach` 使用 struct enumerator。只需要数量时使用 `CountInstances<T>()`，不要创建 `FindAll<T>()` 结果。
 
 ## 运行
 
@@ -19,13 +34,25 @@ dotnet run --project src/Engine.DddTests/Engine.DddTests.csproj `
 
 环境：Windows、.NET SDK 10.0.302、Release、单进程。
 
-| 活跃 Collider | 平均查询时间 | 托管分配/查询 |
-|---:|---:|---:|
-| 100 | 0.0021 ms | 120 B |
-| 1,000 | 0.0201 ms | 120 B |
-| 10,000 | 0.2050 ms | 120 B |
+| 活跃 Collider | 稳定数组 API | 可复用 Buffer | 数组分配 | Buffer 分配 |
+|---:|---:|---:|---:|---:|
+| 100 | 0.0022 ms | 0.0021 ms | 120 B | 0 B |
+| 1,000 | 0.0209 ms | 0.0208 ms | 120 B | 0 B |
+| 10,000 | 0.2088 ms | 0.2104 ms | 120 B | 0 B |
 
-本机 1,000 Collider 明显低于初始 1 ms/查询目标，因此本阶段不实现 Spatial Hash。120 B 来自稳定结果集合；无命中路径仍复用 `Array.Empty<T>()`。
+本机 1,000 Collider 明显低于初始 1 ms/查询目标，因此本阶段不实现 Spatial Hash。Buffer 消除了结果集合分配，但不会改变 O(n) 扫描成本；无命中的稳定数组路径仍复用 `Array.Empty<T>()`。
+
+## 真实玩法统计
+
+启用 Hosting `PerformanceTelemetryOptions` 会同时打开查询统计。`RuntimePerformanceSnapshot.GameplayQueries` 按 Find、Collision、Area、Radius 提供 Query、Candidate、Hit、Elapsed，并提供采样 Step 数和平均每 Step 查询毫秒数。遥测发布后自动开始新的查询统计区间。
+
+Asteroids Playground 可直接观察真实负载：
+
+```powershell
+dotnet run --project playgrounds/Asteroids/Asteroids.csproj -- --diagnostics
+```
+
+关闭遥测时不读取高精度时钟；查询行为与结果不变。
 
 ## 重新评估条件
 

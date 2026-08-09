@@ -210,6 +210,7 @@ internal sealed class Default2DGameRuntime : IDisposable
         _scene.SetInput(_window.Input);
         _scene.SetSprites(_sprites);
         _scene.SetInstanceFactory(_plan.Instances);
+        _scene.SetGameplayQueryStatisticsEnabled(renderer.PerformanceTelemetry is not null);
         _scenes = new SceneNavigator(_plan.Scenes, _plan.InitialSceneActivation);
         _scene.SetSceneSwitchRequester(_scenes);
         _camera = new Camera2D(new Vector2(width, height));
@@ -319,7 +320,9 @@ internal sealed class Default2DGameRuntime : IDisposable
         {
             _performanceTelemetry = new PerformanceTelemetrySampler(
                 telemetry,
-                () => Context.CapturePerformanceSnapshot(telemetry.Budget));
+                () => Context.CapturePerformanceSnapshot(
+                    telemetry.Budget,
+                    resetGameplayQueryStatistics: true));
         }
         ConfigureScene(_plan.InitialSceneActivation);
     }

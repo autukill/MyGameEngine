@@ -25,7 +25,7 @@ public sealed class AsteroidSpawner : GameInstance
     public override void OnAlarm(AlarmId alarm)
     {
         if (alarm != SpawnTimer) return;
-        if (FindAll<Asteroid>().Count < 24)
+        if (CountInstances<Asteroid>() < 24)
         {
             bool horizontalEdge = _random.Next(2) == 0;
             float x = horizontalEdge

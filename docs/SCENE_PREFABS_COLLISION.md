@@ -128,6 +128,18 @@ IReadOnlyList<Enemy> nearby = QueryRadius<Enemy>(Position, 160);
 IReadOnlyList<Pickup> visible = QueryArea<Pickup>(cameraBounds);
 ```
 
+高频路径复用结果存储：
+
+```csharp
+private readonly GameplayQueryBuffer<Enemy> nearby = new(32);
+
+QueryRadius(Position, 160f, nearby);
+foreach (Enemy enemy in nearby)
+    Track(enemy);
+```
+
+查询自动清空 Buffer 并保留容量；普通数组 API 保持不变。只需要对象数量时使用 `CountInstances<T>()`。
+
 Scene 也公开 `FirstCollision`、`Collisions`、`QueryArea` 和 `QueryRadius`。查询只考虑活跃且带 Collider 的已提交实例；自身碰撞查询会排除自身。
 
 v1 规则：

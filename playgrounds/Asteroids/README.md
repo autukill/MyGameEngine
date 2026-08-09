@@ -16,6 +16,12 @@
 dotnet run --project playgrounds/Asteroids/Asteroids.csproj
 ```
 
+每秒输出真实 Find/Collision/Area/Radius 查询次数、候选、命中和平均每 Step 耗时：
+
+```powershell
+dotnet run --project playgrounds/Asteroids/Asteroids.csproj -- --diagnostics
+```
+
 自动经历 Gameplay pause → resume，并跨越 Main → GameOver 的隐藏窗口冒烟：
 
 ```powershell

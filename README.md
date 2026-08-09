@@ -12,6 +12,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Gameplay Time：Gameplay/Unscaled 时间域、owner/key 暂停、单一 TimeScale；暂停冻结逻辑但继续渲染和安全帧边界。
 - Gameplay Runtime：Scene Input/Step/Draw/DrawGUI 使用可复用快照，实例规模预热后保持零托管分配，并保留确定性阶段边界。
 - Gameplay State：强类型 Enter/Step/Exit、状态持续时间、确定性切换和零稳态分配，直接继承实例暂停与时间域。
+- Gameplay Query：保留便利结果数组，同时提供可复用 Buffer、无集合计数和按真实 Step 聚合的可选查询统计。
 - Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件。
@@ -282,9 +283,9 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 用真实 Playground 遥测复核空间查询次数与帧预算占比。
-2. 评估调用方复用结果缓冲区的查询重载；普通便利 API 保持不变。
-3. 只有线性查询成为真实瓶颈时才引入 Spatial Hash；碰撞细化与回溯继续保持需求记录。
+1. 设计声明式逻辑 View，为 Hosting 正式提供多 Camera、分屏与小地图入口。
+2. 让每个 View 明确 Viewport、RenderScale、RenderSurface、resize 和可选后处理所有权。
+3. 保持唯一 Presentation 屏幕终端，并用 VisualTests 验证双视图成本和释放。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
 

@@ -13,6 +13,8 @@ internal static class Program
     private static void Main(string[] args)
     {
         bool smoke = args.Contains("--smoke", StringComparer.Ordinal);
+        bool diagnostics = args.Contains("--diagnostics", StringComparer.Ordinal);
+        var queryTelemetry = diagnostics ? new QueryTelemetrySink() : null;
         EngineWindowOptions options = EngineWindowOptions.Default with
         {
             Title = "MyGameEngine Playground - Asteroids",
@@ -23,8 +25,16 @@ internal static class Program
 
         using var game = GameApplication
             .Create(options)
-            .UseDefault2DRenderer(renderer => renderer
-                .UseContent(GameAssets.Packages.Root))
+            .UseDefault2DRenderer(renderer =>
+            {
+                renderer.UseContent(GameAssets.Packages.Root);
+                if (queryTelemetry is not null)
+                {
+                    renderer.EnablePerformanceTelemetry(new PerformanceTelemetryOptions(
+                        queryTelemetry,
+                        TimeSpan.FromSeconds(1)));
+                }
+            })
             .ConfigureInstances(instances =>
             {
                 instances.Register(
@@ -68,6 +78,18 @@ internal static class Program
             .Build();
 
         game.Run();
+    }
+
+    private sealed class QueryTelemetrySink : IPerformanceTelemetrySink
+    {
+        public void Publish(RuntimePerformanceSnapshot snapshot)
+        {
+            GameplayQueryStatisticsSnapshot queries = snapshot.GameplayQueries;
+            Console.WriteLine(
+                $"[Queries] steps={queries.SampledSteps}, calls={queries.TotalQueries}, " +
+                $"candidates={queries.TotalCandidates}, hits={queries.TotalHits}, " +
+                $"ms/step={queries.AverageMillisecondsPerStep:F4}");
+        }
     }
 
     private sealed class SmokeJourney : GameInstance

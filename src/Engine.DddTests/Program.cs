@@ -150,6 +150,7 @@ internal sealed class Program
         VerifyGameplayTimeControl();
         VerifyLifecycleSteadyStateAllocations();
         VerifyGameplayStateMachine();
+        VerifyReusableGameplayQueries();
         if (args.Contains("--benchmark-spatial", StringComparer.Ordinal))
             MeasureSpatialQueries();
         if (args.Contains("--benchmark-lifecycle", StringComparer.Ordinal))
@@ -602,7 +603,7 @@ internal sealed class Program
 
     private static void MeasureSpatialQueries()
     {
-        Console.WriteLine("\n19. Spatial query benchmark (linear scan)");
+        Console.WriteLine("\n20. Spatial query benchmark (linear scan)");
         foreach (int count in new[] { 100, 1_000, 10_000 })
         {
             var scene = new SceneAggregate($"Spatial-{count}");
@@ -628,7 +629,24 @@ internal sealed class Program
             double elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
             Console.WriteLine(
-                $"   {count,6:N0} colliders: {elapsedMs / queries,8:F4} ms/query, " +
+                $"   {count,6:N0} allocating: {elapsedMs / queries,8:F4} ms/query, " +
+                $"{allocated / queries,6:N0} B/query, hits={hits}");
+
+            var buffer = new GameplayQueryBuffer<SpatialProbe>(1);
+            for (int i = 0; i < 500; i++)
+                scene.QueryRadius(new Vector2D(1_000, 1_000), 6f, buffer);
+            allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            started = Stopwatch.GetTimestamp();
+            hits = 0;
+            for (int i = 0; i < queries; i++)
+            {
+                Vector2D center = new((i % 100) * 20f, ((i * 17) % count / 100) * 20f);
+                hits += scene.QueryRadius(center, 6f, buffer);
+            }
+            elapsedMs = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+            Console.WriteLine(
+                $"   {count,6:N0} reusable:   {elapsedMs / queries,8:F4} ms/query, " +
                 $"{allocated / queries,6:N0} B/query, hits={hits}");
         }
     }
@@ -710,7 +728,7 @@ internal sealed class Program
 
     private static void MeasureLifecycleFrames()
     {
-        Console.WriteLine("\n20. Scene lifecycle benchmark");
+        Console.WriteLine("\n21. Scene lifecycle benchmark");
         foreach (int count in new[] { 100, 1_000, 10_000 })
         {
             var scene = new SceneAggregate($"Lifecycle-{count}");
@@ -853,6 +871,104 @@ internal sealed class Program
         Console.WriteLine("   [PASS] enter/step/exit + deterministic callback transitions");
         Console.WriteLine("   [PASS] strict configuration + cycle/conflict detection");
         Console.WriteLine("   [PASS] pause-aware scheduling + zero steady-state allocations");
+    }
+
+    private static void VerifyReusableGameplayQueries()
+    {
+        var scene = new SceneAggregate("ReusableGameplayQueries");
+        var source = scene.Add(new CollisionProbe(
+            Vector2D.Zero,
+            CollisionShape2D.Circle(8f)));
+        var near = scene.Add(new SpatialProbe(new Vector2D(4f, 0f)));
+        scene.Add(new SpatialProbe(new Vector2D(100f, 100f)));
+        var inactive = scene.Add(new SpatialProbe(new Vector2D(2f, 0f)));
+        inactive.SetActive(false, scene.RaiseEvent);
+
+        var results = new GameplayQueryBuffer<SpatialProbe>(3);
+        Assert(scene.FindAll(results) == 3 && results.Count == 3 &&
+               scene.CountInstances<SpatialProbe>() == 3,
+            "Reusable FindAll and CountInstances include all committed instances of the type");
+        Assert(scene.QueryArea(new Bounds2D(-10f, -10f, 10f, 10f), results) == 1 &&
+               results.Count == 1 && ReferenceEquals(results[0], near),
+            "Area queries clear and refill caller-owned storage while filtering inactive colliders");
+        Assert(scene.QueryRadius(Vector2D.Zero, 12f, results) == 1 &&
+               ReferenceEquals(results[0], near) &&
+               scene.Collisions(source, results) == 1 && ReferenceEquals(results[0], near),
+            "Radius and collision overloads preserve existing query results and ordering");
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => _ = new GameplayQueryBuffer<SpatialProbe>(-1),
+            "Query buffer rejects negative initial capacity");
+        AssertThrows<ArgumentNullException>(
+            () => scene.FindAll<SpatialProbe>(null!),
+            "Reusable query overloads reject a null destination");
+        int countBeforeInvalidQuery = results.Count;
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => scene.QueryRadius(Vector2D.Zero, 0f, results),
+            "Reusable radius queries validate arguments before mutating the destination");
+        Assert(results.Count == countBeforeInvalidQuery,
+            "A rejected reusable query leaves the caller-owned results unchanged");
+
+        scene.MarkEventsAsCommitted();
+        for (int i = 0; i < 128; i++)
+        {
+            scene.FindAll(results);
+            scene.CountInstances<SpatialProbe>();
+            scene.QueryArea(new Bounds2D(-10f, -10f, 10f, 10f), results);
+            scene.QueryRadius(Vector2D.Zero, 12f, results);
+            scene.Collisions(source, results);
+        }
+
+        int consumed = 0;
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 2_048; i++)
+        {
+            scene.FindAll(results);
+            consumed += scene.CountInstances<SpatialProbe>();
+            scene.QueryArea(new Bounds2D(-10f, -10f, 10f, 10f), results);
+            scene.QueryRadius(Vector2D.Zero, 12f, results);
+            scene.Collisions(source, results);
+            foreach (SpatialProbe result in results)
+                consumed += result.IsActive ? 1 : 0;
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert(allocated == 0 && consumed > 0,
+            $"Reusable gameplay query paths remain allocation-free (allocated {allocated:N0} B)");
+
+        Assert(!scene.CaptureGameplayQueryStatistics().IsEnabled,
+            "Gameplay query statistics are disabled by default");
+        scene.PerformStep(.016d);
+        scene.SetGameplayQueryStatisticsEnabled(true);
+        _ = scene.FindFirst<SpatialProbe>();
+        scene.FindAll(results);
+        _ = scene.CountInstances<SpatialProbe>();
+        _ = scene.FirstCollision<SpatialProbe>(source);
+        scene.Collisions(source, results);
+        scene.QueryArea(new Bounds2D(-10f, -10f, 10f, 10f), results);
+        scene.QueryRadius(Vector2D.Zero, 12f, results);
+        scene.PerformStep(.016d);
+
+        GameplayQueryStatisticsSnapshot statistics =
+            scene.CaptureGameplayQueryStatistics(reset: true);
+        Assert(statistics.IsEnabled && statistics.SampledSteps == 1 &&
+               statistics.Find.QueryCount == 3 &&
+               statistics.Collision.QueryCount == 2 &&
+               statistics.Area.QueryCount == 1 &&
+               statistics.Radius.QueryCount == 1 &&
+               statistics.TotalQueries == 7 &&
+               statistics.TotalCandidates > statistics.TotalHits,
+            "Optional statistics aggregate query categories, candidates, hits, and sampled Steps");
+        GameplayQueryStatisticsSnapshot afterReset = scene.CaptureGameplayQueryStatistics();
+        Assert(afterReset.IsEnabled && afterReset.TotalQueries == 0 &&
+               afterReset.SampledSteps == 0,
+            "Statistics capture can reset the low-frequency sampling interval");
+        scene.SetGameplayQueryStatisticsEnabled(false);
+        Assert(!scene.CaptureGameplayQueryStatistics().IsEnabled,
+            "Disabling statistics resets counters and returns to the default fast path");
+
+        Console.WriteLine("\n19. Reusable gameplay queries and optional statistics");
+        Console.WriteLine("   [PASS] caller-owned buffers + CountInstances convenience");
+        Console.WriteLine("   [PASS] zero steady-state allocations + stable query semantics");
+        Console.WriteLine("   [PASS] opt-in category/candidate/hit/time measurements");
     }
 
     private static void AssertThrows<TException>(Action action, string message)

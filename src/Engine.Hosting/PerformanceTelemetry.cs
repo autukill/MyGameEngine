@@ -1,6 +1,7 @@
 namespace GameEngine.Hosting;
 
 using System.Diagnostics;
+using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Features.TextureAssets.Infrastructure;
 
@@ -110,6 +111,7 @@ public sealed record CustomGpuMemoryDiagnostics(string Name, long EstimatedBytes
 public sealed record RuntimePerformanceSnapshot(
     DateTimeOffset CapturedAtUtc,
     FrameStatisticsSnapshot? Frame,
+    GameplayQueryStatisticsSnapshot GameplayQueries,
     TextureLibraryDiagnostics Textures,
     GpuMemoryEstimate GpuMemory,
     IReadOnlyList<CustomGpuMemoryDiagnostics> CustomResources,

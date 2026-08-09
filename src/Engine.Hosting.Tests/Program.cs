@@ -348,6 +348,7 @@ internal static class Program
                 return new RuntimePerformanceSnapshot(
                     DateTimeOffset.UnixEpoch,
                     frame,
+                    default,
                     null!,
                     memory,
                     Array.Empty<CustomGpuMemoryDiagnostics>(),

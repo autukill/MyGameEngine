@@ -251,6 +251,14 @@ public class GameInstance
     protected IReadOnlyList<T> FindAll<T>() where T : GameInstance =>
         RequireGameplay().FindAll<T>();
 
+    /// <summary>Fills caller-owned reusable storage and returns its resulting count.</summary>
+    protected int FindAll<T>(GameplayQueryBuffer<T> results) where T : GameInstance =>
+        RequireGameplay().FindAll(results);
+
+    /// <summary>Counts committed T instances without creating a result collection.</summary>
+    protected int CountInstances<T>() where T : GameInstance =>
+        RequireGameplay().CountInstances<T>();
+
     /// <summary>Returns the first active T whose collider overlaps this instance.</summary>
     protected T? FirstCollision<T>() where T : GameInstance =>
         RequireGameplay().FirstCollision<T>(this);
@@ -259,11 +267,23 @@ public class GameInstance
     protected IReadOnlyList<T> Collisions<T>() where T : GameInstance =>
         RequireGameplay().Collisions<T>(this);
 
+    protected int Collisions<T>(GameplayQueryBuffer<T> results) where T : GameInstance =>
+        RequireGameplay().Collisions(this, results);
+
     protected IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance =>
         RequireGameplay().QueryArea<T>(bounds);
 
+    protected int QueryArea<T>(Bounds2D bounds, GameplayQueryBuffer<T> results)
+        where T : GameInstance => RequireGameplay().QueryArea(bounds, results);
+
     protected IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius)
         where T : GameInstance => RequireGameplay().QueryRadius<T>(center, radius);
+
+    protected int QueryRadius<T>(
+        Vector2D center,
+        float radius,
+        GameplayQueryBuffer<T> results) where T : GameInstance =>
+        RequireGameplay().QueryRadius(center, radius, results);
 
     /// <summary>Requests a registered Scene switch at the safe boundary after the current Step.</summary>
     protected void SwitchScene(SceneRef scene) => RequireGameplay().RequestScene(scene);
