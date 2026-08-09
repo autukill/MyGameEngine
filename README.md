@@ -25,6 +25,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Engine Hosting：声明式启动、默认 2D 渲染预设、强类型 Scene Context、帧循环与资源清理。
 - 强类型 Content：Build 自动生成 Package、Sprite 与 Texture 逻辑引用，并在编译期诊断重名。
 - 可分发 Game SDK 与模板：`MyGameEngine.GameSdk` 聚合运行时程序集，`dotnet new mygameengine-game` 可在仓库外创建完整项目。
+- 开发环境诊断：`gameengine doctor` 检查 SDK、包版本、内容产物，并可显式探测隐藏 OpenGL 3.3 Context。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
 文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
@@ -52,6 +53,8 @@ src/
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
+├── Engine.Tools.Cli/                    # gameengine doctor 可分发 .NET Tool
+├── Engine.Tools.Cli.Tests/              # 项目配置、内容产物与 GPU Probe 无窗口测试
 ├── Engine.Build.ContentPipeline/        # 可跨仓库引用的 NuGet buildTransitive 包
 ├── Engine.Build.ContentPipeline.Tests/  # 本地 Feed、Tool 安装与外部消费项目集成验证
 ├── Engine.Distribution.GameSdk/         # 聚合正式运行时程序集的 NuGet 包
@@ -81,7 +84,7 @@ Engine.Core
 Engine.Hosting -> Core + Camera/Content/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 41 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 43 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -124,6 +127,7 @@ dotnet run --project src/Engine.Features/ToneMapping.Tests/ToneMapping.Tests.csp
 dotnet run --project src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj
 dotnet run --project src/Engine.Build.ContentPipeline.Tests/Engine.Build.ContentPipeline.Tests.csproj
 dotnet run --project src/Engine.Distribution.Tests/Engine.Distribution.Tests.csproj
+dotnet run --project src/Engine.Tools.Cli.Tests/Engine.Tools.Cli.Tests.csproj
 
 # 隐藏窗口运行三帧，验证 Hosting + Runner 的真实 GL 启动与安全关闭
 dotnet run --project src/MyGame.Runner/MyGame.Runner.csproj -- --smoke
@@ -169,9 +173,13 @@ dotnet pack src/Engine.Build.ContentPipeline/Engine.Build.ContentPipeline.csproj
 dotnet pack src/Engine.Templates/Engine.Templates.csproj -c Release -o artifacts/packages
 dotnet new install artifacts/packages/MyGameEngine.Templates.0.1.0-alpha.1.nupkg
 dotnet new mygameengine-game -n MyFirstGame
+dotnet tool restore --tool-manifest MyFirstGame/.config/dotnet-tools.json
+dotnet gameengine doctor MyFirstGame
 ```
 
 生成项目只引用 `MyGameEngine.GameSdk` 与 `MyGameEngine.ContentPipeline`，默认带有 Hosting 启动代码、GameInstance 示例、真实 WebP 资产和强类型 `GameAssets`。完整打包、本地 Feed 与模板说明见 [Game SDK 与项目模板](docs/GAME_SDK_AND_TEMPLATES.md)。
+
+`gameengine doctor` 默认只读检查项目；增加 `--probe-opengl` 后会创建短生命周期隐藏窗口，真实验证 OpenGL 3.3 Core。诊断代码、退出码和 CI 用法见 [`gameengine doctor` 开发环境诊断](docs/GAMEENGINE_DOCTOR.md)。
 
 ## Sprite 便利 API
 
@@ -236,8 +244,8 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 增加 `gameengine doctor`，诊断 SDK、OpenGL、GameSdk 与内容工具链环境。
-2. 增加 Render Graph、Effect owner 和 RenderTarget 租约诊断快照。
-3. 为无显示器 CI 固化软件 OpenGL 执行环境。
+1. 增加 Render Graph、Effect owner 和 RenderTarget 租约诊断快照。
+2. 为无显示器 CI 固化软件 OpenGL 执行环境。
+3. 为内容与 Shader 热重载建立失败回退边界。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

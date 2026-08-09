@@ -75,5 +75,9 @@
     <Project Path="src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj" />
     <Project Path="src/Engine.Tools.AssetCompiler/Engine.Tools.AssetCompiler.csproj" />
   </Folder>
+  <Folder Name="/Engine.Tools/Cli/">
+    <Project Path="src/Engine.Tools.Cli.Tests/Engine.Tools.Cli.Tests.csproj" />
+    <Project Path="src/Engine.Tools.Cli/Engine.Tools.Cli.csproj" />
+  </Folder>
   <Project Path="src/MyGame.Runner/MyGame.Runner.csproj" />
 </Solution>

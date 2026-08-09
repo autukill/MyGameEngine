@@ -7,6 +7,7 @@
 - `MyGameEngine.GameSdk`：运行时聚合包，包含 Core、Hosting 与全部正式 Feature 程序集，并声明 Silk.NET、SkiaSharp 等第三方运行依赖。
 - `MyGameEngine.ContentPipeline`：构建期包，负责内容编译、强类型引用生成及 Publish 复制。
 - `MyGameEngine.Templates`：`dotnet new` 模板包，生成只包含 `PackageReference` 的独立游戏项目。
+- `MyGameEngine.Cli`：开发诊断 Tool；模板通过 `.config/dotnet-tools.json` 固定同版本命令。
 
 三个包共享 `Directory.Build.props` 中的 `GameEnginePackageVersion`。模板项目中的两个引擎包版本也必须随发布版本同步；分发集成测试会阻止版本漂移。
 
@@ -16,9 +17,12 @@
 dotnet pack src/Engine.Distribution.GameSdk/Engine.Distribution.GameSdk.csproj -c Release -o artifacts/packages
 dotnet pack src/Engine.Build.ContentPipeline/Engine.Build.ContentPipeline.csproj -c Release -o artifacts/packages
 dotnet pack src/Engine.Templates/Engine.Templates.csproj -c Release -o artifacts/packages
+dotnet pack src/Engine.Tools.Cli/Engine.Tools.Cli.csproj -c Release -o artifacts/packages
 
 dotnet new install artifacts/packages/MyGameEngine.Templates.0.1.0-alpha.1.nupkg
 dotnet new mygameengine-game -n MyFirstGame
+dotnet tool restore --tool-manifest MyFirstGame/.config/dotnet-tools.json
+dotnet gameengine doctor MyFirstGame
 ```
 
 若包尚未发布到公共源，应在游戏项目使用的 `NuGet.Config` 中加入 `artifacts/packages` 本地源，然后执行：
@@ -37,8 +41,9 @@ dotnet run
 - `Assets/assets.json` 与真实 WebP 纹理。
 - 自动生成的 `MyGame.Content.GameAssets` 强类型引用。
 - `--smoke` 三帧自动退出模式，便于 CI 或环境自检。
+- 固定版本的本地 `gameengine` Tool Manifest，不要求开发者全局安装 CLI。
 
-生成项目不包含仓库绝对路径、`ProjectReference`、手写资产字符串或对 AssetCompiler 的直接调用。
+生成项目不包含仓库绝对路径、`ProjectReference`、手写资产字符串或对 AssetCompiler 的直接调用。分发测试还会安装真实 CLI，对生成项目执行普通 Doctor 与隐藏 OpenGL Probe。
 
 ## 包边界
 

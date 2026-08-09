@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GameEngine.Tools.Cli</RootNamespace>
+    <AssemblyName>GameEngineCli</AssemblyName>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>gameengine</ToolCommandName>
+    <PackageId>MyGameEngine.Cli</PackageId>
+    <Version>$(GameEnginePackageVersion)</Version>
+    <Authors>MyGameEngine</Authors>
+    <Description>Developer diagnostics and command-line tools for MyGameEngine projects.</Description>
+    <PackageTags>game-engine;cli;doctor;diagnostics;opengl</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.OpenGL" />
+    <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Maths" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\docs\GAMEENGINE_DOCTOR.md"
+          Pack="true"
+          PackagePath="README.md" />
+  </ItemGroup>
+
+  <Target Name="RemovePublishedToolSymbols" AfterTargets="Publish">
+    <ItemGroup>
+      <_PublishedToolSymbol Include="$(PublishDir)**\*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_PublishedToolSymbol)" />
+  </Target>
+</Project>

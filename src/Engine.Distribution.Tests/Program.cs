@@ -58,6 +58,7 @@ internal static class Program
         string feed = Directory.CreateDirectory(Path.Combine(workspace, "local feed")).FullName;
         string cliHome = Directory.CreateDirectory(Path.Combine(workspace, "dotnet home")).FullName;
         string packages = Directory.CreateDirectory(Path.Combine(workspace, "consumer packages")).FullName;
+        string toolPath = Directory.CreateDirectory(Path.Combine(workspace, "installed tools")).FullName;
         string nugetConfig = Path.Combine(workspace, "NuGet.Config");
 
         RunRepositoryDotNet(repositoryRoot,
@@ -68,21 +69,33 @@ internal static class Program
             "pack", "src/Engine.Build.ContentPipeline/Engine.Build.ContentPipeline.csproj",
             "--configuration", "Release", "--output", feed);
         RunRepositoryDotNet(repositoryRoot,
+            "pack", "src/Engine.Tools.Cli/Engine.Tools.Cli.csproj",
+            "--configuration", "Release", "--output", feed);
+        RunRepositoryDotNet(repositoryRoot,
             "pack", "src/Engine.Templates/Engine.Templates.csproj",
             "--configuration", "Release", "--output", feed);
 
         string gameSdkPackage = Path.Combine(feed, $"MyGameEngine.GameSdk.{version}.nupkg");
         string contentPackage = Path.Combine(feed, $"MyGameEngine.ContentPipeline.{version}.nupkg");
+        string cliPackage = Path.Combine(feed, $"MyGameEngine.Cli.{version}.nupkg");
         string templatePackage = Path.Combine(feed, $"MyGameEngine.Templates.{version}.nupkg");
         Check(File.Exists(gameSdkPackage) &&
               File.Exists(contentPackage) &&
+              File.Exists(cliPackage) &&
               File.Exists(templatePackage),
-            "GameSdk, ContentPipeline, and Templates packages share one version");
+            "GameSdk, ContentPipeline, CLI, and Templates packages share one version");
 
         VerifyGameSdkPackage(repositoryRoot, gameSdkPackage);
+        VerifyCliPackage(cliPackage);
         VerifyTemplatePackage(templatePackage, version);
 
         WriteNuGetConfig(nugetConfig, feed);
+        RunDotNet(workspace, cliHome,
+            "tool", "install", "MyGameEngine.Cli",
+            "--tool-path", toolPath,
+            "--version", version,
+            "--configfile", nugetConfig,
+            "--no-cache");
         RunDotNet(workspace, cliHome,
             "new", "install", templatePackage, "--force");
 
@@ -107,6 +120,11 @@ internal static class Program
             "Generated project uses version-aligned PackageReferences only");
         Check(!allText.Contains(repositoryRoot, StringComparison.OrdinalIgnoreCase),
             "Generated project contains no repository absolute path");
+        string toolManifest = File.ReadAllText(
+            Path.Combine(consumer, ".config", "dotnet-tools.json"));
+        Check(toolManifest.Contains($"\"version\": \"{version}\"", StringComparison.Ordinal) &&
+              toolManifest.Contains("\"gameengine\"", StringComparison.Ordinal),
+            "Generated project pins the local gameengine tool version");
 
         RunDotNet(consumer, cliHome,
             "restore", projectPath,
@@ -123,6 +141,32 @@ internal static class Program
               File.Exists(generatedReferences) &&
               File.Exists(compiledAssets),
             "External build compiles assets and generates strongly typed references");
+
+        string toolCommand = Path.Combine(
+            toolPath,
+            OperatingSystem.IsWindows() ? "gameengine.exe" : "gameengine");
+        ProcessResult doctor = RunProcess(
+            toolCommand, consumer, cliHome,
+            "doctor", projectPath);
+        Check(doctor.Output.Contains("Summary: 0 error(s), 0 warning(s).", StringComparison.Ordinal),
+            "Installed gameengine doctor validates the generated Debug project");
+        ProcessResult openGlDoctor = RunProcess(
+            toolCommand, consumer, cliHome,
+            "doctor", projectPath, "--probe-opengl");
+        Check(openGlDoctor.Output.Contains("[PASS] GE300", StringComparison.Ordinal),
+            "Installed gameengine doctor creates a hidden OpenGL 3.3 context");
+        ProcessResult failedDoctor = RunProcess(
+            toolCommand, consumer, cliHome, expectSuccess: false,
+            "doctor", Path.Combine(consumer, "missing.csproj"));
+        Check(failedDoctor.ExitCode == 1 &&
+              failedDoctor.Output.Contains("[FAIL] GE100", StringComparison.Ordinal),
+            "Installed gameengine doctor returns exit code 1 for diagnostic errors");
+        ProcessResult invalidDoctor = RunProcess(
+            toolCommand, consumer, cliHome, expectSuccess: false,
+            "doctor", projectPath, "--unknown");
+        Check(invalidDoctor.ExitCode == 2 &&
+              invalidDoctor.Output.Contains("Usage: gameengine doctor", StringComparison.Ordinal),
+            "Installed gameengine doctor returns exit code 2 for invalid usage");
 
         RunDotNet(consumer, cliHome,
             "run", "--project", projectPath,
@@ -178,8 +222,11 @@ internal static class Program
               entries.Contains(
                   "content/templates/mygameengine-game/Assets/white.webp",
                   StringComparer.Ordinal) &&
+              entries.Contains(
+                  "content/templates/mygameengine-game/.config/dotnet-tools.json",
+                  StringComparer.Ordinal) &&
               entries.Contains("README.md", StringComparer.Ordinal),
-            "Template package contains metadata, source, documentation, and WebP asset");
+            "Template package contains metadata, local tools, source, documentation, and WebP asset");
 
         ZipArchiveEntry project = archive.Entries.Single(entry =>
             entry.FullName.EndsWith("/MyGameTemplate.csproj", StringComparison.Ordinal));
@@ -187,6 +234,25 @@ internal static class Program
         int versionOccurrences = projectText.Split(version, StringSplitOptions.None).Length - 1;
         Check(versionOccurrences == 2,
             "Template package references the exact shared engine version twice");
+
+        ZipArchiveEntry toolManifest = archive.Entries.Single(entry =>
+            entry.FullName.EndsWith("/.config/dotnet-tools.json", StringComparison.Ordinal));
+        Check(ReadText(toolManifest).Contains($"\"version\": \"{version}\"", StringComparison.Ordinal),
+            "Template package pins the exact shared CLI version");
+    }
+
+    private static void VerifyCliPackage(string packagePath)
+    {
+        using var archive = ZipFile.OpenRead(packagePath);
+        string[] entries = archive.Entries.Select(entry => entry.FullName).ToArray();
+        Check(entries.Contains(
+                  "tools/net10.0/any/DotnetToolSettings.xml", StringComparer.Ordinal) &&
+              entries.Contains(
+                  "tools/net10.0/any/GameEngineCli.dll", StringComparer.Ordinal) &&
+              entries.Contains("README.md", StringComparer.Ordinal),
+            "CLI package contains the gameengine command and documentation");
+        Check(!entries.Any(entry => entry.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)),
+            "CLI package excludes symbols");
     }
 
     private static void CopyRestoredDependencyPackages(string repositoryRoot, string feed)
@@ -254,6 +320,14 @@ internal static class Program
         string workingDirectory,
         string? cliHome,
         params string[] arguments)
+        => RunProcess(fileName, workingDirectory, cliHome, expectSuccess: true, arguments);
+
+    private static ProcessResult RunProcess(
+        string fileName,
+        string workingDirectory,
+        string? cliHome,
+        bool expectSuccess,
+        params string[] arguments)
     {
         var start = new ProcessStartInfo(fileName)
         {
@@ -274,7 +348,7 @@ internal static class Program
         process.WaitForExit();
         Task.WaitAll(outputTask, errorTask);
         string combined = outputTask.Result + Environment.NewLine + errorTask.Result;
-        if (process.ExitCode != 0)
+        if (expectSuccess && process.ExitCode != 0)
             throw new InvalidOperationException(
                 $"Command failed ({process.ExitCode}): {fileName} {string.Join(' ', arguments)}" +
                 Environment.NewLine + combined);

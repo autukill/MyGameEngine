@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 41 个 .NET 项目、163 个 C# 文件；除十一个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 43 个 .NET 项目、169 个 C# 文件；除十一个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -28,7 +28,7 @@
 - `StencilMaskGroupRef` 支持多 owner 共享组；`RequestStencilMasks` 允许单 owner 批量提交几何，同时保持一套 Pass/RenderTarget。
 - `GameApplicationBuilder`、默认 2D 渲染预设与强类型 `Default2DGameContext` 已统一接管窗口事件、内容、Scene 帧循环、resize 和逆序资源清理。
 - Runner 已迁移到 Hosting API，不再手工持有 Shader、Batch、Library、RenderTarget、Pipeline 或窗口回调。
-- 16 个无窗口冒烟/集成项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、编译产物、动态 owner、Hosting、Bloom/Tone Mapping/Presentation 设置、池所有权和外部分发闭环。
+- 17 个无窗口冒烟/集成项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、编译产物、动态 owner、Hosting、Bloom/Tone Mapping/Presentation 设置、池所有权、CLI 诊断和外部分发闭环。
 - `Engine.Testing.Visual` 提供隐藏固定步长窗口、RGBA8 framebuffer 捕获、PNG 编解码和像素容差比较。
 - 自动 GPU 回归覆盖 Sprite、真实圆形/Sprite Alpha Stencil、动态 resize、Bloom、双 Bloom Surface 串联，以及 HDR、LDR GUI、ACES/Reinhard、曝光、resize 和释放，共 14 个 checkpoint。
 - AssetCompiler 可打包为 `gameengine-assets` .NET Tool；ContentPipeline NuGet 包通过 `buildTransitive` 为外部项目提供内置编译器、增量 Build 与 Publish 接入。
@@ -37,6 +37,8 @@
 - `MyGameEngine.GameSdk` 已聚合 13 个正式运行时程序集并声明 Silk.NET/SkiaSharp 依赖；包内不包含源码项目依赖、符号或仓库绝对路径。
 - `MyGameEngine.Templates` 已提供 `dotnet new mygameengine-game`；生成项目包含 Hosting、GameInstance、声明式 WebP 内容与强类型引用，不包含 `ProjectReference`。
 - 分发集成测试使用隔离 CLI Home、NuGet 包目录和临时本地 Feed，真实验证 Pack、模板安装、仓库外 Restore/Build、三帧 smoke run 与 Publish。
+- `MyGameEngine.Cli` 提供 `gameengine doctor`：默认执行无图形副作用的项目与内容诊断，`--probe-opengl` 显式创建隐藏 OpenGL 3.3 Context。
+- 模板包含固定版本的本地 Tool Manifest；分发集成测试真实安装 CLI，并在生成项目上验证零警告 Doctor 与 OpenGL Vendor/Renderer Probe。
 
 ## 仍在演进
 
@@ -48,11 +50,11 @@
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 - Hosting v1 仅支持单窗口与单初始 Scene，尚无 Scene 切换栈、暂停策略或后台加载。
 
-## 下一里程碑：开发环境诊断与运行时可观察性
+## 下一里程碑：运行时可观察性
 
-1. 增加 `gameengine doctor`，检查 SDK、OpenGL、GameSdk、内容编译器与输出路径。
-2. 增加 RenderSurface、Effect owner、Pass 与 RenderTarget 租约只读诊断快照。
-3. 固化无显示器 CI 的软件 OpenGL 环境。
+1. 增加 RenderSurface、Effect owner、Pass 与 RenderTarget 租约只读诊断快照。
+2. 固化无显示器 CI 的软件 OpenGL 环境。
+3. 为内容与 Shader 热重载建立失败回退边界。
 
 ## 已知限制
 
@@ -61,4 +63,4 @@
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
