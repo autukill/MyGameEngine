@@ -20,6 +20,8 @@ public sealed class GameApplication : IDisposable
         _window.OnLoad += HandleLoad;
         _window.OnStep += HandleStep;
         _window.OnDraw += HandleDraw;
+        if (plan.Renderer.PerformanceTelemetry is not null)
+            _window.OnFrameCompleted += HandleFrameCompleted;
         _window.OnResize += HandleResize;
         _window.OnClosing += HandleClosing;
     }
@@ -79,6 +81,8 @@ public sealed class GameApplication : IDisposable
         _runtime!.Draw();
         FlushCloseRequest();
     }
+
+    private void HandleFrameCompleted() => _runtime?.SamplePerformance();
 
     private void HandleResize(int width, int height) => _runtime?.Resize(width, height);
 

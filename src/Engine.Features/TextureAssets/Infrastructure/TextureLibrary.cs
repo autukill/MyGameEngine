@@ -30,6 +30,19 @@ public sealed class TextureLibrary : ITextureResolver, IDisposable
 
     public int Count => _entries.Count;
 
+    /// <summary>显式捕获 RGBA8 Texture 与 Atlas 页的纯值显存估算。</summary>
+    public TextureLibraryDiagnostics CaptureDiagnostics()
+    {
+        ThrowIfDisposed();
+        return new TextureLibraryDiagnostics(_entries
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => new TextureMemoryDiagnostics(
+                pair.Key,
+                pair.Value.Metadata.Width,
+                pair.Value.Metadata.Height,
+                checked((long)pair.Value.Metadata.Width * pair.Value.Metadata.Height * 4L))));
+    }
+
     public TextureRef Load(
         string name,
         string path,

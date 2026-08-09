@@ -48,8 +48,12 @@ public sealed class GameApplicationBuilder
             throw new InvalidOperationException("Call ConfigureScene before Build.");
         var renderer = _renderer.ToPlan();
         renderer.Validate();
+        EngineWindowOptions windowOptions = renderer.PerformanceTelemetry is not null &&
+                                            _windowOptions.FrameStatistics is null
+            ? _windowOptions.WithFrameStatistics()
+            : _windowOptions;
         return new GameApplicationPlan(
-            _windowOptions,
+            windowOptions,
             renderer,
             _sceneName,
             _configureScene);

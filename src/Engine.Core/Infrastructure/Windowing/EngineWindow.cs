@@ -33,6 +33,7 @@ public class EngineWindow
     public event Action? OnDrawBegin;
     public event Action? OnDraw;
     public event Action? OnDrawGUI;
+    public event Action? OnFrameCompleted;
     public event Action<int, int>? OnResize;
     public event Action? OnClosing;
 
@@ -111,6 +112,7 @@ public class EngineWindow
         {
             statistics?.EndRenderFrame();
         }
+        OnFrameCompleted?.Invoke();
     }
 
     private void HandleResize(Vector2D<int> size)

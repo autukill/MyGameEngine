@@ -15,6 +15,7 @@ public sealed class Default2DRendererOptions
     private BloomSettings? _bloom;
     private bool _stencilMaskingEnabled;
     private bool _sceneGuiEnabled = true;
+    private PerformanceTelemetryOptions? _performanceTelemetry;
 
     public Default2DRendererOptions UseContent(
         string packagesRoot,
@@ -66,6 +67,16 @@ public sealed class Default2DRendererOptions
         return this;
     }
 
+    public Default2DRendererOptions EnablePerformanceTelemetry(
+        PerformanceTelemetryOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (_performanceTelemetry is not null)
+            throw new InvalidOperationException("Performance telemetry is already enabled.");
+        _performanceTelemetry = options;
+        return this;
+    }
+
     internal Default2DRendererPlan ToPlan() => new(
         _contentPackagesRoot,
         _contentManifest,
@@ -74,7 +85,8 @@ public sealed class Default2DRendererOptions
         _bloom,
         _stencilMaskingEnabled,
         _sceneGuiEnabled,
-        _contentPackage);
+        _contentPackage,
+        _performanceTelemetry);
 }
 
 internal sealed record Default2DRendererPlan(
@@ -85,7 +97,8 @@ internal sealed record Default2DRendererPlan(
     BloomSettings? Bloom,
     bool StencilMaskingEnabled,
     bool SceneGuiEnabled,
-    ContentPackageRef? ContentPackage = null)
+    ContentPackageRef? ContentPackage = null,
+    PerformanceTelemetryOptions? PerformanceTelemetry = null)
 {
     public void Validate()
     {

@@ -9,6 +9,7 @@
 - [Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)：运行时聚合包、模板安装、仓库外项目与分发验证边界。
 - [`gameengine doctor` 开发环境诊断](GAMEENGINE_DOCTOR.md)：项目、包版本、Content 产物、OpenGL Probe 与退出码。
 - [运行时渲染诊断与帧统计](RUNTIME_RENDER_DIAGNOSTICS.md)：FPS/UPS 控制、Draw/Flush/Texture/Pass 统计、Surface 图、Effect owner 与 RenderTarget 租约。
+- [性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)：Texture/Atlas/RT 显存估算、预算超限、可选 Sink、控制台与 JSON Lines。
 - [Engine Hosting 与默认 2D 启动套件](ENGINE_HOSTING.md)：GameApplication、渲染预设、强类型 Context、帧循环和资源所有权。
 - [强类型 Content 引用](STRONGLY_TYPED_CONTENT.md)：GameAssets 生成、Atlas 边界、命名冲突和 MSBuild 配置。
 - [动态渲染效果使用指南](DYNAMIC_RENDER_EFFECTS.md)：效果事件、owner 共享、ScenePipelineBuilder、RenderTargetPool 与 Stencil/Bloom 装配。

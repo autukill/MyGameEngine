@@ -96,3 +96,5 @@ if (context.TryCaptureFrameStatistics(out FrameStatisticsSnapshot frame))
 - 已 Dispose 的 Pipeline、Builder 或 Pool 会拒绝捕获。
 
 Runner 的 `--smoke` 显式启用统计，并在效果图稳定后验证完整 HDR、Bloom、Stencil 与 Presentation 帧的 Draw/Flush/Texture/Pass 计数；GPU 回归测试继续通过 Pool 快照读取租约计数，验证创建、resize 与 release 生命周期。
+
+需要按固定间隔聚合帧计数、Texture/Atlas 和 RenderTarget 显存估算，或检查开发期预算时，使用[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)。该路径只在采样点捕获集合，不把 Render Graph 快照改为每帧模型。

@@ -36,6 +36,7 @@ internal sealed class Default2DGameRuntime : IDisposable
     private RenderTargetPool _targetPool = null!;
     private RenderPipeline _pipeline = null!;
     private ScenePipelineBuilder _builder = null!;
+    private PerformanceTelemetrySampler? _performanceTelemetry;
     private bool _disposed;
 
     public Default2DGameContext Context { get; private set; } = null!;
@@ -84,6 +85,8 @@ internal sealed class Default2DGameRuntime : IDisposable
         _window.Width,
         _window.Height,
         _window.FrameStatisticsSink));
+
+    public void SamplePerformance() => _performanceTelemetry?.Tick();
 
     public void Resize(int width, int height)
     {
@@ -252,7 +255,15 @@ internal sealed class Default2DGameRuntime : IDisposable
             _pipeline,
             _builder,
             _targetPool,
+            _sceneTarget,
+            _guiTarget,
             _close);
+        if (renderer.PerformanceTelemetry is { } telemetry)
+        {
+            _performanceTelemetry = new PerformanceTelemetrySampler(
+                telemetry,
+                () => Context.CapturePerformanceSnapshot(telemetry.Budget));
+        }
         _plan.ConfigureScene(Context);
         _scene.Add(new DefaultWorldPresentationController(_scene.RaiseEvent, renderer));
         if (renderer.SceneGuiEnabled)

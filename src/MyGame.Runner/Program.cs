@@ -1,6 +1,8 @@
 namespace MyGame.Runner;
 
 using System.Numerics;
+using System.Text;
+using System.Text.Json;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
@@ -14,6 +16,11 @@ using MyGame.Runner.Content;
 internal static class Program {
     private static void Main( string[] args ) {
         bool smoke = args.Contains( "--smoke", StringComparer.Ordinal );
+        bool consoleDiagnostics = args.Contains( "--diagnostics", StringComparer.Ordinal );
+        string? diagnosticsJson = GetOptionValue( args, "--diagnostics-json" );
+        using var telemetrySink = consoleDiagnostics || diagnosticsJson is not null
+            ? new RunnerPerformanceTelemetrySink( consoleDiagnostics, diagnosticsJson )
+            : null;
         Console.WriteLine( "=== Engine Hosting Demo ===" );
         Console.WriteLine( "  4 个 OrbitingSprite 做圆周运动" );
         Console.WriteLine( "  鼠标位置 = Spotlight 中心 (Stencil ShowInside)" );
@@ -31,21 +38,38 @@ internal static class Program {
 
         using var game = GameApplication
             .Create( windowOptions )
-            .UseDefault2DRenderer( renderer => renderer
-                .UseContent( GameAssets.Packages.Root )
-                .UseHdr(
-                    ToneMappingSettings.Default,
-                    new BloomSettings(
-                        0.3f,
-                        1.5f,
-                        1f,
-                        2,
-                        BloomResolution.Half ) )
-                .EnableStencilMasking() )
+            .UseDefault2DRenderer( renderer => ConfigureRenderer( renderer, telemetrySink ) )
             .ConfigureScene( "MainScene", context => ConfigureScene( context, smoke ) )
             .Build();
 
         game.Run();
+    }
+
+    private static void ConfigureRenderer(
+        Default2DRendererOptions renderer,
+        RunnerPerformanceTelemetrySink? telemetrySink ) {
+        renderer
+            .UseContent( GameAssets.Packages.Root )
+            .UseHdr(
+                ToneMappingSettings.Default,
+                new BloomSettings(
+                    0.3f,
+                    1.5f,
+                    1f,
+                    2,
+                    BloomResolution.Half ) )
+            .EnableStencilMasking();
+        if ( telemetrySink is not null ) {
+            renderer.EnablePerformanceTelemetry( new PerformanceTelemetryOptions(
+                telemetrySink,
+                TimeSpan.FromSeconds( 1 ),
+                new PerformanceBudget(
+                    maxDrawCalls: 500,
+                    maxBatchFlushes: 250,
+                    maxTextureSwitches: 100,
+                    maxActivePasses: 32,
+                    maxEstimatedGpuMemoryBytes: 256L * 1024 * 1024 ) ) );
+        }
     }
 
     private static void ConfigureScene( Default2DGameContext context, bool smoke ) {
@@ -107,8 +131,65 @@ internal static class Program {
                     $"flushes={diagnostics.FrameStatistics.Value.BatchFlushes}, " +
                     $"textureSwitches={diagnostics.FrameStatistics.Value.TextureSwitches}, " +
                     $"activePasses={diagnostics.FrameStatistics.Value.ActivePasses}" );
+                var performance = context.CapturePerformanceSnapshot();
+                if ( performance.GpuMemory.TextureCount == 0 ||
+                     performance.GpuMemory.RootRenderTargetCount != 2 ||
+                     performance.GpuMemory.LeasedRenderTargetCount == 0 ||
+                     performance.GpuMemory.TotalBytes <= 0 ) {
+                    throw new InvalidOperationException(
+                        "Hosting performance diagnostics did not capture GPU resource estimates." );
+                }
             }
             if ( ++_steps >= 3 ) close();
         }
+    }
+
+    private static string? GetOptionValue( string[] args, string option ) {
+        for (int i = 0; i < args.Length; i++) {
+            if ( args[i].StartsWith( option + "=", StringComparison.Ordinal ) )
+                return RequireOptionValue( args[i][(option.Length + 1)..], option );
+            if ( args[i] != option ) continue;
+            if ( i + 1 >= args.Length || args[i + 1].StartsWith( "--", StringComparison.Ordinal ) )
+                throw new ArgumentException( $"{option} requires a file path." );
+            return RequireOptionValue( args[i + 1], option );
+        }
+        return null;
+    }
+
+    private static string RequireOptionValue( string value, string option ) =>
+        string.IsNullOrWhiteSpace( value )
+            ? throw new ArgumentException( $"{option} requires a file path." )
+            : value;
+
+    private sealed class RunnerPerformanceTelemetrySink : IPerformanceTelemetrySink, IDisposable {
+        private readonly bool _writeConsole;
+        private readonly StreamWriter? _jsonWriter;
+
+        public RunnerPerformanceTelemetrySink( bool writeConsole, string? jsonPath ) {
+            _writeConsole = writeConsole;
+            if ( jsonPath is null ) return;
+            string fullPath = Path.GetFullPath( jsonPath );
+            string? directory = Path.GetDirectoryName( fullPath );
+            if ( !string.IsNullOrEmpty( directory ) ) Directory.CreateDirectory( directory );
+            _jsonWriter = new StreamWriter( fullPath, append: false, new UTF8Encoding( false ) );
+        }
+
+        public void Publish( RuntimePerformanceSnapshot snapshot ) {
+            if ( _writeConsole ) {
+                var frame = snapshot.Frame;
+                Console.WriteLine(
+                    $"[Performance] fps={frame?.FramesPerSecond:F1}, " +
+                    $"ups={frame?.UpdatesPerSecond:F1}, " +
+                    $"draw={frame?.DrawCalls}, flush={frame?.BatchFlushes}, " +
+                    $"textures={snapshot.GpuMemory.TextureCount}, " +
+                    $"gpuMiB={snapshot.GpuMemory.TotalBytes / 1048576d:F2}, " +
+                    $"violations={snapshot.BudgetViolations.Count}" );
+            }
+            if ( _jsonWriter is null ) return;
+            _jsonWriter.WriteLine( JsonSerializer.Serialize( snapshot ) );
+            _jsonWriter.Flush();
+        }
+
+        public void Dispose() => _jsonWriter?.Dispose();
     }
 }

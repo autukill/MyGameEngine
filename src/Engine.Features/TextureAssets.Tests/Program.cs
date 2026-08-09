@@ -43,6 +43,10 @@ internal static class Program
         Check(backend.Uploads.Count == 1 &&
               backend.Uploads[0].Sampler == TextureSampler.PixelArt,
             "Sampler state reaches the backend");
+        var diagnostics = library.CaptureDiagnostics();
+        Check(diagnostics.TextureCount == 1 && diagnostics.EstimatedBytes == 24 &&
+              diagnostics.Textures[0] == new TextureMemoryDiagnostics("test.rgba", 2, 3, 24),
+            "Texture diagnostics estimate RGBA8 bytes without exposing handles");
         Check(!library.TryResolve(new TextureRef("missing"), out _),
             "Unknown texture resolves safely");
 

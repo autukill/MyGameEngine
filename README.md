@@ -184,6 +184,8 @@ dotnet gameengine doctor MyFirstGame
 
 运行时可通过 `context.CaptureRenderDiagnostics()` 低频捕获渲染图快照，检查 Pass 执行顺序、Effect owner、Surface 关系和临时 RenderTarget 租约。窗口支持启动及运行时 FPS/UPS/VSync 控制；显式调用 `WithFrameStatistics()` 后还可读取 Draw Call、Batch Flush、纹理切换和活跃 Pass。完整 API、统计口径与性能边界见 [运行时渲染诊断快照](docs/RUNTIME_RENDER_DIAGNOSTICS.md)。
 
+开发期还可启用 `PerformanceTelemetryOptions`，按预算低频输出 Texture/Atlas、根目标、动态与缓存 RenderTarget 的显存估算。Runner 的 `--diagnostics` 输出控制台摘要，`--diagnostics-json <path>` 写入 JSON Lines；详见[性能预算与低频遥测](docs/PERFORMANCE_TELEMETRY.md)。
+
 ## Sprite 便利 API
 
 ```csharp

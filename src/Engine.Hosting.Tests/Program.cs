@@ -2,6 +2,7 @@ namespace GameEngine.Hosting.Tests;
 
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.Presentation.Domain;
@@ -19,6 +20,7 @@ internal static class Program
         TestBuilderValidation();
         TestResourceOwnership();
         TestDefaultPresentationControllers();
+        TestPerformanceTelemetry();
         Console.WriteLine();
         Console.WriteLine(_failures == 0
             ? "=== All Engine Hosting smoke tests passed ==="
@@ -175,6 +177,88 @@ internal static class Program
             "SceneGui is declared as an exposure-independent top layer");
     }
 
+    private static void TestPerformanceTelemetry()
+    {
+        Console.WriteLine("5. Performance budgets and low-frequency telemetry");
+        var sink = new RecordingTelemetrySink();
+        var telemetry = new PerformanceTelemetryOptions(
+            sink,
+            TimeSpan.FromSeconds(1),
+            new PerformanceBudget(maxDrawCalls: 10));
+        var plan = GameApplication.Create()
+            .UseDefault2DRenderer(renderer => renderer.EnablePerformanceTelemetry(telemetry))
+            .ConfigureScene("Telemetry", _ => { })
+            .BuildPlan();
+        Check(plan.Renderer.PerformanceTelemetry == telemetry &&
+              plan.WindowOptions.FrameStatistics is not null,
+            "Enabling telemetry freezes its plan and automatically enables frame statistics");
+        CheckThrows<InvalidOperationException>(
+            () => new Default2DRendererOptions()
+                .EnablePerformanceTelemetry(telemetry)
+                .EnablePerformanceTelemetry(telemetry),
+            "Telemetry cannot be configured twice");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => _ = new PerformanceBudget(maxDrawCalls: -1),
+            "Negative performance limits are rejected");
+
+        var frame = new FrameStatisticsSnapshot(1, 60, 60, 12, 6, 3, 7);
+        var memory = new GpuMemoryEstimate(
+            2, 100,
+            1, 200,
+            3, 300,
+            1, 50,
+            1, 25);
+        var budget = new PerformanceBudget(
+            maxDrawCalls: 11,
+            maxBatchFlushes: 6,
+            maxTextureSwitches: 2,
+            maxActivePasses: 8,
+            maxEstimatedGpuMemoryBytes: 674);
+        var violations = budget.Evaluate(frame, memory);
+        Check(violations.Select(item => item.Metric).SequenceEqual(new[]
+              {
+                  PerformanceMetric.DrawCalls,
+                  PerformanceMetric.TextureSwitches,
+                  PerformanceMetric.EstimatedGpuMemoryBytes
+              }),
+            "Budgets report only strictly exceeded frame and memory limits");
+
+        Check(RenderTargetMemoryEstimator.EstimateBytes(
+                  new RenderTargetDescriptor(10, 20)) == 800 &&
+              RenderTargetMemoryEstimator.EstimateBytes(
+                  new RenderTargetDescriptor(
+                      10, 20,
+                      RenderTargetColorFormat.Rgba16Float,
+                      RenderTargetDepthStencilFormat.Depth24Stencil8)) == 2400,
+            "RenderTarget estimates include declared color and depth/stencil formats");
+
+        long timestamp = 0;
+        int captures = 0;
+        var sampler = new PerformanceTelemetrySampler(
+            telemetry,
+            () =>
+            {
+                captures++;
+                return new RuntimePerformanceSnapshot(
+                    DateTimeOffset.UnixEpoch,
+                    frame,
+                    null!,
+                    memory,
+                    Array.Empty<CustomGpuMemoryDiagnostics>(),
+                    violations);
+            },
+            () => timestamp,
+            timestampFrequency: 1000);
+        Check(sampler.Tick() && captures == 1 && sink.Snapshots.Count == 1,
+            "First completed frame publishes immediately");
+        timestamp = 999;
+        Check(!sampler.Tick() && captures == 1,
+            "Frames inside the interval do not capture or publish");
+        timestamp = 1000;
+        Check(sampler.Tick() && captures == 2 && sink.Snapshots.Count == 2,
+            "The next interval publishes one fresh snapshot");
+    }
+
     private static void Check(bool condition, string name)
     {
         if (condition)
@@ -214,5 +298,12 @@ internal static class Program
             order.Add(name);
             if (fail) throw new InvalidOperationException(name);
         }
+    }
+
+    private sealed class RecordingTelemetrySink : IPerformanceTelemetrySink
+    {
+        public List<RuntimePerformanceSnapshot> Snapshots { get; } = new();
+
+        public void Publish(RuntimePerformanceSnapshot snapshot) => Snapshots.Add(snapshot);
     }
 }

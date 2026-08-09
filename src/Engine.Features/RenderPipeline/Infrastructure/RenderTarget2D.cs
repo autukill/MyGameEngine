@@ -20,6 +20,13 @@ public sealed class RenderTarget2D : IDisposable
     public bool HasDepthStencil { get; }
     public RenderTargetColorFormat ColorFormat { get; }
     public Vector2 Size => new(Width, Height);
+    public RenderTargetDescriptor Descriptor => new(
+        Width,
+        Height,
+        ColorFormat,
+        HasDepthStencil
+            ? RenderTargetDepthStencilFormat.Depth24Stencil8
+            : RenderTargetDepthStencilFormat.None);
 
     public RenderTarget2D(GL gl, int width, int height, bool withDepthStencil = true)
         : this(gl, new RenderTargetDescriptor(

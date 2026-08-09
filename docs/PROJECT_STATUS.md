@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 43 个 .NET 项目、173 个 C# 文件；除十一个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 43 个 .NET 项目、176 个 C# 文件；除十一个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -43,6 +43,8 @@
 - Hosting 聚合入口 `CaptureRenderDiagnostics()` 不暴露 GPU 对象；Runner smoke 在真实 HDR/Stencil/Bloom/Presentation 图上验证快照，GPU 回归通过快照读取 resize/release 后的租约计数。
 - `FrameRateSettings` 支持启动及运行时 FPS/UPS/VSync 控制；`0` 表示不限速，固定模拟 delta 与真实调度频率保持独立。
 - 可选帧统计默认关闭；启用后零帧分配记录实际 FPS/UPS、引擎 Draw Call、有效 Batch Flush、纹理切换和活跃 Pass，并聚合到 Hosting 诊断快照。
+- TextureLibrary、根 RenderTarget 与 Pool 提供稳定显存估算；活动租约、可用缓存和高级自定义资源分项统计，不暴露 GPU Handle。
+- `PerformanceBudget` 与低频 Sink 只在采样点创建结构化快照；Runner 支持 `--diagnostics` 控制台摘要和 `--diagnostics-json` JSON Lines。
 
 ## 仍在演进
 
@@ -54,11 +56,11 @@
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 - Hosting v1 仅支持单窗口与单初始 Scene，尚无 Scene 切换栈、暂停策略或后台加载。
 
-## 下一里程碑：CI 图形环境与低频遥测
+## 下一里程碑：CI 图形环境与开发期热重载
 
 1. 固化无显示器 CI 的软件 OpenGL 环境。
-2. 基于现有帧统计补充显存估算与低频遥测导出，不在热路径建立事件流。
-3. 为内容与 Shader 热重载建立失败回退边界。
+2. 为 Content 包热重载建立指纹检测、后台准备与帧边界原子替换。
+3. 为 Shader 热重载保留上一份有效 Program，并把编译错误交给现有诊断 Sink。
 
 ## 已知限制
 
@@ -67,4 +69,4 @@
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
