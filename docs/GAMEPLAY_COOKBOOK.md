@@ -39,6 +39,23 @@ if (KeyDown(InputKey.Space) && fireCooldown <= 0f)
 
 `KeyPressed` 适合一次性动作；`KeyDown + cooldown` 适合按住连续触发。
 
+如果玩家在冷却结束前短按并松开，使用预创建的 `InputActionBuffer` 保留这次意图：
+
+```csharp
+private readonly InputActionBuffer fire = new(GameInputs.Fire, 0.12d);
+
+UpdateActionBuffer(fire, deltaTime);
+fireCooldown = MathF.Max(0f, fireCooldown - (float)deltaTime);
+if ((ActionDown(GameInputs.Fire) || fire.IsBuffered) && fireCooldown <= 0f)
+{
+    Spawn(BulletPrefab, spawnArgs);
+    fire.TryConsume();
+    fireCooldown = FireInterval;
+}
+```
+
+平台跳跃可再组合 `GameplayGracePeriod` 记录最近一次着地：输入缓冲解决“按早了”，着地宽限解决“晚按了一点”。两个窗口都跟随实例时间域，暂停时不会偷偷过期。
+
 ## 带强类型参数的 Prefab
 
 参数应是表达一次创建所需信息的不可变值，而不是通用属性字典：

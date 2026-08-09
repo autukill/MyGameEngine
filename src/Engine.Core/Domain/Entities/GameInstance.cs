@@ -287,6 +287,16 @@ public class GameInstance
     protected bool ActionReleased(InputActionRef action) =>
         LogicalControls.ActionReleased(Controls, action);
 
+    /// <summary>
+    /// Ages and captures one preallocated logical action buffer in this Instance's time domain.
+    /// Call once per Step before testing TryConsume().
+    /// </summary>
+    protected void UpdateActionBuffer(InputActionBuffer buffer, double deltaTime)
+    {
+        ArgumentNullException.ThrowIfNull(buffer);
+        buffer.Update(ActionPressed(buffer.Action), deltaTime);
+    }
+
     protected Vector2D InputAxis2D(InputAxis2DRef axis) =>
         LogicalControls.Axis2D(Controls, axis);
 

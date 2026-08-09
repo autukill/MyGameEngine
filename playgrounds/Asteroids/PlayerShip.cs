@@ -2,6 +2,7 @@ namespace AsteroidsPlayground;
 
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
 public sealed class PlayerShip : GameInstance
@@ -16,6 +17,7 @@ public sealed class PlayerShip : GameInstance
 
     private readonly float _worldWidth;
     private readonly float _worldHeight;
+    private readonly InputActionBuffer _fireBuffer = new(GameInputs.Fire, 0.12d);
     private Vector2D _velocity;
     private float _fireCooldown;
     private double _survivalSeconds;
@@ -46,7 +48,8 @@ public sealed class PlayerShip : GameInstance
         WrapAround();
 
         _fireCooldown = MathF.Max(0f, _fireCooldown - dt);
-        if (ActionDown(GameInputs.Fire) && _fireCooldown <= 0f)
+        UpdateActionBuffer(_fireBuffer, deltaTime);
+        if ((ActionDown(GameInputs.Fire) || _fireBuffer.IsBuffered) && _fireCooldown <= 0f)
         {
             var spawn = new LaserSpawnArgs(
                 Position + forward * 38f,
@@ -54,6 +57,7 @@ public sealed class PlayerShip : GameInstance
             Spawn(LaserPrefab, spawn);
             _shotsFired++;
             _fireCooldown = FireInterval;
+            _fireBuffer.TryConsume();
         }
 
         if (FirstCollision<Asteroid>() is not null)

@@ -63,10 +63,44 @@ Action 提供三种语义：
 
 Scene 会把共享的不可变 `InputMap` 注入已有和后续实例。实例尚未进入 Scene 时使用 Null Object：查询返回 `false` 或零向量，不需要空值判断。已经配置 Input Map 后查询未知逻辑名称会抛出明确异常，避免拼写错误静默失效。
 
+## 输入缓冲
+
+`InputActionBuffer` 记住一次短暂按下，直到玩法条件允许消费。对象只在实例构造时创建一次，每个 Step 先捕获、再按条件消费：
+
+```csharp
+private readonly InputActionBuffer jump = new(GameInputs.Jump, 0.12d);
+
+public override void OnStep(double deltaTime)
+{
+    UpdateActionBuffer(jump, deltaTime);
+
+    if (CanJump() && jump.TryConsume())
+        Jump();
+}
+```
+
+`UpdateActionBuffer` 必须每个有效 Step 调用，不能放在 `CanJump()` 的短路分支之后。`TryConsume()` 只成功一次；`Clear()` 可在切换状态或失去控制权时主动丢弃旧意图。缓冲使用实例收到的时间增量，因此 Gameplay 实例暂停时自然冻结，Unscaled 实例仍按真实更新时间推进。
+
+需要“条件刚失效后仍短暂成立”时使用 `GameplayGracePeriod`。典型的土狼时间由输入缓冲和落地宽限组合而成：
+
+```csharp
+private readonly GameplayGracePeriod grounded = new(0.1d);
+
+grounded.Update(IsGrounded(), deltaTime);
+UpdateActionBuffer(jump, deltaTime);
+if (grounded.IsOpen && jump.TryConsume())
+{
+    grounded.Clear();
+    Jump();
+}
+```
+
+两个对象都要求有限正数时长，更新与消费为零托管分配。它们不隐式判断地面、动画状态或攻击冷却，玩法规则仍由实例明确组合。
+
 ## 性能与边界
 
 运行时查询直接遍历构建期冻结的小型按键数组，不创建委托、临时集合或结果数组；稳态 Action/Axis 查询为零托管分配。底层 `KeyDown/KeyPressed/KeyReleased` 与接收四个按键的 `InputAxis2D` 继续保留，适合诊断工具或确实依赖物理键位的特殊逻辑。
 
-v1 只负责键盘到逻辑 Action/数字 Axis 的映射，暂不包括手柄、模拟轴、组合键、运行时改键、输入缓冲和玩家槽位。稳定的逻辑引用已经为这些能力建立边界，后续扩展不应改变普通玩法代码。
+v1 负责键盘到逻辑 Action/数字 Axis 的映射，并提供实例级输入缓冲；暂不包括手柄、模拟轴、组合键、运行时改键和玩家槽位。稳定的逻辑引用已经为这些能力建立边界，后续扩展不应改变普通玩法代码。
 
 可运行示例见 [Airplane Shooter](../playgrounds/AirplaneShooter/README.md) 和 [Asteroids](../playgrounds/Asteroids/README.md)。

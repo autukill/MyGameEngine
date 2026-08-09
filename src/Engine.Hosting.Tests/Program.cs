@@ -304,6 +304,65 @@ internal static class Program
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         Check(allocated == 0,
             $"Logical action and axis queries remain allocation-free ({allocated:N0} B)");
+
+        input.Pressed.Clear();
+        var bufferedProbe = new BufferedInputProbe(fire, 0.1d);
+        scene.Add(bufferedProbe);
+        input.Pressed.Add(InputKey.Space);
+        scene.PerformStep(0.01d);
+        input.Pressed.Clear();
+        scene.PerformStep(0.05d);
+        Check(bufferedProbe.Buffer.IsBuffered && bufferedProbe.Buffer.TryConsume() &&
+              !bufferedProbe.Buffer.TryConsume(),
+            "GameInstance captures a press until one explicit buffered consumption");
+
+        input.Pressed.Add(InputKey.Space);
+        scene.PerformStep(0.01d);
+        input.Pressed.Clear();
+        var pause = new GameplayPauseKey("input-buffer-test");
+        scene.Time.Pause(pause);
+        scene.PerformStep(1d);
+        Check(bufferedProbe.Buffer.IsBuffered,
+            "Gameplay-time input buffers freeze while the Scene is paused");
+        scene.Time.Resume(pause);
+        scene.PerformStep(0.11d);
+        Check(!bufferedProbe.Buffer.IsBuffered,
+            "Buffered presses expire in the owning Instance time domain");
+
+        var grace = new GameplayGracePeriod(0.1d);
+        grace.Update(condition: true, deltaTime: 0.02d);
+        grace.Update(condition: false, deltaTime: 0.06d);
+        Check(grace.IsOpen && Math.Abs(grace.RemainingSeconds - 0.04d) < 0.000001d,
+            "Grace periods retain a recently true gameplay condition");
+        grace.Update(condition: false, deltaTime: 0.05d);
+        Check(!grace.IsOpen,
+            "Grace periods close deterministically after their duration");
+
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new InputActionBuffer(fire, 0d),
+            "Input buffers reject non-positive windows");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new GameplayGracePeriod(double.NaN),
+            "Grace periods reject non-finite durations");
+
+        var allocationBuffer = new InputActionBuffer(fire, 0.1d);
+        var allocationGrace = new GameplayGracePeriod(0.1d);
+        for (int i = 0; i < 64; i++)
+        {
+            allocationBuffer.Update(i % 8 == 0, 1d / 60d);
+            allocationGrace.Update(i % 8 == 0, 1d / 60d);
+            if (i % 16 == 0) allocationBuffer.TryConsume();
+        }
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            allocationBuffer.Update(i % 8 == 0, 1d / 60d);
+            allocationGrace.Update(i % 8 == 0, 1d / 60d);
+            if (i % 16 == 0) allocationBuffer.TryConsume();
+        }
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Input buffer and grace-period updates remain allocation-free ({allocated:N0} B)");
     }
 
     private static void TestSceneCatalogAndPrefabs()
@@ -895,6 +954,17 @@ internal static class Program
     {
         public bool FireDown => ActionDown(fire);
         public Vector2D Move => InputAxis2D(move);
+    }
+
+    private sealed class BufferedInputProbe : GameInstance
+    {
+        public InputActionBuffer Buffer { get; }
+
+        public BufferedInputProbe(InputActionRef action, double windowSeconds) =>
+            Buffer = new InputActionBuffer(action, windowSeconds);
+
+        public override void OnStep(double deltaTime) =>
+            UpdateActionBuffer(Buffer, deltaTime);
     }
 
     private sealed class MappedInputProbe : IInputProvider

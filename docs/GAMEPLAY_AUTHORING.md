@@ -4,7 +4,7 @@
 
 ## 变换与输入
 
-普通玩法推荐使用 `InputActionRef` 与 `InputAxis2DRef` 表达意图，并在 Hosting 组合根集中绑定 WASD、方向键等物理键位。Scene 自动注入不可变 Input Map；原始 `KeyDown/KeyPressed/KeyReleased` API 仍保留。完整定义、装配和失败语义见[逻辑 Input Actions](INPUT_ACTIONS.md)。
+普通玩法推荐使用 `InputActionRef` 与 `InputAxis2DRef` 表达意图，并在 Hosting 组合根集中绑定 WASD、方向键等物理键位。Scene 自动注入不可变 Input Map；原始 `KeyDown/KeyPressed/KeyReleased` API 仍保留。`InputActionBuffer` 与 `GameplayGracePeriod` 可组合攻击预输入、跳跃缓冲和土狼时间。完整定义、装配和失败语义见[逻辑 Input Actions](INPUT_ACTIONS.md)。
 
 `Position`、`Rotation`、`Scale` 是 `Transform` 的便利视图；旋转继续使用弧度和逆时针正方向：
 
