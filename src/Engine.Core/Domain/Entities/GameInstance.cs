@@ -26,6 +26,8 @@ using GameEngine.Core.Domain.ValueObjects;
 public class GameInstance
 {
     private IGameplayContext? _gameplay;
+    private IInstanceLayerTracker? _layerTracker;
+    private string? _layerName;
     private Dictionary<AlarmId, double>? _alarms;
     private List<AlarmId>? _alarmKeys;
     private List<AlarmId>? _firedAlarms;
@@ -66,7 +68,25 @@ public class GameInstance
     /// 默认 null——加入 SceneAggregate 时由聚合根补填为 "Instances"。
     /// SceneAggregate.DrawActive 按此字段分组渲染。
     /// </summary>
-    public string? LayerName { get; set; }
+    public string? LayerName
+    {
+        get => _layerName;
+        set
+        {
+            if (string.Equals(_layerName, value, StringComparison.Ordinal)) return;
+            string? previous = _layerName;
+            _layerName = value;
+            try
+            {
+                _layerTracker?.OnLayerChanged(this, previous, value);
+            }
+            catch
+            {
+                _layerName = previous;
+                throw;
+            }
+        }
+    }
 
     /// <summary>是否激活（停用后不参与 Step/Draw）</summary>
     public bool IsActive { get; private set; } = true;
@@ -376,6 +396,20 @@ public class GameInstance
         _alarms?.Clear();
     }
 
+    internal void AttachLayerTracker(IInstanceLayerTracker tracker)
+    {
+        ArgumentNullException.ThrowIfNull(tracker);
+        if (_layerTracker is not null && !ReferenceEquals(_layerTracker, tracker))
+            throw new InvalidOperationException("Instance already belongs to another Scene layer index.");
+        _layerTracker = tracker;
+    }
+
+    internal void DetachLayerTracker(IInstanceLayerTracker tracker)
+    {
+        if (ReferenceEquals(_layerTracker, tracker))
+            _layerTracker = null;
+    }
+
     private IGameplayContext RequireGameplay() => _gameplay ??
         throw new InvalidOperationException(
             "This gameplay operation requires the instance to belong to a Scene.");
@@ -412,4 +446,9 @@ public class GameInstance
 
     public override string ToString() =>
         $"{ObjectTypeName}#{Id} @ {Transform.Position} depth={Depth.Value} active={IsActive}";
+}
+
+internal interface IInstanceLayerTracker
+{
+    void OnLayerChanged(GameInstance instance, string? previousLayer, string? currentLayer);
 }

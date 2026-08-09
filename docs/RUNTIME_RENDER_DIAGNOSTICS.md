@@ -37,12 +37,24 @@ if (snapshot.FrameStatistics is { } frame)
 `ViewportSlotDiagnostics.SceneDraw` 是最近完成帧的 `SceneDrawStatistics` 值快照：
 
 - `VisibleLayerCount`：同时满足全局可见与 View Layer Filter 的层数。
-- `CandidateVisitCount`：收集阶段实际访问的实例候选总数。当前实现为每个允许层扫描一次 Scene，因此它能直接暴露重复遍历。
+- `CandidateVisitCount`：收集阶段实际访问的实例候选总数。Scene 按 Layer 维护实例索引，因此该值是当前 View 允许层中的候选之和，不再乘以 Scene 的声明层数；inactive 实例仍是候选，但不会进入 Selected。
 - `SelectedInstanceCount/DrawnInstanceCount`：进入排序列表和完成 Draw 回调的实例数。
 - `SortComparisonCount`：稳定 Depth 排序执行的精确比较次数。
 - `TraversalTime/SortTime/DrawTime/TotalTime`：对应 CPU 分项耗时。
 
 计数路径始终开启且逐帧零分配。只有启用 `FrameStatisticsOptions`（或通过 Hosting 性能遥测间接启用）时，`TimingEnabled` 才为 `true` 并采集高频时间戳；普通运行仍提供计数，但时间字段保持零。数据只覆盖每个 View 的基础 `SceneRenderPass`，Stencil 等效果内部的额外场景重绘仍通过总 Draw Call/Pass 统计观察，避免错误归属到某个普通 View。
+
+`GameInstance.LayerName` 在实例属于 Scene 时会同步维护索引。切层不会改变公开 API；在较早 Layer 的 `OnDraw` 中把实例移入较晚 Layer，较晚 Layer 的同一次 View 绘制仍能看到它。索引只优化候选收集，各 View 仍独立排序和调用 Draw，避免缓存可能在回调中变化的 Depth、Active 或 Layer 状态。
+
+可选 Release 基准通过 `Engine.DddTests --benchmark-multi-view` 运行。2026-08-09 本机单次结果如下（6 个声明层、4 个有实例层、主 View 全层、observer 排除四分之一实例所在层）：
+
+| 实例数 | 优化前双 View | Layer 索引后双 View | 候选访问（前 → 后） |
+| ---: | ---: | ---: | ---: |
+| 100 | 0.0649 ms | 0.0520 ms | 600/500 → 100/75 |
+| 1,000 | 0.5157 ms | 0.5625 ms | 6,000/5,000 → 1,000/750 |
+| 10,000 | 1.5356 ms | 1.1854 ms | 60,000/50,000 → 10,000/7,500 |
+
+微秒级结果会受 JIT 与机器噪声影响；候选计数是确定性的。10,000 实例样本约下降 22.8%，排序比较保持不变，后续若继续优化应聚焦可见性/排序，而不是再次缓存 Layer 收集。
 
 ## Pipeline 快照
 

@@ -155,6 +155,8 @@ internal sealed class Program
             MeasureSpatialQueries();
         if (args.Contains("--benchmark-lifecycle", StringComparer.Ordinal))
             MeasureLifecycleFrames();
+        if (args.Contains("--benchmark-multi-view", StringComparer.Ordinal))
+            MeasureMultiViewDraws();
 
         Console.WriteLine("\n=== All Phase 1.4 DDD tactical design smoke tests passed ===");
     }
@@ -710,12 +712,51 @@ internal sealed class Program
             "Draw keeps descending depth and stable insertion order for equal depths");
 
         drawScene.AddLayer("MainOnly", -100);
-        drawScene.Add(new DrawOrderProbe("main-only", 0, order) { LayerName = "MainOnly" });
+        var movableLayerProbe = drawScene.Add(
+            new DrawOrderProbe("main-only", 0, order) { LayerName = "MainOnly" });
         order.Clear();
         var observerLayers = SceneLayerFilter.Exclude("MainOnly");
         drawScene.DrawActive(batch, observerLayers);
         Assert(order.SequenceEqual(["back", "equal-first", "equal-second", "front"]),
             "Render View layer filters exclude named layers without changing draw order");
+
+        movableLayerProbe.LayerName = SceneAggregate.LayerNameInstances;
+        order.Clear();
+        drawScene.DrawActive(batch, observerLayers);
+        Assert(order.SequenceEqual(
+                ["back", "equal-first", "equal-second", "main-only", "front"]),
+            "Changing LayerName updates the Scene draw index immediately");
+        movableLayerProbe.LayerName = "MainOnly";
+        for (int i = 0; i < 64; i++)
+        {
+            movableLayerProbe.LayerName = SceneAggregate.LayerNameInstances;
+            movableLayerProbe.LayerName = "MainOnly";
+        }
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+        {
+            movableLayerProbe.LayerName = SceneAggregate.LayerNameInstances;
+            movableLayerProbe.LayerName = "MainOnly";
+        }
+        long layerMoveAllocated =
+            GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert(layerMoveAllocated == 0,
+            $"Repeated LayerName changes remain allocation-free ({layerMoveAllocated:N0} B)");
+
+        var sameDrawScene = new SceneAggregate("SameDrawLayerMove");
+        sameDrawScene.AddLayer("MoveSource", 600);
+        sameDrawScene.AddLayer("MoveTarget", 500);
+        var sameDrawOrder = new List<string>();
+        var movedDuringDraw = sameDrawScene.Add(
+            new DrawOrderProbe("moved", 0, sameDrawOrder) { LayerName = "Dormant" });
+        sameDrawScene.Add(new LayerMoveOnDrawProbe(movedDuringDraw, "MoveTarget", sameDrawOrder)
+        {
+            LayerName = "MoveSource"
+        });
+        sameDrawScene.DrawActive(batch);
+        Assert(sameDrawOrder.SequenceEqual(["move", "moved"]),
+            "An earlier Layer draw can move an instance into a later Layer in the same View");
+
         for (int i = 0; i < 64; i++)
         {
             order.Clear();
@@ -735,11 +776,11 @@ internal sealed class Program
         SceneDrawStatistics drawStatistics =
             drawScene.DrawActiveMeasured(batch, observerLayers);
         Assert(drawStatistics.VisibleLayerCount == 3 &&
-               drawStatistics.CandidateVisitCount == 15 &&
+               drawStatistics.CandidateVisitCount == 4 &&
                drawStatistics.SelectedInstanceCount == 4 &&
                drawStatistics.DrawnInstanceCount == 4 &&
                drawStatistics.SortComparisonCount > 0,
-            "Measured Scene drawing reports exact traversal, selection, sorting, and draw counts");
+            "Measured Scene drawing visits only indexed candidates in allowed Layers");
         for (int i = 0; i < 64; i++)
         {
             order.Clear();
@@ -759,6 +800,7 @@ internal sealed class Program
         Console.WriteLine("   [PASS] Input + Step + Draw + DrawGUI remain at 0 B/frame after warm-up");
         Console.WriteLine("   [PASS] phase mutation visibility and stable depth ordering are preserved");
         Console.WriteLine("   [PASS] per-View Scene layer filtering remains at 0 B/frame");
+        Console.WriteLine("   [PASS] LayerName changes update the indexed draw path in the same View");
         Console.WriteLine("   [PASS] measured traversal/sort/draw diagnostics remain at 0 B/frame");
     }
 
@@ -798,6 +840,70 @@ internal sealed class Program
             Console.WriteLine(
                 $"   {count,6:N0} instances: {elapsedMs / frames,8:F4} ms/frame, " +
                 $"{allocated / frames,6:N0} B/frame");
+        }
+    }
+
+    private static void MeasureMultiViewDraws()
+    {
+        Console.WriteLine("\n22. Multi-View Scene draw benchmark");
+        foreach (int count in new[] { 100, 1_000, 10_000 })
+        {
+            var scene = new SceneAggregate($"MultiView-{count}");
+            scene.AddLayer("Effects", 500);
+            scene.AddLayer("Projectiles", -100);
+            scene.AddLayer("MainOnly", -500);
+            string[] layers =
+            [
+                SceneAggregate.LayerNameInstances,
+                "Effects",
+                "Projectiles",
+                "MainOnly"
+            ];
+            for (int i = 0; i < count; i++)
+            {
+                scene.Add(new AllocationFreeProbe(new LayerDepth(i % 8))
+                {
+                    LayerName = layers[i % layers.Length]
+                });
+            }
+            scene.MarkEventsAsCommitted();
+
+            var batch = new RecordingSpriteBatch();
+            SceneLayerFilter main = SceneLayerFilter.All;
+            SceneLayerFilter observer = SceneLayerFilter.Exclude("MainOnly");
+            for (int i = 0; i < 64; i++)
+            {
+                _ = scene.DrawActiveMeasured(batch, main, measureTime: false);
+                _ = scene.DrawActiveMeasured(batch, observer, measureTime: false);
+            }
+
+            const int frames = 240;
+            long mainTicks = 0;
+            long observerTicks = 0;
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            SceneDrawStatistics mainStatistics = default;
+            SceneDrawStatistics observerStatistics = default;
+            for (int i = 0; i < frames; i++)
+            {
+                long started = Stopwatch.GetTimestamp();
+                mainStatistics = scene.DrawActiveMeasured(batch, main, measureTime: false);
+                mainTicks += Stopwatch.GetTimestamp() - started;
+                started = Stopwatch.GetTimestamp();
+                observerStatistics = scene.DrawActiveMeasured(
+                    batch, observer, measureTime: false);
+                observerTicks += Stopwatch.GetTimestamp() - started;
+            }
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+            double mainMs = mainTicks * 1000d / Stopwatch.Frequency / frames;
+            double observerMs = observerTicks * 1000d / Stopwatch.Frequency / frames;
+            Console.WriteLine(
+                $"   {count,6:N0} instances: main={mainMs,8:F4} ms, " +
+                $"observer={observerMs,8:F4} ms, total={mainMs + observerMs,8:F4} ms, " +
+                $"candidates={mainStatistics.CandidateVisitCount:N0}/" +
+                $"{observerStatistics.CandidateVisitCount:N0}, " +
+                $"sort={mainStatistics.SortComparisonCount:N0}/" +
+                $"{observerStatistics.SortComparisonCount:N0}, " +
+                $"allocated={allocated / frames:N0} B/frame");
         }
     }
 
@@ -1351,6 +1457,18 @@ internal sealed class Program
         }
 
         public override void OnDraw(ISpriteBatch batch) => _order.Add(_name);
+    }
+
+    private sealed class LayerMoveOnDrawProbe(
+        GameInstance target,
+        string targetLayer,
+        List<string> order) : GameInstance
+    {
+        public override void OnDraw(ISpriteBatch batch)
+        {
+            order.Add("move");
+            target.LayerName = targetLayer;
+        }
     }
 
     private sealed class RecordingSpriteBatch : ISpriteBatch

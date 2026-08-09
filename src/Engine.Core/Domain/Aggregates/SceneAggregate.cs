@@ -27,7 +27,7 @@ using GameEngine.Core.Domain.Entities;
 /// 生命周期：
 ///   Start() -> [Step loop: OnBeforeStep -> PerformStep -> OnAfterStep] -> End()
 /// </summary>
-public class SceneAggregate
+public class SceneAggregate : IInstanceLayerTracker
 {
     // ============ 聚合根标识 ============
 
@@ -63,6 +63,9 @@ public class SceneAggregate
     // ============ Instance 存储（原有） ============
 
     private readonly Dictionary<InstanceId, GameInstance> _instances = new();
+    private readonly Dictionary<InstanceId, IndexedInstance> _indexedInstances = new();
+    private readonly Dictionary<string, List<IndexedInstance>> _instancesByLayer =
+        new(StringComparer.Ordinal);
     private readonly List<IDomainEvent> _uncommittedEvents = new();
     private readonly List<GameInstance> _lifecycleSnapshot = new();
     private readonly List<GameInstance> _guiSnapshot = new();
@@ -77,6 +80,7 @@ public class SceneAggregate
     private ISceneSwitchRequester? _sceneSwitchRequester;
     private bool _gameplayQueryStatisticsEnabled;
     private long _querySampledSteps;
+    private long _nextDrawSequence;
 
     public IReadOnlyCollection<IDomainEvent> UncommittedEvents => _uncommittedEvents.AsReadOnly();
     public IReadOnlyCollection<GameInstance> AllInstances => _instances.Values.ToList();
@@ -197,10 +201,14 @@ public class SceneAggregate
         _instances.Add(instance.Id, instance);
         try
         {
+            instance.AttachLayerTracker(this);
+            IndexInstance(instance);
             instance.OnCreate();
         }
         catch
         {
+            instance.DetachLayerTracker(this);
+            UnindexInstance(instance.Id);
             _instances.Remove(instance.Id);
             instance.DetachGameplayContext(_gameplay);
             throw;
@@ -228,6 +236,8 @@ public class SceneAggregate
         if (!_instances.TryGetValue(id, out var instance)) return;
         instance.OnDestroy();
         Time.ReleaseOwner(id);
+        instance.DetachLayerTracker(this);
+        UnindexInstance(id);
         _instances.Remove(id);
         instance.DetachGameplayContext(_gameplay);
         RaiseEvent(new InstanceDestroyedEvent(id, instance.ObjectTypeName));
@@ -867,6 +877,8 @@ public class SceneAggregate
         {
             instance.OnDestroy();
             Time.ReleaseOwner(instance.Id);
+            instance.DetachLayerTracker(this);
+            UnindexInstance(instance.Id);
             _instances.Remove(instance.Id);
             instance.DetachGameplayContext(_gameplay);
             RaiseEvent(new InstanceDestroyedEvent(instance.Id, instance.ObjectTypeName));
@@ -896,14 +908,78 @@ public class SceneAggregate
     private int CaptureDrawEntries(string layerName)
     {
         _drawSnapshot.Clear();
-        int sequence = 0;
-        foreach (GameInstance instance in _instances.Values)
+        if (!_instancesByLayer.TryGetValue(layerName, out List<IndexedInstance>? instances))
+            return 0;
+
+        for (int i = 0; i < instances.Count; i++)
         {
-            if (instance.IsActive && instance.LayerName == layerName)
-                _drawSnapshot.Add(new DrawEntry(instance, sequence));
-            sequence++;
+            IndexedInstance indexed = instances[i];
+            if (indexed.Instance.IsActive)
+                _drawSnapshot.Add(new DrawEntry(indexed.Instance, indexed.Sequence));
         }
-        return sequence;
+        return instances.Count;
+    }
+
+    void IInstanceLayerTracker.OnLayerChanged(
+        GameInstance instance,
+        string? previousLayer,
+        string? currentLayer)
+    {
+        if (!_indexedInstances.TryGetValue(instance.Id, out IndexedInstance? indexed))
+            return;
+
+        RemoveFromLayer(indexed);
+        indexed.LayerName = currentLayer;
+        try
+        {
+            AddToLayer(indexed);
+        }
+        catch
+        {
+            indexed.LayerName = previousLayer;
+            AddToLayer(indexed);
+            throw;
+        }
+    }
+
+    private void IndexInstance(GameInstance instance)
+    {
+        var indexed = new IndexedInstance(instance, _nextDrawSequence++, instance.LayerName);
+        _indexedInstances.Add(instance.Id, indexed);
+        AddToLayer(indexed);
+    }
+
+    private void UnindexInstance(InstanceId id)
+    {
+        if (!_indexedInstances.Remove(id, out IndexedInstance? indexed)) return;
+        RemoveFromLayer(indexed);
+        if (_indexedInstances.Count == 0)
+        {
+            _nextDrawSequence = 0;
+            _instancesByLayer.Clear();
+        }
+    }
+
+    private void AddToLayer(IndexedInstance indexed)
+    {
+        if (indexed.LayerName is null) return;
+        if (!_instancesByLayer.TryGetValue(indexed.LayerName, out List<IndexedInstance>? instances))
+        {
+            instances = new List<IndexedInstance>();
+            _instancesByLayer.Add(indexed.LayerName, instances);
+        }
+        instances.Add(indexed);
+    }
+
+    private void RemoveFromLayer(IndexedInstance indexed)
+    {
+        if (indexed.LayerName is null ||
+            !_instancesByLayer.TryGetValue(indexed.LayerName, out List<IndexedInstance>? instances))
+        {
+            return;
+        }
+
+        instances.Remove(indexed);
     }
 
     private int SortDrawEntries()
@@ -1072,7 +1148,17 @@ public class SceneAggregate
             new(InstanceMutationKind.Destroy, null, id);
     }
 
-    private readonly record struct DrawEntry(GameInstance Instance, int Sequence);
+    private readonly record struct DrawEntry(GameInstance Instance, long Sequence);
+
+    private sealed class IndexedInstance(
+        GameInstance instance,
+        long sequence,
+        string? layerName)
+    {
+        public GameInstance Instance { get; } = instance;
+        public long Sequence { get; } = sequence;
+        public string? LayerName { get; set; } = layerName;
+    }
 
     private enum QueryKind
     {

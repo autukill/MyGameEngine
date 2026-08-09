@@ -70,7 +70,7 @@
 - Hosting 第二阶段多 Camera 已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Runner `--split-cameras` 验证两台真实 Camera。
 - 多 View 效果策略已显式化：主 View 由 `UseHdr` 配置；次级 View 默认 Direct，也可独立选择 HDR + Tone Mapping 与可选 Bloom。配置报告额外 Pass/租约，工厂按输入 Surface 尺寸创建目标，次级 View 不承担未声明成本。
 - 每 View `SceneLayerFilter.Include/Exclude/All` 已落地，Scene 与主 Stencil 重绘共享过滤语义；名单装配期校验、逐帧 0 B。Runner observer 排除 `MainOnly` 验证小地图式黄金路径。
-- 每 View `SceneDrawStatistics` 已接入 Render 诊断：候选访问、选中/绘制、排序比较始终零分配计数，启用 Frame Statistics 后增加遍历/排序/绘制耗时。Runner 双 View 样本报告 `48/36` candidates 与 `12/11` drawn。
+- 每 View `SceneDrawStatistics` 已接入 Render 诊断：候选访问、选中/绘制、排序比较始终零分配计数，启用 Frame Statistics 后增加遍历/排序/绘制耗时。Scene 已用运行时同步的 Layer 索引消除“层数 × 全场景”重复扫描，且保留同帧切层和稳定 Depth 排序语义；10,000 实例双 View 本机样本由约 1.536 ms 降至 1.185 ms。
 
 ## 仍在演进
 
@@ -80,14 +80,14 @@
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
 - 各交互式 VisualTests 仍需人工观察；自动基线已覆盖八条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - Hosting v1 仅支持单窗口；已有声明式及强类型参数 Scene 切换和无 UI 暂停策略，但尚无 Scene 栈或后台加载。
-- 多 Render View 可选择不同 Scene Layer 与 HDR/Bloom/Tone Mapping Profile，但每个 View 仍独立遍历与重绘；Stencil 暂只属于主 View。
+- 多 Render View 可选择不同 Scene Layer 与 HDR/Bloom/Tone Mapping Profile；Layer 索引已消除无关层候选，但每个 View 仍独立排序与重绘可见实例，Stencil 暂只属于主 View。
 
 ## 下一里程碑：声明式多 Camera/View
 
 1. 已完成单 Camera 多呈现槽位与 Fit/输入映射。
 2. 已完成多 Render View 的独立 Camera、Scene Surface、RenderScale、resize 与 Presentation 装配。
 3. 已允许主 View 使用 HDR/Stencil，并让次级 View 显式选择 Direct 或独立 HDR/Bloom/Tone Mapping；效果租约跟随各自输入 Surface 尺寸。
-4. 已完成 Layer 过滤、小地图式样例、显式效果成本和 Scene Draw 分项诊断；下一步用 100/1,000/10,000 实例基准测量跨 View 重复遍历与排序，不提前引入通用剔除。
+4. 已完成 Layer 过滤、小地图式样例、显式效果成本、Scene Draw 分项诊断与 100/1,000/10,000 实例基准；按 Layer 的实例索引已消除重复全场景扫描。下一步以相机可见性边界为目标评估粗粒度剔除，不缓存可由 Draw 回调改变的跨 View 排序结果。
 
 ## 已知限制
 
