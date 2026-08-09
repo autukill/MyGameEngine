@@ -31,6 +31,7 @@ internal static class Program
         TestBuilderPlans();
         TestBuilderValidation();
         TestLogicalInputMap();
+        TestGameplayCooldown();
         TestGameplayTags();
         TestGameplayBehaviors();
         TestSceneCatalogAndPrefabs();
@@ -445,6 +446,82 @@ internal static class Program
         scene.Destroy(nearEnemy.Id);
         Check(scene.CountInstances<TaggedProbe>(enemy) == 2,
             "Destroyed tagged instances disappear from later queries");
+    }
+
+    private static void TestGameplayCooldown()
+    {
+        Console.WriteLine("3b. Gameplay cooldown");
+        var cooldown = new GameplayCooldown(0.5d);
+        Check(cooldown.IsReady && cooldown.RemainingSeconds == 0d && cooldown.Progress == 1d,
+            "Cooldown starts ready");
+        Check(cooldown.TryUse() && !cooldown.TryUse() && !cooldown.IsReady &&
+              cooldown.RemainingSeconds == 0.5d && cooldown.Progress == 0d,
+            "TryUse atomically starts a ready cooldown");
+
+        cooldown.Update(0.2d);
+        Check(!cooldown.IsReady && Math.Abs(cooldown.RemainingSeconds - 0.3d) < 0.000001d &&
+              Math.Abs(cooldown.Progress - 0.4d) < 0.000001d,
+            "Update exposes normalized recovery progress");
+        cooldown.Update(1d);
+        Check(cooldown.IsReady && cooldown.RemainingSeconds == 0d && cooldown.Progress == 1d,
+            "Cooldown clamps to ready at its boundary");
+
+        cooldown.Restart();
+        cooldown.Update(0.1d);
+        cooldown.Restart();
+        Check(cooldown.RemainingSeconds == cooldown.DurationSeconds,
+            "Restart restores the full duration from any state");
+        cooldown.Reset();
+        Check(cooldown.IsReady && cooldown.RemainingSeconds == 0d,
+            "Reset makes the cooldown immediately ready");
+
+        var noCooldown = new GameplayCooldown(0d);
+        Check(noCooldown.TryUse() && noCooldown.TryUse() && noCooldown.IsReady &&
+              noCooldown.Progress == 1d,
+            "Zero duration explicitly means no cooldown");
+
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new GameplayCooldown(double.NaN),
+            "Cooldown rejects non-finite durations");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => cooldown.Update(-0.01d),
+            "Cooldown rejects negative delta time");
+
+        var gameplayOwner = new CooldownProbe(1d);
+        var unscaledOwner = new CooldownProbe(1d) { TimeMode = InstanceTimeMode.Unscaled };
+        var scene = new SceneAggregate("CooldownTimeDomains");
+        scene.Add(gameplayOwner);
+        scene.Add(unscaledOwner);
+        gameplayOwner.Cooldown.TryUse();
+        unscaledOwner.Cooldown.TryUse();
+        var pause = new GameplayPauseKey("cooldown-test");
+        scene.Time.Pause(pause);
+        scene.PerformStep(0.25d);
+        Check(gameplayOwner.Cooldown.RemainingSeconds == 1d &&
+              unscaledOwner.Cooldown.RemainingSeconds == 0.75d,
+            "Owner-driven updates inherit Gameplay pause and Unscaled time semantics");
+        scene.Time.Resume(pause);
+        gameplayOwner.SetActive(false, _ => { });
+        scene.PerformStep(0.25d);
+        Check(gameplayOwner.Cooldown.RemainingSeconds == 1d &&
+              unscaledOwner.Cooldown.RemainingSeconds == 0.5d,
+            "Inactive owners do not advance their cooldowns");
+
+        var allocationCooldown = new GameplayCooldown(0.05d);
+        for (int i = 0; i < 64; i++)
+        {
+            allocationCooldown.Update(1d / 60d);
+            allocationCooldown.TryUse();
+        }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            allocationCooldown.Update(1d / 60d);
+            allocationCooldown.TryUse();
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Cooldown updates remain allocation-free after warmup ({allocated:N0} B)");
     }
 
     private static void TestGameplayBehaviors()
@@ -1192,6 +1269,16 @@ internal static class Program
     }
 
     private sealed class CountingOwner : GameInstance { }
+
+    private sealed class CooldownProbe : GameInstance
+    {
+        public GameplayCooldown Cooldown { get; }
+
+        public CooldownProbe(double durationSeconds) =>
+            Cooldown = new GameplayCooldown(durationSeconds);
+
+        public override void OnStep(double deltaTime) => Cooldown.Update(deltaTime);
+    }
 
     private sealed class CountingBehavior<TOwner> : GameplayBehavior<TOwner>
         where TOwner : GameInstance

@@ -8,12 +8,12 @@ public sealed class PlayerPlane : GameInstance
 {
     public static readonly PrefabRef<PlayerBullet> BulletPrefab = new("player.bullet");
     private const float MoveSpeed = 360f;
-    private const float FireInterval = 0.12f;
+    private const double FireInterval = 0.12d;
     private const float HalfSize = 40f;
 
     private readonly float _worldWidth;
     private readonly float _worldHeight;
-    private float _fireCooldown;
+    private readonly GameplayCooldown _fireCooldown = new(FireInterval);
 
     public PlayerPlane(
         SpriteRef sprite,
@@ -40,11 +40,10 @@ public sealed class PlayerPlane : GameInstance
             Math.Clamp(Position.X, HalfSize, _worldWidth - HalfSize),
             Math.Clamp(Position.Y, HalfSize, _worldHeight - HalfSize));
 
-        _fireCooldown = MathF.Max(0f, _fireCooldown - dt);
-        if (ActionDown(GameInputs.Fire) && _fireCooldown <= 0f)
+        _fireCooldown.Update(deltaTime);
+        if (ActionDown(GameInputs.Fire) && _fireCooldown.TryUse())
         {
             Spawn(BulletPrefab, Position + new Vector2D(0f, -HalfSize));
-            _fireCooldown = FireInterval;
         }
     }
 }

@@ -13,13 +13,13 @@ public sealed class PlayerShip : GameInstance
     private const float TurnSpeed = 3.4f;
     private const float Thrust = 260f;
     private const float LaserSpeed = 700f;
-    private const float FireInterval = 0.14f;
+    private const double FireInterval = 0.14d;
 
     private readonly float _worldWidth;
     private readonly float _worldHeight;
     private readonly InputActionBuffer _fireBuffer = new(GameInputs.Fire, 0.12d);
+    private readonly GameplayCooldown _fireCooldown = new(FireInterval);
     private Vector2D _velocity;
-    private float _fireCooldown;
     private double _survivalSeconds;
     private int _shotsFired;
 
@@ -49,16 +49,15 @@ public sealed class PlayerShip : GameInstance
         MoveBy(_velocity * dt);
         WrapAround();
 
-        _fireCooldown = MathF.Max(0f, _fireCooldown - dt);
+        _fireCooldown.Update(deltaTime);
         UpdateActionBuffer(_fireBuffer, deltaTime);
-        if ((ActionDown(GameInputs.Fire) || _fireBuffer.IsBuffered) && _fireCooldown <= 0f)
+        if ((ActionDown(GameInputs.Fire) || _fireBuffer.IsBuffered) && _fireCooldown.TryUse())
         {
             var spawn = new LaserSpawnArgs(
                 Position + forward * 38f,
                 _velocity + forward * LaserSpeed);
             Spawn(LaserPrefab, spawn);
             _shotsFired++;
-            _fireCooldown = FireInterval;
             _fireBuffer.TryConsume();
         }
 

@@ -53,7 +53,7 @@
 - 材质创建与 Shader 热替换候选通过 GL Active Uniform 反射验证名称、类型和数组边界；失败保持旧 Handle，并输出包含文件路径、行号、阶段与逐 Uniform issue 的结构化诊断。
 - 独立 ShaderAssets 切片严格解析版本化 `shaders.json`，统一 Program 文件、Material Schema/default 与安全路径；Hosting 自动装配，AssetCompiler/MSBuild 在 C# 编译前复用同一静态校验。
 - AssetCompiler 从 `shaders.json` 确定性生成 `GameShaders.ManifestPath/Shaders/Materials/Parameters`；`MaterialParameterRef<T>` 在编译期固定值类型并携带所属 Material，Runner 与外部 NuGet 消费项目均不再手写 Shader 资产名称。
-- Gameplay Authoring 第一切片提供 `Position/Rotation/Scale`、输入轴/按键边沿、实例级 `Spawn/Destroy/Find`、End Step 后确定性变更提交和暂停感知的轻量 `AlarmId`；不可变 `InputMap` 把逻辑 Action/Axis 与物理键位分离，`InputActionBuffer` 和 `GameplayGracePeriod` 提供零分配、暂停感知的预输入与条件宽限。
+- Gameplay Authoring 第一切片提供 `Position/Rotation/Scale`、输入轴/按键边沿、实例级 `Spawn/Destroy/Find`、End Step 后确定性变更提交和暂停感知的轻量 `AlarmId`；不可变 `InputMap` 把逻辑 Action/Axis 与物理键位分离，`InputActionBuffer`、`GameplayGracePeriod` 和 `GameplayCooldown` 提供零分配、暂停感知的预输入、条件宽限与动作冷却。
 - `playgrounds/AirplaneShooter` 提供第一个面向游戏开发者的独立可运行样例：方向键/WASD 移动、按住空格发射、强类型 Sprite 资产和 Alarm 子弹回收。
 - Hosting 提供强类型 `SceneRef` 目录、帧边界切换和 persistent 实例保留；Prefab 目录按 `PrefabRef<T>` 注册并在 Build 后冻结。
 - `SceneRef<TArgs>`、泛型 `AddScene/StartScene/SwitchScene` 把值类型参数与目标 Scene 编译期绑定；请求快照、注册类型校验和同帧冲突均发生在切换前，Asteroids 已传递 GameOver 生存数据。
@@ -97,7 +97,7 @@
 4. 已完成 Layer 过滤、小地图式样例、显式效果成本、Scene Draw 分项诊断、Layer/Depth 有序索引、保守 Camera 可见性剔除，以及独立 Camera 跟随/Dead Zone/边界/震屏控制器。
 5. 已把静态跟随策略接入声明式 RenderView 配置，同时保留 Gameplay 运行时换目标的出口。
 6. 已建立独立多 View 稳定基准；本机 10,000 实例、双 View、剔除路径约 `0.431 ms` 且 `0 B/frame`，不足以证明跨 View 缓存值得引入，当前明确保留简单逐 View 检查。
-7. 已完成双 View resize、不同 RenderScale 效果租约和逐 View release 的 GPU 像素回归。多 Camera/View 当前里程碑闭环，下一步回到 Gameplay Authoring Experience。
+7. 已完成双 View resize、不同 RenderScale 效果租约和逐 View release 的 GPU 像素回归。多 Camera/View 当前里程碑闭环；Gameplay Authoring 已继续落地 owner-local `GameplayCooldown`，下一项评估 Health/Damage 的最小稳定边界。
 
 ## 已知限制
 
@@ -106,4 +106,4 @@
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Gameplay 查询性能](GAMEPLAY_QUERY_PERFORMANCE.md)、[Camera/Viewport 边界](CAMERA_VIEWPORT_STATUS.md)、[多 View 性能基准](MULTI_VIEW_PERFORMANCE.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Gameplay Cooldown](GAMEPLAY_COOLDOWN.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Gameplay 查询性能](GAMEPLAY_QUERY_PERFORMANCE.md)、[Camera/Viewport 边界](CAMERA_VIEWPORT_STATUS.md)、[多 View 性能基准](MULTI_VIEW_PERFORMANCE.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

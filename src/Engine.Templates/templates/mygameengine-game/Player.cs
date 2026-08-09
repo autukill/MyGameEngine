@@ -8,6 +8,7 @@ public sealed class Player : GameInstance
 {
     public static readonly PrefabRef<Bullet> BulletPrefab = new("player.bullet");
     private const float MoveSpeed = 180f;
+    private readonly GameplayCooldown _fireCooldown = new(0.15d);
 
     public Player(SpriteRef sprite, Vector2D position)
     {
@@ -21,7 +22,8 @@ public sealed class Player : GameInstance
         MoveBy(InputAxis2D(GameInputs.Move) * (MoveSpeed * (float)deltaTime));
         RotateBy((float)deltaTime);
 
-        if (ActionPressed(GameInputs.Fire))
+        _fireCooldown.Update(deltaTime);
+        if (ActionDown(GameInputs.Fire) && _fireCooldown.TryUse())
             Spawn(BulletPrefab, Position);
     }
 }

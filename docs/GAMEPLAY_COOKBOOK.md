@@ -29,32 +29,31 @@ if (KeyDown(InputKey.Up))
 ## 连续射击冷却
 
 ```csharp
-fireCooldown = MathF.Max(0f, fireCooldown - dt);
-if (KeyDown(InputKey.Space) && fireCooldown <= 0f)
-{
+private readonly GameplayCooldown fire = new(0.12d);
+
+fire.Update(deltaTime);
+if (ActionDown(GameInputs.Fire) && fire.TryUse())
     Spawn(BulletPrefab, spawnArgs);
-    fireCooldown = FireInterval;
-}
 ```
 
-`KeyPressed` 适合一次性动作；`KeyDown + cooldown` 适合按住连续触发。
+`ActionPressed` 适合一次性动作；`ActionDown + GameplayCooldown` 适合按住连续触发。冷却刚创建时可用，`TryUse` 在可用时原子开始计时，冷却期间不会被重复调用意外重置。
 
 如果玩家在冷却结束前短按并松开，使用预创建的 `InputActionBuffer` 保留这次意图：
 
 ```csharp
 private readonly InputActionBuffer fire = new(GameInputs.Fire, 0.12d);
+private readonly GameplayCooldown cooldown = new(0.12d);
 
 UpdateActionBuffer(fire, deltaTime);
-fireCooldown = MathF.Max(0f, fireCooldown - (float)deltaTime);
-if ((ActionDown(GameInputs.Fire) || fire.IsBuffered) && fireCooldown <= 0f)
+cooldown.Update(deltaTime);
+if ((ActionDown(GameInputs.Fire) || fire.IsBuffered) && cooldown.TryUse())
 {
     Spawn(BulletPrefab, spawnArgs);
     fire.TryConsume();
-    fireCooldown = FireInterval;
 }
 ```
 
-平台跳跃可再组合 `GameplayGracePeriod` 记录最近一次着地：输入缓冲解决“按早了”，着地宽限解决“晚按了一点”。两个窗口都跟随实例时间域，暂停时不会偷偷过期。
+平台跳跃可再组合 `GameplayGracePeriod` 记录最近一次着地：输入缓冲解决“按早了”，着地宽限解决“晚按了一点”。这些 owner-local 时间原语都跟随实例时间域，暂停时不会偷偷过期。完整冷却语义见 [Gameplay Cooldown](GAMEPLAY_COOLDOWN.md)。
 
 ## 带强类型参数的 Prefab
 
