@@ -37,7 +37,7 @@ dotnet run
 模板默认提供：
 
 - `GameApplication` 与默认二维渲染预设的最小组合根。
-- 继承 `GameInstance` 的 WASD 移动 Player，以及 Space 生成、Alarm 自动销毁的 Bullet 示例。
+- 继承 `GameInstance` 的 WASD 移动 Player，以及 Space 通过类型安全 Prefab 生成、Alarm 自动销毁的 Bullet 示例。
 - `Assets/assets.json` 与真实 WebP 纹理。
 - 自动生成的 `MyGame.Content.GameAssets` 强类型引用。
 - `--smoke` 三帧自动退出模式，便于 CI 或环境自检。

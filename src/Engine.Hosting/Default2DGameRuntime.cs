@@ -2,6 +2,7 @@ namespace GameEngine.Hosting;
 
 using System.Numerics;
 using GameEngine.Core.Domain.Aggregates;
+using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
@@ -43,6 +44,7 @@ internal sealed class Default2DGameRuntime : IDisposable
     private PerformanceTelemetrySampler? _performanceTelemetry;
     private ContentHotReloadCoordinator? _contentHotReload;
     private ShaderHotReloadCoordinator? _shaderHotReload;
+    private SceneNavigator _scenes = null!;
     private bool _disposed;
 
     public Default2DGameContext Context { get; private set; } = null!;
@@ -82,6 +84,7 @@ internal sealed class Default2DGameRuntime : IDisposable
         _scene!.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
         _scene.PerformStep(deltaTime);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+        ApplyPendingSceneSwitch();
         _contentHotReload?.Tick();
         _shaderHotReload?.Tick();
     }
@@ -199,13 +202,16 @@ internal sealed class Default2DGameRuntime : IDisposable
                 : contentManager.Load(renderer.ContentManifest!));
         }
 
-        _scene = new SceneAggregate(_plan.SceneName)
+        _scene = new SceneAggregate(_plan.InitialScene.Name)
         {
             ViewportWidth = width,
             ViewportHeight = height
         };
         _scene.SetInput(_window.Input);
         _scene.SetSprites(_sprites);
+        _scene.SetInstanceFactory(_plan.Instances);
+        _scenes = new SceneNavigator(_plan.Scenes, _plan.InitialScene);
+        _scene.SetSceneSwitchRequester(_scenes.SwitchTo);
         _camera = new Camera2D(new Vector2(width, height));
         _sceneTarget = _resources.Add(new RenderTarget2D(gl, new RenderTargetDescriptor(
             width,
@@ -287,6 +293,8 @@ internal sealed class Default2DGameRuntime : IDisposable
             _targetPool,
             _sceneTarget,
             _guiTarget,
+            _scenes,
+            _plan.Instances,
             _close);
         if (renderer.ShaderHotReload is { } shaderHotReload)
         {
@@ -313,9 +321,28 @@ internal sealed class Default2DGameRuntime : IDisposable
                 telemetry,
                 () => Context.CapturePerformanceSnapshot(telemetry.Budget));
         }
-        _plan.ConfigureScene(Context);
-        _scene.Add(new DefaultWorldPresentationController(_scene.RaiseEvent, renderer));
-        if (renderer.SceneGuiEnabled)
+        ConfigureScene(_plan.InitialScene);
+    }
+
+    private void ApplyPendingSceneSwitch()
+    {
+        if (!_scenes.TryTakePending(out SceneRef next)) return;
+
+        _scene!.TransitionTo(next.Name);
+        _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+        _scenes.Commit(next);
+        ConfigureScene(next);
+        _scene.Start();
+        _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+    }
+
+    private void ConfigureScene(SceneRef scene)
+    {
+        _scenes.GetDefinition(scene).Configure(Context);
+        _scene!.Add(new DefaultWorldPresentationController(
+            _scene.RaiseEvent,
+            _plan.Renderer));
+        if (_plan.Renderer.SceneGuiEnabled)
             _scene.Add(new DefaultGuiPresentationController(_scene.RaiseEvent));
     }
 

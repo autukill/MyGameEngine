@@ -1,6 +1,7 @@
 namespace GameEngine.Hosting;
 
 using GameEngine.Core.Domain.Aggregates;
+using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
@@ -29,6 +30,8 @@ public sealed class Default2DGameContext
     public RenderPipeline Pipeline { get; }
     public ScenePipelineBuilder Effects { get; }
     public RenderTargetPool RenderTargets { get; }
+    public SceneNavigator Scenes { get; }
+    public IInstanceFactory Instances { get; }
 
     internal Default2DGameContext(
         EngineWindow window,
@@ -43,6 +46,8 @@ public sealed class Default2DGameContext
         RenderTargetPool renderTargets,
         RenderTarget2D sceneTarget,
         RenderTarget2D? guiTarget,
+        SceneNavigator scenes,
+        IInstanceFactory instances,
         Action close)
     {
         Window = window;
@@ -55,6 +60,8 @@ public sealed class Default2DGameContext
         Pipeline = pipeline;
         Effects = effects;
         RenderTargets = renderTargets;
+        Scenes = scenes ?? throw new ArgumentNullException(nameof(scenes));
+        Instances = instances ?? throw new ArgumentNullException(nameof(instances));
         _rootRenderTargets = guiTarget is null
             ? new[] { sceneTarget }
             : new[] { sceneTarget, guiTarget };

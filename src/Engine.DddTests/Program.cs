@@ -144,6 +144,7 @@ internal sealed class Program
         VerifyFrameRateAndStatistics();
         VerifyMaterialParameterBlocks();
         VerifyGameplayAuthoringExperience();
+        VerifyPrefabCollisionAndSceneTransition();
 
         Console.WriteLine("\n=== All Phase 1.4 DDD tactical design smoke tests passed ===");
     }
@@ -346,6 +347,70 @@ internal sealed class Program
         Console.WriteLine("   [PASS] deterministic frame-boundary mutations + lightweight alarms");
     }
 
+    private static void VerifyPrefabCollisionAndSceneTransition()
+    {
+        var projectilePrefab = new PrefabRef<PrefabProjectile>("test.projectile");
+        var factory = new InstanceFactory();
+        factory.Register(projectilePrefab, spawn => new PrefabProjectile(spawn.Position));
+        AssertThrows<ArgumentException>(
+            () => factory.Register(projectilePrefab, spawn => new PrefabProjectile(spawn.Position)),
+            "Duplicate logical Prefab names are rejected");
+
+        var scene = new SceneAggregate("FactoryAndCollision");
+        scene.SetInstanceFactory(factory.Build());
+        AssertThrows<InvalidOperationException>(
+            () => factory.Register(
+                new PrefabRef<PrefabProjectile>("late"),
+                spawn => new PrefabProjectile(spawn.Position)),
+            "Prefab catalog freezes before runtime gameplay");
+
+        var player = scene.Add(new CollisionProbe(
+            new Vector2D(10, 10),
+            CollisionShape2D.Box(20, 20)));
+        scene.Add(new PrefabSpawner(projectilePrefab, new Vector2D(18, 10)));
+        scene.PerformStep(.016d);
+
+        PrefabProjectile projectile = scene.FindByType<PrefabProjectile>().Single();
+        Assert(projectile.Position == new Vector2D(18, 10) &&
+               player.First<PrefabProjectile>() == projectile &&
+               player.All<PrefabProjectile>().Count == 1,
+            "Typed Prefab Spawn commits at the boundary and participates in collision queries");
+        Assert(scene.QueryArea<PrefabProjectile>(new Bounds2D(0, 0, 30, 30)).Count == 1 &&
+               scene.QueryRadius<PrefabProjectile>(new Vector2D(10, 10), 10).Count == 1,
+            "Area and radius spatial queries filter active colliders by runtime type");
+        Assert(CollisionMath2D.Intersects(
+                CollisionShape2D.Circle(5),
+                Transform2D.Default,
+                CollisionShape2D.Box(4, 4),
+                Transform2D.Default with { Position = new Vector2D(6, 0) }),
+            "Circle/box narrow-phase accepts edge overlap");
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => CollisionShape2D.Circle(0),
+            "Invalid collider dimensions fail during authoring");
+
+        SceneRef? requested = null;
+        scene.SetSceneSwitchRequester(next => requested = next);
+        var switcher = scene.Add(new SceneSwitchProbe());
+        SceneRef nextScene = new("Next");
+        switcher.Go(nextScene);
+        Assert(requested == nextScene,
+            "GameInstance Scene requests remain logical and delegate commit timing to Hosting");
+
+        player.IsPersistent = true;
+        scene.Background = BackgroundConfig.FromColor(new Vector4(1, 0, 0, 1));
+        scene.Start();
+        scene.TransitionTo("Next");
+        Assert(scene.SceneName == "Next" && scene.FindById(player.Id) == player &&
+               scene.InstanceCount == 1 && scene.Layers.Count == 3 &&
+               scene.Background == BackgroundConfig.EngineDefault,
+            "Scene transition preserves persistent Instances and resets Scene-local definition state");
+
+        Console.WriteLine("\n14. Scene, Prefab, and collision authoring");
+        Console.WriteLine("   [PASS] frozen typed Prefab catalog + boundary Spawn");
+        Console.WriteLine("   [PASS] Box/Circle collision + area/radius queries");
+        Console.WriteLine("   [PASS] logical Scene request + persistent transition semantics");
+    }
+
     private static void AssertThrows<TException>(Action action, string message)
         where TException : Exception
     {
@@ -471,6 +536,46 @@ internal sealed class Program
         {
             if (alarm == TickAlarm) AlarmCount++;
         }
+    }
+
+    private sealed class PrefabSpawner(
+        PrefabRef<PrefabProjectile> prefab,
+        Vector2D position) : GameInstance
+    {
+        private bool _spawned;
+
+        public override void OnStep(double deltaTime)
+        {
+            if (_spawned) return;
+            _spawned = true;
+            Spawn(prefab, position);
+        }
+    }
+
+    private sealed class PrefabProjectile : GameInstance
+    {
+        public PrefabProjectile(Vector2D position)
+        {
+            Position = position;
+            Collider = CollisionShape2D.Circle(4);
+        }
+    }
+
+    private sealed class CollisionProbe : GameInstance
+    {
+        public CollisionProbe(Vector2D position, CollisionShape2D collider)
+        {
+            Position = position;
+            Collider = collider;
+        }
+
+        public T? First<T>() where T : GameInstance => FirstCollision<T>();
+        public IReadOnlyList<T> All<T>() where T : GameInstance => Collisions<T>();
+    }
+
+    private sealed class SceneSwitchProbe : GameInstance
+    {
+        public void Go(SceneRef scene) => SwitchScene(scene);
     }
 
     private sealed class RecordingSpriteBatch : ISpriteBatch

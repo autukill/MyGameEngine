@@ -25,6 +25,9 @@ internal static class Program
             .Create(options)
             .UseDefault2DRenderer(renderer => renderer
                 .UseContent(GameAssets.Packages.Root))
+            .ConfigureInstances(instances => instances.Register(
+                Player.BulletPrefab,
+                spawn => new Bullet(GameAssets.Sprites.Player, spawn.Position)))
             .ConfigureScene("Main", context =>
             {
                 context.Scene.Background = BackgroundConfig.FromColor(

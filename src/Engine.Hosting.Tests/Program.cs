@@ -1,6 +1,9 @@
 namespace GameEngine.Hosting.Tests;
 
 using GameEngine.Core.Domain.Events;
+using GameEngine.Core.Domain.Entities;
+using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Core.Infrastructure.Graphics;
@@ -24,6 +27,7 @@ internal static class Program
         Console.WriteLine("=== Engine Hosting Smoke Test ===\n");
         TestBuilderPlans();
         TestBuilderValidation();
+        TestSceneCatalogAndPrefabs();
         TestResourceOwnership();
         TestDefaultPresentationControllers();
         TestPerformanceTelemetry();
@@ -99,6 +103,57 @@ internal static class Program
                 .UseDefault2DRenderer()
                 .ConfigureScene(" ", _ => { }),
             "Empty Scene name is rejected");
+    }
+
+    private static void TestSceneCatalogAndPrefabs()
+    {
+        Console.WriteLine("3. Declarative Scene catalog and Prefabs");
+        SceneRef main = new("Main");
+        SceneRef gameOver = new("GameOver");
+        var probePrefab = new PrefabRef<HostingPrefabProbe>("hosting.probe");
+        var plan = GameApplication.Create()
+            .UseDefault2DRenderer()
+            .ConfigureInstances(instances => instances.Register(
+                probePrefab,
+                spawn => new HostingPrefabProbe(spawn.Position)))
+            .AddScene(main, _ => { })
+            .AddScene(gameOver, _ => { })
+            .StartScene(gameOver)
+            .BuildPlan();
+
+        HostingPrefabProbe created = plan.Instances.Create(
+            probePrefab,
+            new PrefabSpawnContext(new Vector2D(4, 5)));
+        Check(plan.InitialScene == gameOver && plan.Scenes.Count == 2 &&
+              created.Position == new Vector2D(4, 5),
+            "Builder freezes a typed Prefab catalog and selects a registered initial Scene");
+        CheckThrows<ArgumentException>(
+            () => GameApplication.Create()
+                .UseDefault2DRenderer()
+                .AddScene(main, _ => { })
+                .AddScene(main, _ => { }),
+            "Duplicate Scene names fail during registration");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create()
+                .UseDefault2DRenderer()
+                .AddScene(main, _ => { })
+                .StartScene(new SceneRef("Missing"))
+                .BuildPlan(),
+            "An unregistered initial Scene fails before window creation");
+
+        var navigator = new SceneNavigator(plan.Scenes, main);
+        navigator.SwitchTo(gameOver);
+        navigator.SwitchTo(gameOver);
+        Check(navigator.IsSwitchPending && navigator.TryTakePending(out SceneRef pending) &&
+              pending == gameOver,
+            "Repeated same-target requests are idempotent and remain frame-boundary pending");
+        navigator.Commit(gameOver);
+        navigator.SwitchTo(gameOver);
+        Check(!navigator.IsSwitchPending && navigator.Current == gameOver,
+            "Requesting the current Scene is a no-op after commit");
+        CheckThrows<KeyNotFoundException>(
+            () => navigator.SwitchTo(new SceneRef("Missing")),
+            "Unknown runtime Scene requests fail immediately");
     }
 
     private static void TestResourceOwnership()
@@ -558,6 +613,11 @@ internal static class Program
             order.Add(name);
             if (fail) throw new InvalidOperationException(name);
         }
+    }
+
+    private sealed class HostingPrefabProbe : GameInstance
+    {
+        public HostingPrefabProbe(Vector2D position) => Position = position;
     }
 
     private sealed class RecordingTelemetrySink : IPerformanceTelemetrySink

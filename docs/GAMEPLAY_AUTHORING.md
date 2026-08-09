@@ -76,6 +76,7 @@ public override void OnAlarm(AlarmId alarm)
 
 ## 当前边界与后续
 
-- 本阶段不引入全局 Service Locator、协程、物理、碰撞、导航或 UI。
-- `FindAll<T>()` 创建稳定数组，仅应在确实需要查询时调用；高频空间查询留给未来 Spatial/Physics 切片。
-- 下一步优先评估 Scene 定义/切换体验、可复用实例 Prefab/Factory，以及基础碰撞查询；离线 Shader 编译方向已单独记录并暂缓。
+- 本阶段不引入全局 Service Locator、协程、完整物理、导航或 UI。
+- 声明式 Scene 切换、类型安全 Prefab、Box/Circle 和区域/半径查询已经落地，详见 [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)。
+- `FindAll<T>()` 与当前空间查询创建稳定结果数组，高频大规模查询将在性能数据证明必要后透明迁移到 Spatial Hash。
+- 下一步聚焦 Gameplay Cookbook、Prefab 自定义参数和 Scene 参数传递；离线 Shader 编译方向继续暂缓。

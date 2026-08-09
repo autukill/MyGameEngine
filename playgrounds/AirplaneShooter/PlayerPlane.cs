@@ -1,30 +1,30 @@
 namespace AirplaneShooter;
 
 using GameEngine.Core.Domain.Entities;
+using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
 public sealed class PlayerPlane : GameInstance
 {
+    public static readonly PrefabRef<PlayerBullet> BulletPrefab = new("player.bullet");
     private const float MoveSpeed = 360f;
     private const float FireInterval = 0.12f;
     private const float HalfSize = 40f;
 
-    private readonly SpriteRef _bulletSprite;
     private readonly float _worldWidth;
     private readonly float _worldHeight;
     private float _fireCooldown;
 
     public PlayerPlane(
         SpriteRef sprite,
-        SpriteRef bulletSprite,
         Vector2D position,
         float worldWidth,
         float worldHeight)
     {
         Sprite = sprite;
-        _bulletSprite = bulletSprite;
         Position = position;
+        Collider = CollisionShape2D.Box(52f, 64f);
         _worldWidth = worldWidth;
         _worldHeight = worldHeight;
     }
@@ -50,9 +50,7 @@ public sealed class PlayerPlane : GameInstance
         _fireCooldown = MathF.Max(0f, _fireCooldown - dt);
         if (KeyDown(InputKey.Space) && _fireCooldown <= 0f)
         {
-            Spawn(new PlayerBullet(
-                _bulletSprite,
-                Position + new Vector2D(0f, -HalfSize)));
+            Spawn(BulletPrefab, Position + new Vector2D(0f, -HalfSize));
             _fireCooldown = FireInterval;
         }
     }

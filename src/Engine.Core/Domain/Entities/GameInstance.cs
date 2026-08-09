@@ -77,6 +77,9 @@ public class GameInstance
     /// <summary>精灵引用（对应 GMS 的 sprite_index）</summary>
     public SpriteRef Sprite { get; set; } = SpriteRef.Empty;
 
+    /// <summary>Optional lightweight collider used by Scene gameplay queries.</summary>
+    public CollisionShape2D? Collider { get; set; }
+
     /// <summary>当前动画帧（对应 GMS image_index，可为小数）。</summary>
     public float ImageIndex { get; set; }
 
@@ -221,6 +224,9 @@ public class GameInstance
     protected T Spawn<T>(T instance) where T : GameInstance =>
         RequireGameplay().Spawn(instance);
 
+    protected T Spawn<T>(PrefabRef<T> prefab, Vector2D position) where T : GameInstance =>
+        RequireGameplay().Spawn(prefab, position);
+
     protected void DestroySelf() => RequireGameplay().Destroy(Id);
 
     protected void Destroy(GameInstance instance)
@@ -235,6 +241,23 @@ public class GameInstance
 
     protected IReadOnlyList<T> FindAll<T>() where T : GameInstance =>
         RequireGameplay().FindAll<T>();
+
+    /// <summary>Returns the first active T whose collider overlaps this instance.</summary>
+    protected T? FirstCollision<T>() where T : GameInstance =>
+        RequireGameplay().FirstCollision<T>(this);
+
+    /// <summary>Returns all active T instances whose colliders overlap this instance.</summary>
+    protected IReadOnlyList<T> Collisions<T>() where T : GameInstance =>
+        RequireGameplay().Collisions<T>(this);
+
+    protected IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance =>
+        RequireGameplay().QueryArea<T>(bounds);
+
+    protected IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius)
+        where T : GameInstance => RequireGameplay().QueryRadius<T>(center, radius);
+
+    /// <summary>Requests a registered Scene switch at the safe boundary after the current Step.</summary>
+    protected void SwitchScene(SceneRef scene) => RequireGameplay().RequestScene(scene);
 
     public void SetAlarm(AlarmId alarm, double seconds)
     {

@@ -31,7 +31,7 @@ public class SceneAggregate
     // ============ 聚合根标识 ============
 
     public Guid SceneId { get; }
-    public string SceneName { get; }
+    public string SceneName { get; private set; }
     public InstanceId AggregateId { get; }
 
     // ============ Viewport ============
@@ -68,6 +68,8 @@ public class SceneAggregate
     private List<PendingInstanceMutation> _committingMutations = new();
     private IInputProvider? _input;
     private ISpriteResolver? _sprites;
+    private IInstanceFactory _instanceFactory = new InstanceFactory().Build();
+    private Action<SceneRef>? _requestScene;
 
     public IReadOnlyCollection<IDomainEvent> UncommittedEvents => _uncommittedEvents.AsReadOnly();
     public IReadOnlyCollection<GameInstance> AllInstances => _instances.Values.ToList();
@@ -249,6 +251,31 @@ public class SceneAggregate
         _hasStarted = false;
     }
 
+    /// <summary>
+    /// Ends the current logical Scene, preserves persistent instances, resets Scene-local
+    /// configuration, and assigns the next registered Scene name. The caller configures and starts
+    /// the new definition after this method returns.
+    /// </summary>
+    public void TransitionTo(string sceneName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sceneName);
+        if (_hasStarted)
+            End();
+        else
+            Reset();
+
+        SceneName = sceneName;
+        Background = BackgroundConfig.EngineDefault;
+        OnStart = null;
+        OnEnd = null;
+        OnBeforeStep = null;
+        OnAfterStep = null;
+        _layers.Clear();
+        AddLayer(LayerNameBackground, LayerDepth.Background.Value);
+        AddLayer(LayerNameInstances, LayerDepth.Instances.Value);
+        AddLayer(LayerNameUI, LayerDepth.UI.Value);
+    }
+
     // ============ 每帧调度 ============
 
     /// <summary>
@@ -343,6 +370,13 @@ public class SceneAggregate
         foreach (var instance in _instances.Values)
             instance.SpriteResolver ??= sprites;
     }
+
+    public void SetInstanceFactory(IInstanceFactory instanceFactory) =>
+        _instanceFactory = instanceFactory ?? throw new ArgumentNullException(nameof(instanceFactory));
+
+    /// <summary>Sets the Hosting-owned safe-boundary Scene switch requester.</summary>
+    public void SetSceneSwitchRequester(Action<SceneRef>? requestScene) =>
+        _requestScene = requestScene;
 
     /// <summary>
     /// GMS Draw 事件调度（Layer 感知版）。
@@ -442,6 +476,88 @@ public class SceneAggregate
     /// <summary>按运行时类型查找（GMS: instance_find）。</summary>
     public IEnumerable<T> FindByType<T>() where T : GameInstance =>
         _instances.Values.OfType<T>();
+
+    public T? FirstCollision<T>(GameInstance source) where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (source.Collider is not { } sourceShape) return null;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            if (candidate.Id == source.Id || !candidate.IsActive ||
+                candidate is not T typed || candidate.Collider is not { } candidateShape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(
+                    sourceShape,
+                    source.Transform,
+                    candidateShape,
+                    candidate.Transform))
+            {
+                return typed;
+            }
+        }
+        return null;
+    }
+
+    public IReadOnlyList<T> Collisions<T>(GameInstance source) where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (source.Collider is not { } sourceShape) return Array.Empty<T>();
+        List<T>? matches = null;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            if (candidate.Id == source.Id || !candidate.IsActive ||
+                candidate is not T typed || candidate.Collider is not { } candidateShape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(
+                    sourceShape,
+                    source.Transform,
+                    candidateShape,
+                    candidate.Transform))
+            {
+                (matches ??= new List<T>()).Add(typed);
+            }
+        }
+        return matches?.ToArray() ?? Array.Empty<T>();
+    }
+
+    public IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance
+    {
+        List<T>? matches = null;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            if (!candidate.IsActive || candidate is not T typed ||
+                candidate.Collider is not { } shape)
+            {
+                continue;
+            }
+            if (bounds.Intersects(CollisionMath2D.GetBounds(shape, candidate.Transform)))
+                (matches ??= new List<T>()).Add(typed);
+        }
+        return matches?.ToArray() ?? Array.Empty<T>();
+    }
+
+    public IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius)
+        where T : GameInstance
+    {
+        CollisionShape2D query = CollisionShape2D.Circle(radius);
+        Transform2D transform = Transform2D.Default with { Position = center };
+        List<T>? matches = null;
+        foreach (GameInstance candidate in _instances.Values)
+        {
+            if (!candidate.IsActive || candidate is not T typed ||
+                candidate.Collider is not { } shape)
+            {
+                continue;
+            }
+            if (CollisionMath2D.Intersects(query, transform, shape, candidate.Transform))
+                (matches ??= new List<T>()).Add(typed);
+        }
+        return matches?.ToArray() ?? Array.Empty<T>();
+    }
 
     /// <summary>按图层名获取所有活跃实例。</summary>
     public IEnumerable<GameInstance> GetInstancesInLayer(string layerName) =>
@@ -570,6 +686,11 @@ public class SceneAggregate
     {
         public T Spawn<T>(T instance) where T : GameInstance => owner.QueueSpawn(instance);
 
+        public T Spawn<T>(PrefabRef<T> prefab, Vector2D position) where T : GameInstance =>
+            owner.QueueSpawn(owner._instanceFactory.Create(
+                prefab,
+                new PrefabSpawnContext(position)));
+
         public void Destroy(InstanceId id) => owner.QueueDestroy(id);
 
         public GameInstance? FindById(InstanceId id) => owner.FindById(id);
@@ -579,5 +700,25 @@ public class SceneAggregate
 
         public IReadOnlyList<T> FindAll<T>() where T : GameInstance =>
             owner._instances.Values.OfType<T>().ToArray();
+
+        public T? FirstCollision<T>(GameInstance source) where T : GameInstance =>
+            owner.FirstCollision<T>(source);
+
+        public IReadOnlyList<T> Collisions<T>(GameInstance source) where T : GameInstance =>
+            owner.Collisions<T>(source);
+
+        public IReadOnlyList<T> QueryArea<T>(Bounds2D bounds) where T : GameInstance =>
+            owner.QueryArea<T>(bounds);
+
+        public IReadOnlyList<T> QueryRadius<T>(Vector2D center, float radius)
+            where T : GameInstance => owner.QueryRadius<T>(center, radius);
+
+        public void RequestScene(SceneRef scene)
+        {
+            if (scene.IsEmpty)
+                throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
+            (owner._requestScene ?? throw new InvalidOperationException(
+                "Scene switching is not configured for this Scene."))(scene);
+        }
     }
 }

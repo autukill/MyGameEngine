@@ -1,13 +1,17 @@
 namespace GameEngine.Hosting;
 
+using System.Collections.ObjectModel;
+using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Infrastructure.Windowing;
 
 public sealed class GameApplicationBuilder
 {
     private readonly EngineWindowOptions _windowOptions;
     private Default2DRendererOptions? _renderer;
-    private string? _sceneName;
-    private Action<Default2DGameContext>? _configureScene;
+    private readonly Dictionary<string, SceneDefinition> _scenes = new(StringComparer.Ordinal);
+    private readonly InstanceFactory _instances = new();
+    private SceneRef? _initialScene;
+    private bool _instancesConfigured;
 
     internal GameApplicationBuilder(EngineWindowOptions windowOptions)
     {
@@ -28,13 +32,42 @@ public sealed class GameApplicationBuilder
         string sceneName,
         Action<Default2DGameContext> configure)
     {
-        if (string.IsNullOrWhiteSpace(sceneName))
-            throw new ArgumentException("Scene name cannot be empty.", nameof(sceneName));
-        ArgumentNullException.ThrowIfNull(configure);
-        if (_configureScene is not null)
+        if (_initialScene is not null || _scenes.Count > 0)
             throw new InvalidOperationException("The initial Scene is already configured.");
-        _sceneName = sceneName;
-        _configureScene = configure;
+        SceneRef scene = new(sceneName);
+        AddScene(scene, configure);
+        _initialScene = scene;
+        return this;
+    }
+
+    public GameApplicationBuilder AddScene(
+        SceneRef scene,
+        Action<Default2DGameContext> configure)
+    {
+        if (scene.IsEmpty)
+            throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
+        ArgumentNullException.ThrowIfNull(configure);
+        if (!_scenes.TryAdd(scene.Name, new SceneDefinition(scene, configure)))
+            throw new ArgumentException($"Scene '{scene.Name}' is already registered.", nameof(scene));
+        _initialScene ??= scene;
+        return this;
+    }
+
+    public GameApplicationBuilder StartScene(SceneRef scene)
+    {
+        if (scene.IsEmpty)
+            throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
+        _initialScene = scene;
+        return this;
+    }
+
+    public GameApplicationBuilder ConfigureInstances(Action<InstanceFactory> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (_instancesConfigured)
+            throw new InvalidOperationException("Instance factories are already configured.");
+        configure(_instances);
+        _instancesConfigured = true;
         return this;
     }
 
@@ -44,24 +77,37 @@ public sealed class GameApplicationBuilder
     {
         if (_renderer is null)
             throw new InvalidOperationException("Call UseDefault2DRenderer before Build.");
-        if (_sceneName is null || _configureScene is null)
-            throw new InvalidOperationException("Call ConfigureScene before Build.");
+        if (_initialScene is not { } initial ||
+            !_scenes.ContainsKey(initial.Name))
+        {
+            throw new InvalidOperationException(
+                "Register the initial Scene with ConfigureScene/AddScene before Build.");
+        }
         var renderer = _renderer.ToPlan();
         renderer.Validate();
         EngineWindowOptions windowOptions = renderer.PerformanceTelemetry is not null &&
                                             _windowOptions.FrameStatistics is null
             ? _windowOptions.WithFrameStatistics()
             : _windowOptions;
+        var scenes = new ReadOnlyDictionary<string, SceneDefinition>(
+            new Dictionary<string, SceneDefinition>(_scenes, StringComparer.Ordinal));
         return new GameApplicationPlan(
             windowOptions,
             renderer,
-            _sceneName,
-            _configureScene);
+            initial,
+            scenes,
+            _instances.Build());
     }
 }
 
 internal sealed record GameApplicationPlan(
     EngineWindowOptions WindowOptions,
     Default2DRendererPlan Renderer,
-    string SceneName,
-    Action<Default2DGameContext> ConfigureScene);
+    SceneRef InitialScene,
+    IReadOnlyDictionary<string, SceneDefinition> Scenes,
+    IInstanceFactory Instances)
+{
+    public string SceneName => InitialScene.Name;
+    public Action<Default2DGameContext> ConfigureScene =>
+        Scenes[InitialScene.Name].Configure;
+}

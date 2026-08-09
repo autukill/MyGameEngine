@@ -73,10 +73,14 @@ GameAssets.Packages.SharedPrimitives
 - Gameplay Spawn/Destroy 在 End Step 后按请求顺序确定性提交；新实例下一帧 Step，待销毁实例完成当前 End Step。
 - `AlarmId`、`SetAlarm/CancelAlarm/OnAlarm` 提供无协程依赖的轻量计时。
 - 项目模板使用 WASD 移动、Space 生成 Bullet 和 Alarm 自动销毁展示黄金路径。
+- 声明式 Scene 目录、安全帧边界切换和持久实例语义。
+- 类型安全、构建后冻结的 Instance Factory / Prefab。
+- Box/Circle Collider，以及按类型的相交、区域和半径查询。
+- `playgrounds/AirplaneShooter` 作为首个完整 Gameplay Authoring 样例。
 
-当前验收：上述第一切片已有无窗口顺序测试，覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm 和非法上下文。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)。
+当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结、Collider 组合和 Scene 请求；AirplaneShooter 冒烟真实跨越 Main → Victory。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)和 [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)。
 
-下一步优先级：Scene 定义与切换体验 → 可复用实例 Factory/Prefab → 基础碰撞与空间查询 → 更多 Gameplay Cookbook。暂不进入 UI、完整协程或物理系统。
+下一步优先级：更多 Gameplay Cookbook → 基于真实用例扩展 Prefab Spawn 参数 → 用性能遥测决定 Spatial Hash 引入阈值 → Scene 参数传递与暂停策略。暂不进入 UI、完整协程或物理系统。
 
 ## 设计约束
 

@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 46 个 .NET 项目、208 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 46 个 .NET 项目、216 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -55,6 +55,8 @@
 - AssetCompiler 从 `shaders.json` 确定性生成 `GameShaders.ManifestPath/Shaders/Materials/Parameters`；`MaterialParameterRef<T>` 在编译期固定值类型并携带所属 Material，Runner 与外部 NuGet 消费项目均不再手写 Shader 资产名称。
 - Gameplay Authoring 第一切片提供 `Position/Rotation/Scale`、输入轴/按键边沿、实例级 `Spawn/Destroy/Find`、End Step 后确定性变更提交和暂停感知的轻量 `AlarmId`；模板展示 WASD、Space 发射与生命周期自动销毁。
 - `playgrounds/AirplaneShooter` 提供第一个面向游戏开发者的独立可运行样例：方向键/WASD 移动、按住空格发射、强类型 Sprite 资产和 Alarm 子弹回收。
+- Hosting 提供强类型 `SceneRef` 目录、帧边界切换和 persistent 实例保留；Prefab 目录按 `PrefabRef<T>` 注册并在 Build 后冻结。
+- GameInstance 支持可选 Box/Circle Collider、类型化首次/全部碰撞，以及 Scene 区域和半径查询；AirplaneShooter 已迁移为 Prefab 子弹、目标碰撞和 Main/Victory Scene 往返。
 
 ## 仍在演进
 
@@ -66,11 +68,11 @@
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 - Hosting v1 仅支持单窗口与单初始 Scene，尚无 Scene 切换栈、暂停策略或后台加载。
 
-## 下一里程碑：Gameplay Scene 与实例复用体验
+## 下一里程碑：Gameplay Cookbook 与规模化查询
 
-1. 把 Scene 定义、注册与切换从单个 `Program.cs` 回调收敛为强类型目录和明确生命周期。
-2. 为常用实例建立可复用 Factory/Prefab 边界，避免把 GPU 资源或全局容器放进玩法对象。
-3. 评估基础碰撞形状、空间查询与 Gameplay Cookbook；继续降低 SceneAggregate 每帧列表和排序分配。
+1. 用第二个聚焦 Playground 固化对象生成、Scene 参数传递和常见状态流转写法。
+2. 从真实用例提炼可选的强类型 Prefab Spawn 参数，不引入全局容器或无类型属性包。
+3. 以性能遥测确定 Spatial Hash 引入阈值，在不改变查询 API 的前提下替换线性扫描；继续降低 SceneAggregate 每帧列表和排序分配。
 
 ## 已知限制
 

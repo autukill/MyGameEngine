@@ -14,12 +14,19 @@ public sealed class PlayerBullet : GameInstance
         Sprite = sprite;
         Position = position;
         Color = new(0.35f, 0.95f, 1f, 1f);
+        Collider = CollisionShape2D.Box(8f, 24f);
     }
 
     public override void OnCreate() => SetAlarm(Lifetime, 1.5d);
 
-    public override void OnStep(double deltaTime) =>
+    public override void OnStep(double deltaTime)
+    {
         MoveBy(new Vector2D(0f, -Speed * (float)deltaTime));
+        if (FirstCollision<Target>() is not { } target) return;
+        Destroy(target);
+        DestroySelf();
+        SwitchScene(GameScenes.Victory);
+    }
 
     public override void OnAlarm(AlarmId alarm)
     {
