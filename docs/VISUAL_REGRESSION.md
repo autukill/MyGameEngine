@@ -49,12 +49,13 @@ dotnet run --project src/Engine.VisualRegressionTests/Engine.VisualRegressionTes
 ## 当前场景
 
 1. `sprites-origin-transform`：中心、左上和自定义原点，以及旋转、非均匀缩放、负缩放、颜色与透明度。
-2. `stencil-owner-lifecycle`：同一 EffectKey 的两个、一个和零个 Circle owner，验证真正圆形 corners、owner 聚合、Stencil 租约回收以及基础 Presentation 持续存在。
-3. `dynamic-effect-resize`：活跃 Stencil + Presentation 从 320×240 重建到 400×300，并断言池中只保留一个新尺寸租约。
-4. `stencil-sprite-alpha`：用带透明中心孔的 Sprite、非均匀缩放和旋转验证 AlphaCutoff、Sprite 原点与变换后的硬裁剪。
-5. `bloom-ping-pong`：覆盖 Bloom 活跃、resize 和 release；活跃时断言恰好租用 Bright/Ping/Pong 三个目标，Glow 由显式 Presentation Additive 呈现。
-6. `render-surface-chain`：真实执行 SceneColor → Bloom(main).glow → Bloom(secondary).glow，断言两个效果占用六个租约，并由单一 Presentation 终端稳定组合。
-7. `hdr-tone-mapping`：真实执行 RGBA16F Scene → HDR Bloom → Tone Mapping → Presentation，同时把 `SceneGui` 作为曝光后 LDR 层；覆盖 ACES、低曝光 Reinhard、resize 与效果 release。
+2. `shader-program-reload`：初始自定义 Shader、整批候选中后一个编译失败时全部保留旧 Handle，以及有效 Program 替换后的确定性画面变化。
+3. `stencil-owner-lifecycle`：同一 EffectKey 的两个、一个和零个 Circle owner，验证真正圆形 corners、owner 聚合、Stencil 租约回收以及基础 Presentation 持续存在。
+4. `dynamic-effect-resize`：活跃 Stencil + Presentation 从 320×240 重建到 400×300，并断言池中只保留一个新尺寸租约。
+5. `stencil-sprite-alpha`：用带透明中心孔的 Sprite、非均匀缩放和旋转验证 AlphaCutoff、Sprite 原点与变换后的硬裁剪。
+6. `bloom-ping-pong`：覆盖 Bloom 活跃、resize 和 release；活跃时断言恰好租用 Bright/Ping/Pong 三个目标，Glow 由显式 Presentation Additive 呈现。
+7. `render-surface-chain`：真实执行 SceneColor → Bloom(main).glow → Bloom(secondary).glow，断言两个效果占用六个租约，并由单一 Presentation 终端稳定组合。
+8. `hdr-tone-mapping`：真实执行 RGBA16F Scene → HDR Bloom → Tone Mapping → Presentation，同时把 `SceneGui` 作为曝光后 LDR 层；覆盖 ACES、低曝光 Reinhard、resize 与效果 release。
 
 checkpoint 可以携带独立的 `PixelComparisonOptions`。Bloom 的 active 与 resized-active 使用 soft `3`、hard `12`、差异比例 `0.5%`；release 和其他场景继续使用默认容差，因此浮点采样差异不会放宽整个回归套件。
 

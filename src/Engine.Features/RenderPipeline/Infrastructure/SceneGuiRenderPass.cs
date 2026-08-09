@@ -34,9 +34,11 @@ public sealed class SceneGuiRenderPass : RenderPass
         _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
         BlendState.AlphaBlend.Apply(_gl);
         DepthStencilState.None.Apply(_gl);
+        Matrix4x4 projection = Matrix4x4.CreateOrthographicOffCenter(
+            0, context.ScreenWidth, context.ScreenHeight, 0, -1, 1);
+        context.Batch.ShaderResolver?.SetProjection(projection);
         context.DefaultShader.Use();
-        context.DefaultShader.SetProjection(Matrix4x4.CreateOrthographicOffCenter(
-            0, context.ScreenWidth, context.ScreenHeight, 0, -1, 1));
+        context.DefaultShader.SetProjection(projection);
         context.Batch.Begin();
         _scene.DrawGUI(context.Batch);
         context.Batch.End();

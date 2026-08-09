@@ -3,17 +3,18 @@ namespace GameEngine.Features.Sprites.Infrastructure;
 using System.Numerics;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Features.Sprites.Domain;
 
 /// <summary>
 /// 手动注册的 Sprite 资源库。只保存 TextureRef 与帧元数据，GPU 所有权由 ITextureResolver 的实现管理。
 /// </summary>
 public sealed class SpriteLibrary : ISpriteResolver
 {
-    private sealed record FrameEntry(
+    internal sealed record FrameEntry(
         TextureRef Texture,
         Vector4 UvBounds);
 
-    private sealed record Entry(
+    internal sealed record Entry(
         SpriteMetadata Metadata,
         FrameEntry[] Frames);
 
@@ -24,6 +25,47 @@ public sealed class SpriteLibrary : ISpriteResolver
         _textures = textures ?? throw new ArgumentNullException(nameof(textures));
 
     public int Count => _entries.Count;
+
+    /// <summary>构建一组暂不可见的 Sprite，并返回可激活、提交或回滚的替换事务。</summary>
+    public SpriteReplacementTransaction BeginReplacement(
+        IReadOnlyCollection<string> replaceableNames,
+        IReadOnlyList<SpriteReplacementSource> replacements)
+    {
+        ArgumentNullException.ThrowIfNull(replaceableNames);
+        ArgumentNullException.ThrowIfNull(replacements);
+        var scope = new HashSet<string>(replaceableNames, StringComparer.Ordinal);
+        if (scope.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException("Replaceable Sprite names cannot be empty.", nameof(replaceableNames));
+
+        var staged = new Dictionary<string, Entry>(StringComparer.Ordinal);
+        foreach (SpriteReplacementSource replacement in replacements)
+        {
+            ArgumentNullException.ThrowIfNull(replacement);
+            ArgumentNullException.ThrowIfNull(replacement.Frames);
+            if (staged.ContainsKey(replacement.Name))
+            {
+                throw new ArgumentException(
+                    $"Replacement Sprite '{replacement.Name}' appears more than once.",
+                    nameof(replacements));
+            }
+            if (_entries.ContainsKey(replacement.Name) && !scope.Contains(replacement.Name))
+            {
+                throw new InvalidOperationException(
+                    $"Sprite '{replacement.Name}' is owned outside the replacement scope.");
+            }
+            staged.Add(replacement.Name, BuildPixelEntry(
+                replacement.Name,
+                replacement.LogicalSize,
+                replacement.Origin,
+                replacement.Frames,
+                replacement.FramesPerSecond));
+        }
+
+        var previous = _entries
+            .Where(pair => scope.Contains(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        return new SpriteReplacementTransaction(this, scope, staged, previous);
+    }
 
     public SpriteRef RegisterSingle(
         string name,
@@ -90,45 +132,9 @@ public sealed class SpriteLibrary : ISpriteResolver
         ReadOnlySpan<SpriteFrameSource> frames,
         float framesPerSecond = 0f)
     {
-        ValidateCommon(name, logicalSize, origin, framesPerSecond);
-        if (frames.IsEmpty)
-            throw new ArgumentException("A sprite must contain at least one frame.", nameof(frames));
         if (_entries.ContainsKey(name))
             throw new ArgumentException($"Sprite '{name}' is already registered.", nameof(name));
-
-        var entries = new FrameEntry[frames.Length];
-        int frameWidth = 0;
-        int frameHeight = 0;
-        for (int i = 0; i < frames.Length; i++)
-        {
-            var source = frames[i];
-            var texture = GetTextureMetadata(source.Texture);
-            ValidateSourceRect(source.SourceRect, texture, nameof(frames));
-
-            if (i == 0)
-            {
-                frameWidth = source.SourceRect.Width;
-                frameHeight = source.SourceRect.Height;
-            }
-            else if (source.SourceRect.Width != frameWidth ||
-                     source.SourceRect.Height != frameHeight)
-            {
-                throw new ArgumentException(
-                    "All Sprite frame source rectangles must have identical dimensions.",
-                    nameof(frames));
-            }
-
-            entries[i] = new FrameEntry(
-                source.Texture,
-                ToUvBounds(source.SourceRect, texture));
-        }
-
-        var metadata = new SpriteMetadata(
-            logicalSize,
-            origin,
-            entries.Length,
-            framesPerSecond);
-        _entries.Add(name, new Entry(metadata, entries));
+        _entries.Add(name, BuildPixelEntry(name, logicalSize, origin, frames, framesPerSecond));
         return new SpriteRef(name);
     }
 
@@ -205,6 +211,47 @@ public sealed class SpriteLibrary : ISpriteResolver
 
     public void Clear() => _entries.Clear();
 
+    private Entry BuildPixelEntry(
+        string name,
+        Vector2 logicalSize,
+        Vector2 origin,
+        ReadOnlySpan<SpriteFrameSource> frames,
+        float framesPerSecond)
+    {
+        ValidateCommon(name, logicalSize, origin, framesPerSecond);
+        if (frames.IsEmpty)
+            throw new ArgumentException("A sprite must contain at least one frame.", nameof(frames));
+
+        var entries = new FrameEntry[frames.Length];
+        int frameWidth = 0;
+        int frameHeight = 0;
+        for (int i = 0; i < frames.Length; i++)
+        {
+            var source = frames[i];
+            var texture = GetTextureMetadata(source.Texture);
+            ValidateSourceRect(source.SourceRect, texture, nameof(frames));
+
+            if (i == 0)
+            {
+                frameWidth = source.SourceRect.Width;
+                frameHeight = source.SourceRect.Height;
+            }
+            else if (source.SourceRect.Width != frameWidth ||
+                     source.SourceRect.Height != frameHeight)
+            {
+                throw new ArgumentException(
+                    "All Sprite frame source rectangles must have identical dimensions.",
+                    nameof(frames));
+            }
+
+            entries[i] = new FrameEntry(source.Texture, ToUvBounds(source.SourceRect, texture));
+        }
+
+        return new Entry(
+            new SpriteMetadata(logicalSize, origin, entries.Length, framesPerSecond),
+            entries);
+    }
+
     private static int NormalizeFrame(int frame, int count)
     {
         int normalized = frame % count;
@@ -278,5 +325,53 @@ public sealed class SpriteLibrary : ISpriteResolver
         if (!_textures.TryGetMetadata(texture, out var metadata))
             throw new ArgumentException($"Texture '{texture}' is not registered.", nameof(texture));
         return metadata;
+    }
+
+    public sealed class SpriteReplacementTransaction : IDisposable
+    {
+        private SpriteLibrary? _owner;
+        private readonly HashSet<string> _scope;
+        private readonly Dictionary<string, Entry> _staged;
+        private readonly Dictionary<string, Entry> _previous;
+        private bool _active;
+        private bool _committed;
+
+        internal SpriteReplacementTransaction(
+            SpriteLibrary owner,
+            HashSet<string> scope,
+            Dictionary<string, Entry> staged,
+            Dictionary<string, Entry> previous)
+        {
+            _owner = owner;
+            _scope = scope;
+            _staged = staged;
+            _previous = previous;
+        }
+
+        public void Activate()
+        {
+            ObjectDisposedException.ThrowIf(_owner is null, this);
+            if (_active) throw new InvalidOperationException("Sprite replacement is already active.");
+            foreach (string name in _scope) _owner._entries.Remove(name);
+            foreach (var pair in _staged) _owner._entries.Add(pair.Key, pair.Value);
+            _active = true;
+        }
+
+        public void Commit()
+        {
+            ObjectDisposedException.ThrowIf(_owner is null, this);
+            if (!_active) throw new InvalidOperationException("Activate the Sprite replacement first.");
+            _committed = true;
+            _owner = null;
+        }
+
+        public void Dispose()
+        {
+            SpriteLibrary? owner = Interlocked.Exchange(ref _owner, null);
+            if (owner is null || _committed) return;
+            if (!_active) return;
+            foreach (string name in _staged.Keys) owner._entries.Remove(name);
+            foreach (var pair in _previous) owner._entries.Add(pair.Key, pair.Value);
+        }
     }
 }

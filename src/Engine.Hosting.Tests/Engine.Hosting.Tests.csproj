@@ -8,10 +8,16 @@
     <AssemblyName>HostingTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\Engine.Features\Bloom\Bloom.csproj" />
+    <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\Presentation\Presentation.csproj" />
     <ProjectReference Include="..\Engine.Features\RenderPipeline\RenderPipeline.csproj" />
+    <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" />
+    <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\ToneMapping\ToneMapping.csproj" />
     <ProjectReference Include="..\Engine.Hosting\Engine.Hosting.csproj" />
   </ItemGroup>

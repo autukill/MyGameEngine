@@ -175,6 +175,161 @@ internal sealed class SpriteOriginTransformScenario : IVisualRegressionScenario
     }
 }
 
+internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
+{
+    private const string ShaderName = "regression.reload";
+    private const string PeerShaderName = "regression.reload.peer";
+    private SpriteShader? _defaultShader;
+    private ShaderLibrary? _shaders;
+    private SpriteBatch? _batch;
+    private TextureLibrary? _textures;
+    private TextureRef _white;
+    private uint _initialHandle;
+    private uint _peerInitialHandle;
+
+    public string Name => "shader-program-reload";
+    public int Width => 192;
+    public int Height => 128;
+    public int FrameCount => 3;
+    public IReadOnlyList<VisualCheckpoint> Checkpoints { get; } = new[]
+    {
+        new VisualCheckpoint(0, "initial"),
+        new VisualCheckpoint(1, "compile-failure-retains-old"),
+        new VisualCheckpoint(2, "replacement-applied")
+    };
+
+    public void Initialize(EngineWindow window)
+    {
+        GL gl = window.Graphics.Gl;
+        _gl = gl;
+        _defaultShader = new SpriteShader(gl);
+        _shaders = new ShaderLibrary(gl);
+        _shaders.Create(ShaderName, VertexSource, RedFragmentSource);
+        _shaders.Create(PeerShaderName, VertexSource, RedFragmentSource);
+        _initialHandle = _shaders.Resolve(new ShaderRef(ShaderName));
+        _peerInitialHandle = _shaders.Resolve(new ShaderRef(PeerShaderName));
+        _batch = new SpriteBatch(gl)
+        {
+            DefaultShader = _defaultShader,
+            ShaderResolver = _shaders
+        };
+        _textures = new TextureLibrary(gl);
+        _white = _textures.RegisterRgba(
+            "regression.shader-white",
+            1,
+            1,
+            new byte[] { 255, 255, 255, 255 },
+            TextureSampler.PixelArt);
+        gl.Viewport(0, 0, (uint)Width, (uint)Height);
+    }
+
+    public void AdvanceAndDraw(int frameIndex, double fixedDeltaTime)
+    {
+        if (frameIndex == 1)
+        {
+            try
+            {
+                _shaders!.ReplaceAll(new[]
+                {
+                    new ShaderProgramSource(ShaderName, VertexSource, GreenFragmentSource),
+                    new ShaderProgramSource(PeerShaderName, VertexSource, InvalidFragmentSource)
+                });
+                throw new InvalidOperationException("Invalid GLSL unexpectedly compiled.");
+            }
+            catch (ShaderBuildException)
+            {
+            }
+            if (_shaders!.Resolve(new ShaderRef(ShaderName)) != _initialHandle)
+                throw new InvalidOperationException("Failed replacement changed the live Program handle.");
+            if (_shaders.Resolve(new ShaderRef(PeerShaderName)) != _peerInitialHandle)
+                throw new InvalidOperationException("Failed batch replacement changed a peer Program handle.");
+        }
+        else if (frameIndex == 2)
+        {
+            _shaders!.ReplaceAll(new[]
+            {
+                new ShaderProgramSource(ShaderName, VertexSource, GreenFragmentSource)
+            });
+            if (_shaders.Resolve(new ShaderRef(ShaderName)) == _initialHandle)
+                throw new InvalidOperationException("Successful replacement retained the old Program handle.");
+        }
+
+        GL gl = _gl ?? throw new InvalidOperationException("Scenario is not initialized.");
+        gl.ClearColor(0.03f, 0.04f, 0.06f, 1f);
+        gl.Clear((uint)ClearBufferMask.ColorBufferBit);
+        Matrix4x4 projection = Matrix4x4.CreateOrthographicOffCenter(0, Width, Height, 0, -1, 1);
+        _shaders!.SetProjection(projection);
+        _defaultShader!.Use();
+        _defaultShader.SetProjection(projection);
+        _batch!.Begin();
+        _batch.SetShader(new ShaderRef(ShaderName));
+        _batch.Draw(
+            ResolveWhiteHandle(),
+            new Vector2(32, 24),
+            new Vector2(128, 80),
+            new Vector4(1f, 0.1f, 0.1f, 1f));
+        _batch.End();
+    }
+
+    private GL? _gl;
+
+    private uint ResolveWhiteHandle()
+    {
+        if (!_textures!.TryResolve(_white, out ResolvedTexture texture))
+            throw new InvalidOperationException("White texture is unavailable.");
+        return texture.Handle;
+    }
+
+    public void Dispose()
+    {
+        _textures?.Dispose();
+        _batch?.Dispose();
+        _shaders?.Dispose();
+        _defaultShader?.Dispose();
+    }
+
+    private const string VertexSource = """
+        #version 330 core
+        layout (location = 0) in vec2 aPos;
+        layout (location = 1) in vec2 aTexCoord;
+        layout (location = 2) in vec4 aColor;
+        out vec2 vUv;
+        out vec4 vColor;
+        uniform mat4 uProjection;
+        void main() {
+            gl_Position = uProjection * vec4(aPos, 0.0, 1.0);
+            vUv = aTexCoord;
+            vColor = aColor;
+        }
+        """;
+
+    private const string RedFragmentSource = """
+        #version 330 core
+        in vec2 vUv;
+        in vec4 vColor;
+        out vec4 FragColor;
+        uniform sampler2D uTexture;
+        void main() { FragColor = texture(uTexture, vUv) * vColor; }
+        """;
+
+    private const string GreenFragmentSource = """
+        #version 330 core
+        in vec2 vUv;
+        in vec4 vColor;
+        out vec4 FragColor;
+        uniform sampler2D uTexture;
+        void main() {
+            float value = texture(uTexture, vUv).r * vColor.r;
+            FragColor = vec4(0.1, value, 0.1, 1.0);
+        }
+        """;
+
+    private const string InvalidFragmentSource = """
+        #version 330 core
+        this is not valid GLSL
+        """;
+}
+
 internal sealed class StencilOwnerLifecycleScenario : IVisualRegressionScenario
 {
     private DynamicStencilFixture? _fixture;

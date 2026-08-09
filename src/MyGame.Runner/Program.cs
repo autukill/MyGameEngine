@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using GameEngine.Core.Domain.Entities;
+using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
@@ -17,9 +18,14 @@ internal static class Program {
     private static void Main( string[] args ) {
         bool smoke = args.Contains( "--smoke", StringComparer.Ordinal );
         bool consoleDiagnostics = args.Contains( "--diagnostics", StringComparer.Ordinal );
+        bool contentHotReload = args.Contains( "--content-hot-reload", StringComparer.Ordinal );
+        bool shaderHotReload = args.Contains( "--shader-hot-reload", StringComparer.Ordinal );
         string? diagnosticsJson = GetOptionValue( args, "--diagnostics-json" );
-        using var telemetrySink = consoleDiagnostics || diagnosticsJson is not null
-            ? new RunnerPerformanceTelemetrySink( consoleDiagnostics, diagnosticsJson )
+        using var telemetrySink = consoleDiagnostics || diagnosticsJson is not null ||
+                                  contentHotReload || shaderHotReload
+            ? new RunnerPerformanceTelemetrySink(
+                consoleDiagnostics || contentHotReload || shaderHotReload,
+                diagnosticsJson )
             : null;
         Console.WriteLine( "=== Engine Hosting Demo ===" );
         Console.WriteLine( "  4 个 OrbitingSprite 做圆周运动" );
@@ -38,7 +44,12 @@ internal static class Program {
 
         using var game = GameApplication
             .Create( windowOptions )
-            .UseDefault2DRenderer( renderer => ConfigureRenderer( renderer, telemetrySink ) )
+            .UseDefault2DRenderer( renderer => ConfigureRenderer(
+                renderer,
+                telemetrySink,
+                consoleDiagnostics || diagnosticsJson is not null,
+                contentHotReload,
+                shaderHotReload ) )
             .ConfigureScene( "MainScene", context => ConfigureScene( context, smoke ) )
             .Build();
 
@@ -47,9 +58,18 @@ internal static class Program {
 
     private static void ConfigureRenderer(
         Default2DRendererOptions renderer,
-        RunnerPerformanceTelemetrySink? telemetrySink ) {
+        RunnerPerformanceTelemetrySink? telemetrySink,
+        bool performanceTelemetry,
+        bool contentHotReload,
+        bool shaderHotReload ) {
         renderer
             .UseContent( GameAssets.Packages.Root )
+            .UseShaders(
+                "Shaders",
+                new ShaderFileDefinition(
+                    "runner.orbit",
+                    "sprite.vert.glsl",
+                    "orbit.frag.glsl" ) )
             .UseHdr(
                 ToneMappingSettings.Default,
                 new BloomSettings(
@@ -59,9 +79,9 @@ internal static class Program {
                     2,
                     BloomResolution.Half ) )
             .EnableStencilMasking();
-        if ( telemetrySink is not null ) {
+        if ( performanceTelemetry ) {
             renderer.EnablePerformanceTelemetry( new PerformanceTelemetryOptions(
-                telemetrySink,
+                telemetrySink!,
                 TimeSpan.FromSeconds( 1 ),
                 new PerformanceBudget(
                     maxDrawCalls: 500,
@@ -69,6 +89,18 @@ internal static class Program {
                     maxTextureSwitches: 100,
                     maxActivePasses: 32,
                     maxEstimatedGpuMemoryBytes: 256L * 1024 * 1024 ) ) );
+        }
+        if ( contentHotReload ) {
+            renderer.EnableContentHotReload( new ContentHotReloadOptions(
+                telemetrySink!,
+                TimeSpan.FromMilliseconds( 250 ),
+                TimeSpan.FromMilliseconds( 250 ) ) );
+        }
+        if ( shaderHotReload ) {
+            renderer.EnableShaderHotReload( new ShaderHotReloadOptions(
+                telemetrySink!,
+                TimeSpan.FromMilliseconds( 250 ),
+                TimeSpan.FromMilliseconds( 250 ) ) );
         }
     }
 
@@ -79,6 +111,7 @@ internal static class Program {
         scene.OnStart = () => Console.WriteLine( $"[Scene] '{scene.SceneName}' started." );
 
         var orbitingSprite = GameAssets.Sprites.RunnerOrbiting;
+        var orbitShader = new ShaderRef( "runner.orbit" );
         var center = new Vector2D(
             context.Window.Width * 0.5f,
             context.Window.Height * 0.5f );
@@ -92,7 +125,8 @@ internal static class Program {
                 200f,
                 i * MathF.PI / 2f,
                 colors[i],
-                orbitingSprite ) );
+                orbitingSprite,
+                orbitShader ) );
         }
 
         var spotlightGroup = new StencilMaskGroupRef( "spotlight" );
@@ -161,7 +195,11 @@ internal static class Program {
             ? throw new ArgumentException( $"{option} requires a file path." )
             : value;
 
-    private sealed class RunnerPerformanceTelemetrySink : IPerformanceTelemetrySink, IDisposable {
+    private sealed class RunnerPerformanceTelemetrySink :
+        IPerformanceTelemetrySink,
+        IContentHotReloadSink,
+        IShaderHotReloadSink,
+        IDisposable {
         private readonly bool _writeConsole;
         private readonly StreamWriter? _jsonWriter;
 
@@ -187,6 +225,33 @@ internal static class Program {
             }
             if ( _jsonWriter is null ) return;
             _jsonWriter.WriteLine( JsonSerializer.Serialize( snapshot ) );
+            _jsonWriter.Flush();
+        }
+
+        public void Publish( ContentHotReloadDiagnostic diagnostic ) {
+            if ( _writeConsole ) {
+                string suffix = diagnostic.Error is null ? string.Empty : $", error={diagnostic.Error}";
+                Console.WriteLine(
+                    $"[ContentHotReload] status={diagnostic.Status}, " +
+                    $"package={diagnostic.PackageId}, revision={diagnostic.Fingerprint}, " +
+                    $"durationMs={diagnostic.Duration.TotalMilliseconds:F1}{suffix}" );
+            }
+            if ( _jsonWriter is null ) return;
+            _jsonWriter.WriteLine( JsonSerializer.Serialize( diagnostic ) );
+            _jsonWriter.Flush();
+        }
+
+        public void Publish( ShaderHotReloadDiagnostic diagnostic ) {
+            if ( _writeConsole ) {
+                string suffix = diagnostic.Error is null ? string.Empty : $", error={diagnostic.Error}";
+                Console.WriteLine(
+                    $"[ShaderHotReload] status={diagnostic.Status}, " +
+                    $"shaders={string.Join( ',', diagnostic.ShaderNames )}, " +
+                    $"revision={diagnostic.Fingerprint}, " +
+                    $"durationMs={diagnostic.Duration.TotalMilliseconds:F1}{suffix}" );
+            }
+            if ( _jsonWriter is null ) return;
+            _jsonWriter.WriteLine( JsonSerializer.Serialize( diagnostic ) );
             _jsonWriter.Flush();
         }
 

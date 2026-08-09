@@ -20,6 +20,7 @@ internal static class Program
         VerifyMultiImageIntegration();
         VerifySharedDependencyLifetime();
         VerifyGraphValidationAndRollback();
+        VerifyCompiledRevisionReload();
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0
@@ -276,6 +277,111 @@ internal static class Program
             Directory.Delete(root, recursive: true);
         }
     }
+
+    private static void VerifyCompiledRevisionReload()
+    {
+        Console.WriteLine("5. Compiled revision background prepare and frame-boundary commit");
+        string root = Directory.CreateTempSubdirectory("mygame-content-reload-").FullName;
+        try
+        {
+            string imagePath = Path.Combine(root, "live.webp");
+            string manifestPath = Path.Combine(root, "assets.json");
+            WriteWebp(imagePath, 4, 4, SKColors.Red);
+            WriteReloadManifest(manifestPath, origin: 1);
+            WriteRevision(root, "revision-1");
+
+            var backend = new FakeTextureBackend();
+            using var textures = new TextureLibrary(backend);
+            var sprites = new SpriteLibrary(textures);
+            using var manager = new ContentPackageManager(textures, sprites, root);
+            var packageRef = new ContentPackageRef("reload.assets", "assets.json");
+            using var package = manager.Load(packageRef);
+            TextureRef texture = package.GetTexture("reload.texture");
+            SpriteRef sprite = package.GetSprite("reload.sprite");
+            textures.TryResolve(texture, out var oldTexture);
+
+            WriteWebp(imagePath, 8, 8, SKColors.Blue);
+            WriteReloadManifest(manifestPath, origin: 3);
+            WriteRevision(root, "revision-2");
+            CompiledContentRevision revision = CompiledContentRevisionReader.Read(root, packageRef);
+            PreparedContentPackageReload prepared = manager
+                .PrepareReloadAsync(packageRef, revision)
+                .GetAwaiter()
+                .GetResult();
+
+            textures.TryResolve(texture, out var beforeCommit);
+            sprites.TryGetMetadata(sprite, out var spriteBeforeCommit);
+            Check(beforeCommit.Handle == oldTexture.Handle && spriteBeforeCommit.Origin.X == 1,
+                "Background preparation has no visible GPU or Sprite mutation");
+
+            manager.CommitReload(prepared);
+            textures.TryResolve(texture, out var currentTexture);
+            sprites.TryGetMetadata(sprite, out var currentSprite);
+            Check(currentTexture.Handle != oldTexture.Handle &&
+                  currentTexture.Metadata.Width == 8 &&
+                  currentSprite.Size == new System.Numerics.Vector2(8) &&
+                  currentSprite.Origin.X == 3 &&
+                  backend.Deleted.Contains(oldTexture.Handle),
+                "Commit atomically updates stable refs and releases the old GPU handle");
+
+            File.WriteAllBytes(imagePath, [1, 2, 3]);
+            WriteRevision(root, "revision-bad-image");
+            CheckThrows<InvalidDataException>(() => manager
+                    .PrepareReloadAsync(
+                        packageRef,
+                        CompiledContentRevisionReader.Read(root, packageRef))
+                    .GetAwaiter()
+                    .GetResult(),
+                "Decode failure rejects the prepared revision");
+            textures.TryResolve(texture, out var afterFailure);
+            Check(afterFailure.Handle == currentTexture.Handle && afterFailure.Metadata.Width == 8,
+                "Failed preparation leaves the active revision untouched");
+
+            Directory.CreateDirectory(Path.Combine(root, "shared"));
+            WriteWebp(Path.Combine(root, "shared", "shared.webp"), 1, 1, SKColors.White);
+            File.WriteAllText(Path.Combine(root, "shared", "assets.json"),
+                "{\"schemaVersion\":1,\"id\":\"shared.assets\",\"dependencies\":[]," +
+                "\"textures\":[{\"name\":\"shared.texture\",\"path\":\"shared.webp\"}],\"sprites\":[]}");
+            WriteWebp(imagePath, 8, 8, SKColors.Blue);
+            File.WriteAllText(manifestPath, """
+                { "schemaVersion":1, "id":"reload.assets",
+                  "dependencies":[{"id":"shared.assets","manifest":"shared/assets.json"}],
+                  "textures":[{"name":"reload.texture","path":"live.webp"}],
+                  "sprites":[{"name":"reload.sprite","layout":"single","texture":"reload.texture",
+                    "origin":{"x":3,"y":3}}] }
+                """);
+            WriteRevision(root, "revision-topology");
+            CheckThrows<InvalidOperationException>(() => manager
+                    .PrepareReloadAsync(
+                        packageRef,
+                        CompiledContentRevisionReader.Read(root, packageRef))
+                    .GetAwaiter()
+                    .GetResult(),
+                "v1 rejects dependency topology changes before GPU upload");
+            textures.TryResolve(texture, out var afterTopologyFailure);
+            Check(afterTopologyFailure.Handle == currentTexture.Handle,
+                "Rejected topology changes retain the previous package graph");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void WriteReloadManifest(string path, int origin) => File.WriteAllText(path, $$"""
+        { "schemaVersion":1, "id":"reload.assets", "dependencies":[],
+          "textures":[{"name":"reload.texture","path":"live.webp","sampling":"pixelArt"}],
+          "sprites":[{"name":"reload.sprite","layout":"single","texture":"reload.texture",
+            "origin":{"x":{{origin}},"y":{{origin}} } } ] }
+        """);
+
+    private static void WriteRevision(string root, string fingerprint) => File.WriteAllText(
+        Path.Combine(root, CompiledContentRevisionReader.MetadataFileName),
+        $$"""
+          { "schemaVersion":1, "owner":"MyGameEngine.AssetCompiler", "compilerVersion":"2",
+            "rootPackageId":"reload.assets", "rootManifest":"assets.json",
+            "inputFingerprint":"{{fingerprint}}" }
+          """);
 
     private static AssetPackageManifest Parse(string json)
     {

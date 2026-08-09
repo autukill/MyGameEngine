@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 43 个 .NET 项目、176 个 C# 文件；除十一个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 43 个 .NET 项目、186 个 C# 文件；除十一个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -30,7 +30,7 @@
 - Runner 已迁移到 Hosting API，不再手工持有 Shader、Batch、Library、RenderTarget、Pipeline 或窗口回调。
 - 17 个无窗口冒烟/集成项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、编译产物、动态 owner、Hosting、Bloom/Tone Mapping/Presentation 设置、池所有权、CLI 诊断和外部分发闭环。
 - `Engine.Testing.Visual` 提供隐藏固定步长窗口、RGBA8 framebuffer 捕获、PNG 编解码和像素容差比较。
-- 自动 GPU 回归覆盖 Sprite、真实圆形/Sprite Alpha Stencil、动态 resize、Bloom、双 Bloom Surface 串联，以及 HDR、LDR GUI、ACES/Reinhard、曝光、resize 和释放，共 14 个 checkpoint。
+- 自动 GPU 回归覆盖 Sprite、Shader Program 成功/失败替换、真实圆形/Sprite Alpha Stencil、动态 resize、Bloom、双 Bloom Surface 串联，以及 HDR、LDR GUI、ACES/Reinhard、曝光、resize 和释放，共 17 个 checkpoint。
 - AssetCompiler 可打包为 `gameengine-assets` .NET Tool；ContentPipeline NuGet 包通过 `buildTransitive` 为外部项目提供内置编译器、增量 Build 与 Publish 接入。
 - 内容构建从编译后 Manifest 图生成 `GameAssets.Packages/Sprites/Textures`；Atlas 内部页和已吞并源 Texture 不进入公开 API，标识符冲突在构建期失败。
 - 包集成测试使用临时本地 Feed，真实验证 Tool 安装、带空格路径、Debug/Release、缓存命中与 Publish 边界。
@@ -45,22 +45,26 @@
 - 可选帧统计默认关闭；启用后零帧分配记录实际 FPS/UPS、引擎 Draw Call、有效 Batch Flush、纹理切换和活跃 Pass，并聚合到 Hosting 诊断快照。
 - TextureLibrary、根 RenderTarget 与 Pool 提供稳定显存估算；活动租约、可用缓存和高级自定义资源分项统计，不暴露 GPU Handle。
 - `PerformanceBudget` 与低频 Sink 只在采样点创建结构化快照；Runner 支持 `--diagnostics` 控制台摘要和 `--diagnostics-json` JSON Lines。
+- Content 包开发期热重载以 `.mygame-assets.json` 指纹为提交标记，后台解码完整修订，并在 Step 与 Draw 之间事务替换 Texture、Sprite 与包索引；失败保留旧修订。
+- Hosting 提供 `EnableContentHotReload`，Runner 提供 `--content-hot-reload`；同修订失败去重，依赖包内容可更新，v1 明确拒绝运行中改变包依赖拓扑。
+- Hosting 通过 `UseShaders` 装配自定义 Sprite Shader，并把 `ShaderLibrary` 注入主 Scene 与 Stencil Batch；`uProjection` 自动同步，Context 提供动态 uniform 入口。
+- Shader 热重载后台读取双重 SHA-256 稳定快照，在 GL 线程整批编译和原子切换 Program；任一编译/链接失败时全部旧 Handle 保持有效，Runner 提供 `--shader-hot-reload`。
 
 ## 仍在演进
 
-- `ShaderRef` 与 ShaderLibrary 已具备，但缺少统一动态 uniform API。
+- 自定义 uniform 仍由使用者逐帧设置；尚无声明式材质参数块、类型化 uniform schema 或热重载后的参数自动重放。
 - Stencil 暂时只支持 Circle 与 SpriteAlpha，不支持软边、任意矢量路径或布尔几何运算。
 - Atlas 暂不支持旋转、trim 或相同像素内容哈希去重。
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
-- 各交互式 VisualTests 仍需人工观察；自动基线已覆盖五条高价值确定性路径，但无显示器 CI 环境尚未固化。
+- 各交互式 VisualTests 仍需人工观察；自动基线已覆盖八条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 - Hosting v1 仅支持单窗口与单初始 Scene，尚无 Scene 切换栈、暂停策略或后台加载。
 
-## 下一里程碑：CI 图形环境与开发期热重载
+## 下一里程碑：CI 图形环境与材质参数
 
 1. 固化无显示器 CI 的软件 OpenGL 环境。
-2. 为 Content 包热重载建立指纹检测、后台准备与帧边界原子替换。
-3. 为 Shader 热重载保留上一份有效 Program，并把编译错误交给现有诊断 Sink。
+2. 规划材质参数块与类型化 uniform schema，避免热替换后由业务代码手动重放全部参数。
+3. 评估 Content 热重载的依赖拓扑替换与后台 GPU 上传边界。
 
 ## 已知限制
 
@@ -69,4 +73,4 @@
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

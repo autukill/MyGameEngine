@@ -218,7 +218,7 @@ var idle = package.GetSprite("boss.idle");
 
 `assets.json` 可声明包依赖、Texture，以及 `single`、`grid`、`frames` 三种 Sprite 布局。`frames` 的每一帧都可引用不同 `TextureRef` 并指定像素裁剪区域，因此大尺寸单帧可以保留为独立图片；运行时 Sprite 引用和绘制 API 不受未来 Atlas 重映射影响。Manager 会先验证完整依赖图，再按拓扑顺序同步加载；失败只回滚本次新增资源，共享依赖在最后一个租约释放后才卸载。
 
-完整清单字段、多纹理长动画、包依赖和生命周期说明见 [Content Assets 使用指南](docs/CONTENT_ASSETS.md)；生成引用、Atlas 过滤和命名规则见[强类型 Content 引用](docs/STRONGLY_TYPED_CONTENT.md)。
+完整清单字段、多纹理长动画、包依赖和生命周期说明见 [Content Assets 使用指南](docs/CONTENT_ASSETS.md)；生成引用、Atlas 过滤和命名规则见[强类型 Content 引用](docs/STRONGLY_TYPED_CONTENT.md)。开发运行可选择启用[编译指纹驱动的 Content 热重载](docs/CONTENT_HOT_RELOAD.md)，新修订后台准备并在 Step 与 Draw 之间原子切换，失败继续使用旧资源。
 
 ## 离线 Texture Atlas
 
@@ -247,10 +247,12 @@ Presentation         -> Screen (Tone opaque + Mask alpha + SceneGui alpha)
 
 Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 Surface 输入/输出，Builder 验证唯一生产者、缺失输入、格式匹配和循环后稳定拓扑创建 Runtime；底层 Pass 再通过实际 RenderTarget 声明执行依赖。完整说明见 [动态渲染效果使用指南](docs/DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](docs/RENDER_SURFACES.md)、[Presentation](docs/PRESENTATION.md)、[Bloom](docs/BLOOM_EFFECT.md)和 [Tone Mapping](docs/TONE_MAPPING.md)。
 
+自定义 Sprite Shader 可由 Hosting 从安全根目录注册，通过逻辑 `ShaderRef` 应用到实例；开发期可选整批原子热替换，编译或链接失败继续使用旧 Program。详见[自定义 Sprite Shader 与热重载](docs/SHADER_HOT_RELOAD.md)。
+
 ## 下一阶段
 
 1. 为无显示器 CI 固化软件 OpenGL 执行环境。
-2. 为内容与 Shader 热重载建立失败回退边界。
+2. 在已完成 Content 与 Shader 原子热重载的基础上，规划材质参数块和类型化 uniform schema。
 3. 继续降低 SceneAggregate 每帧 LINQ 与排序分配。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

@@ -5,6 +5,7 @@ using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Features.Sprites.Domain;
 using GameEngine.Features.Sprites.Infrastructure;
 
 internal static class Program
@@ -15,6 +16,7 @@ internal static class Program
     {
         Console.WriteLine("=== Sprites Feature Smoke Test ===\n");
         VerifyLibrary();
+        VerifyAtomicReplacement();
         VerifyAnimation();
         VerifyGeometry();
 
@@ -129,6 +131,46 @@ internal static class Program
         instance.SetActive(false, scene.RaiseEvent);
         scene.PerformStep(.25);
         Check(Near(instance.ImageIndex, 3f), "Inactive instance does not advance");
+    }
+
+    private static void VerifyAtomicReplacement()
+    {
+        Console.WriteLine("2. Atomic Sprite replacement");
+        var textures = new TestTextureResolver();
+        var texture = textures.Add("replacement-texture", 20u, 16, 8);
+        var library = new SpriteLibrary(textures);
+        var sprite = library.RegisterSingle("live", texture, new Vector2(1, 2));
+
+        using (var replacement = library.BeginReplacement(
+                   new[] { "live" },
+                   new[] { new SpriteReplacementSource(
+                       "live",
+                       new Vector2(8),
+                       new Vector2(4),
+                       [new SpriteFrameSource(texture, new PixelRectI(8, 0, 8, 8))],
+                       12f) }))
+        {
+            library.TryGetMetadata(sprite, out var before);
+            Check(before.Origin == new Vector2(1, 2),
+                "Staged Sprite is invisible before activation");
+            replacement.Activate();
+            library.TryGetMetadata(sprite, out var active);
+            Check(active.Origin == new Vector2(4) && active.FramesPerSecond == 12f,
+                "Activation updates an existing logical SpriteRef");
+        }
+        library.TryGetMetadata(sprite, out var restored);
+        Check(restored.Origin == new Vector2(1, 2),
+            "Uncommitted Sprite replacement restores the previous entry");
+
+        using (var replacement = library.BeginReplacement(
+                   new[] { "live" },
+                   Array.Empty<SpriteReplacementSource>()))
+        {
+            replacement.Activate();
+            replacement.Commit();
+        }
+        Check(!library.TryGetMetadata(sprite, out _),
+            "Committed replacement can remove a Sprite from its ownership scope");
     }
 
     private static void VerifyGeometry()

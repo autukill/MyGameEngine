@@ -2,11 +2,13 @@ namespace GameEngine.Hosting;
 
 using System.Numerics;
 using GameEngine.Core.Domain.Aggregates;
+using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Bloom.Infrastructure;
 using GameEngine.Features.Camera.Domain;
+using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Presentation.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
@@ -29,6 +31,7 @@ internal sealed class Default2DGameRuntime : IDisposable
     private SpriteBatch _batch = null!;
     private TextureLibrary _textures = null!;
     private SpriteLibrary _sprites = null!;
+    private ShaderLibrary _shaders = null!;
     private SceneAggregate? _scene;
     private Camera2D _camera = null!;
     private RenderTarget2D _sceneTarget = null!;
@@ -37,6 +40,8 @@ internal sealed class Default2DGameRuntime : IDisposable
     private RenderPipeline _pipeline = null!;
     private ScenePipelineBuilder _builder = null!;
     private PerformanceTelemetrySampler? _performanceTelemetry;
+    private ContentHotReloadCoordinator? _contentHotReload;
+    private ShaderHotReloadCoordinator? _shaderHotReload;
     private bool _disposed;
 
     public Default2DGameContext Context { get; private set; } = null!;
@@ -76,6 +81,8 @@ internal sealed class Default2DGameRuntime : IDisposable
         _scene!.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
         _scene.PerformStep(deltaTime);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+        _contentHotReload?.Tick();
+        _shaderHotReload?.Tick();
     }
 
     public void Draw() => _pipeline.Execute(new RenderPassContext(
@@ -142,7 +149,22 @@ internal sealed class Default2DGameRuntime : IDisposable
         });
         _textures = _resources.Add(new TextureLibrary(gl));
         _sprites = new SpriteLibrary(_textures);
+        _shaders = _resources.Add(new ShaderLibrary(gl));
         _batch.SpriteResolver = _sprites;
+        _batch.ShaderResolver = _shaders;
+
+        ShaderFileSetSnapshot? shaderSnapshot = null;
+        string? shaderRoot = null;
+        if (renderer.ShaderFiles is { Count: > 0 } shaderFiles)
+        {
+            string configuredShaderRoot = renderer.ShaderRoot!;
+            shaderRoot = Path.GetFullPath(Path.IsPathRooted(configuredShaderRoot)
+                ? configuredShaderRoot
+                : Path.Combine(AppContext.BaseDirectory, configuredShaderRoot));
+            shaderSnapshot = ShaderFileSetReader.Read(shaderRoot, shaderFiles);
+            foreach (ShaderProgramSource source in shaderSnapshot.Sources)
+                _shaders.Create(source.Name, source.VertexSource, source.FragmentSource);
+        }
 
         TextureRef stencilWhite = default;
         if (renderer.StencilMaskingEnabled)
@@ -234,7 +256,8 @@ internal sealed class Default2DGameRuntime : IDisposable
                 stencilShader!,
                 stencilWhite,
                 _textures,
-                _sprites));
+                _sprites,
+                _shaders));
         }
         if (renderer.Bloom is not null)
             _builder.RegisterFactory(new BloomEffectFactory(
@@ -250,6 +273,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _scene,
             _textures,
             _sprites,
+            _shaders,
             content,
             _camera,
             _pipeline,
@@ -258,6 +282,25 @@ internal sealed class Default2DGameRuntime : IDisposable
             _sceneTarget,
             _guiTarget,
             _close);
+        if (renderer.ShaderHotReload is { } shaderHotReload)
+        {
+            _shaderHotReload = _resources.Add(new ShaderHotReloadCoordinator(
+                _shaders,
+                shaderRoot!,
+                renderer.ShaderFiles!,
+                shaderSnapshot!,
+                shaderHotReload));
+        }
+        if (renderer.ContentHotReload is { } hotReload)
+        {
+            ContentPackageRef package = renderer.ContentPackage ?? new ContentPackageRef(
+                content!.Id,
+                renderer.ContentManifest!);
+            _contentHotReload = _resources.Add(new ContentHotReloadCoordinator(
+                contentManager!,
+                package,
+                hotReload));
+        }
         if (renderer.PerformanceTelemetry is { } telemetry)
         {
             _performanceTelemetry = new PerformanceTelemetrySampler(

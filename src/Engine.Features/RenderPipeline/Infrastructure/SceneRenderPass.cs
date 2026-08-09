@@ -50,8 +50,10 @@ public sealed class SceneRenderPass : RenderPass
         _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
 
         // 2. 应用 Camera 矩阵
+        Matrix4x4 projection = _camera.GetViewProjectionMatrix();
+        ctx.Batch.ShaderResolver?.SetProjection(projection);
         ctx.DefaultShader.Use();
-        ctx.DefaultShader.SetProjection(_camera.GetViewProjectionMatrix());
+        ctx.DefaultShader.SetProjection(projection);
 
         // 3. 如果配置了背景精灵，先绘制（在 "Background" Layer 之前）
         if (bg.HasSprite)

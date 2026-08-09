@@ -21,6 +21,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="Shaders\**\*.glsl">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\Engine.Hosting\Engine.Hosting.csproj" />
     <ProjectReference Include="..\Engine.Features\Bloom\Bloom.csproj" />

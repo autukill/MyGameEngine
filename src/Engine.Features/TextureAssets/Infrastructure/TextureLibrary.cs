@@ -10,7 +10,7 @@ using Silk.NET.OpenGL;
 /// </summary>
 public sealed class TextureLibrary : ITextureResolver, IDisposable
 {
-    private sealed record Entry(uint Handle, TextureMetadata Metadata);
+    internal sealed record Entry(uint Handle, TextureMetadata Metadata);
 
     private readonly ITextureBackend _backend;
     private readonly IImageDecoder _decoder;
@@ -29,6 +29,62 @@ public sealed class TextureLibrary : ITextureResolver, IDisposable
     }
 
     public int Count => _entries.Count;
+
+    /// <summary>上传一组暂不可见的 Texture，并返回可激活、提交或回滚的替换事务。</summary>
+    public TextureReplacementTransaction BeginReplacement(
+        IReadOnlyCollection<string> replaceableNames,
+        IReadOnlyList<TextureReplacementSource> replacements)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(replaceableNames);
+        ArgumentNullException.ThrowIfNull(replacements);
+        var scope = new HashSet<string>(replaceableNames, StringComparer.Ordinal);
+        if (scope.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException("Replaceable Texture names cannot be empty.", nameof(replaceableNames));
+
+        var staged = new Dictionary<string, Entry>(StringComparer.Ordinal);
+        try
+        {
+            foreach (TextureReplacementSource replacement in replacements)
+            {
+                ArgumentNullException.ThrowIfNull(replacement);
+                if (string.IsNullOrWhiteSpace(replacement.Name))
+                    throw new ArgumentException("Replacement Texture name cannot be empty.", nameof(replacements));
+                if (staged.ContainsKey(replacement.Name))
+                    throw new ArgumentException(
+                        $"Replacement Texture '{replacement.Name}' appears more than once.",
+                        nameof(replacements));
+                if (_entries.ContainsKey(replacement.Name) && !scope.Contains(replacement.Name))
+                    throw new InvalidOperationException(
+                        $"Texture '{replacement.Name}' is owned outside the replacement scope.");
+                ValidatePixels(
+                    replacement.Width,
+                    replacement.Height,
+                    replacement.RgbaPixels);
+                uint handle = _backend.CreateTexture(
+                    replacement.Width,
+                    replacement.Height,
+                    replacement.RgbaPixels,
+                    replacement.Sampler);
+                if (handle == 0)
+                    throw new InvalidOperationException("The texture backend returned an invalid handle.");
+                staged.Add(replacement.Name, new Entry(
+                    handle,
+                    new TextureMetadata(replacement.Width, replacement.Height)));
+            }
+        }
+        catch
+        {
+            foreach (Entry entry in staged.Values)
+                _backend.DeleteTexture(entry.Handle);
+            throw;
+        }
+
+        var previous = _entries
+            .Where(pair => scope.Contains(pair.Key))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        return new TextureReplacementTransaction(this, scope, staged, previous);
+    }
 
     /// <summary>显式捕获 RGBA8 Texture 与 Atlas 页的纯值显存估算。</summary>
     public TextureLibraryDiagnostics CaptureDiagnostics()
@@ -182,4 +238,58 @@ public sealed class TextureLibrary : ITextureResolver, IDisposable
 
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(_disposed, this);
+
+    public sealed class TextureReplacementTransaction : IDisposable
+    {
+        private TextureLibrary? _owner;
+        private readonly HashSet<string> _scope;
+        private readonly Dictionary<string, Entry> _staged;
+        private readonly Dictionary<string, Entry> _previous;
+        private bool _active;
+        private bool _committed;
+
+        internal TextureReplacementTransaction(
+            TextureLibrary owner,
+            HashSet<string> scope,
+            Dictionary<string, Entry> staged,
+            Dictionary<string, Entry> previous)
+        {
+            _owner = owner;
+            _scope = scope;
+            _staged = staged;
+            _previous = previous;
+        }
+
+        public void Activate()
+        {
+            ObjectDisposedException.ThrowIf(_owner is null, this);
+            if (_active) throw new InvalidOperationException("Texture replacement is already active.");
+            foreach (string name in _scope) _owner._entries.Remove(name);
+            foreach (var pair in _staged) _owner._entries.Add(pair.Key, pair.Value);
+            _active = true;
+        }
+
+        public void Commit()
+        {
+            ObjectDisposedException.ThrowIf(_owner is null, this);
+            if (!_active) throw new InvalidOperationException("Activate the Texture replacement first.");
+            foreach (Entry entry in _previous.Values)
+                _owner._backend.DeleteTexture(entry.Handle);
+            _committed = true;
+            _owner = null;
+        }
+
+        public void Dispose()
+        {
+            TextureLibrary? owner = Interlocked.Exchange(ref _owner, null);
+            if (owner is null || _committed) return;
+            if (_active)
+            {
+                foreach (string name in _staged.Keys) owner._entries.Remove(name);
+                foreach (var pair in _previous) owner._entries.Add(pair.Key, pair.Value);
+            }
+            foreach (Entry entry in _staged.Values)
+                owner._backend.DeleteTexture(entry.Handle);
+        }
+    }
 }

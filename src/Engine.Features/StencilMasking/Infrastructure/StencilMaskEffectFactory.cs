@@ -20,6 +20,7 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
     private readonly TextureRef _whiteTexture;
     private readonly ITextureResolver _textures;
     private readonly ISpriteResolver _sprites;
+    private readonly IShaderResolver? _shaders;
 
     public string Kind => StencilMaskEffectDescriptor.EffectKind;
 
@@ -31,7 +32,8 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         StencilMaskShader maskShader,
         TextureRef whiteTexture,
         ITextureResolver textures,
-        ISpriteResolver sprites)
+        ISpriteResolver sprites,
+        IShaderResolver? shaders = null)
     {
         _gl = gl;
         _scene = scene;
@@ -41,6 +43,7 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
         _whiteTexture = whiteTexture;
         _textures = textures;
         _sprites = sprites ?? throw new ArgumentNullException(nameof(sprites));
+        _shaders = shaders;
     }
 
     public RenderEffectPlan Plan(
@@ -83,7 +86,8 @@ public sealed class StencilMaskEffectFactory : IRenderEffectFactory
                 _maskShader,
                 _whiteTexture,
                 _textures,
-                _sprites);
+                _sprites,
+                _shaders);
             stencilPass.UpdateMasks(descriptors);
 
             var passes = new List<RenderPass> { stencilPass };

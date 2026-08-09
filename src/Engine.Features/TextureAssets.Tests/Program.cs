@@ -16,6 +16,7 @@ internal static class Program
         VerifyRegistrationAndOwnership();
         VerifyPngAndWebpDecoding();
         VerifyManifestLoading();
+        VerifyAtomicReplacement();
         VerifyValidation();
 
         Console.WriteLine();
@@ -119,6 +120,44 @@ internal static class Program
         var decoder = new SkiaImageDecoder();
         CheckThrows<InvalidDataException>(() => decoder.Decode(invalid),
             "Unsupported image data is rejected");
+    }
+
+    private static void VerifyAtomicReplacement()
+    {
+        Console.WriteLine("4. Atomic Texture replacement");
+        var backend = new FakeTextureBackend();
+        using var library = new TextureLibrary(backend, new RejectingDecoder());
+        var texture = library.RegisterRgba("live", 1, 1, new byte[4]);
+
+        using (var replacement = library.BeginReplacement(
+                   new[] { "live" },
+                   new[] { new TextureReplacementSource(
+                       "live", 2, 2, new byte[16], TextureSampler.PixelArt) }))
+        {
+            library.TryResolve(texture, out var before);
+            Check(before.Handle == 1, "Staged Texture is invisible before activation");
+            replacement.Activate();
+            library.TryResolve(texture, out var active);
+            Check(active.Handle == 2 && active.Metadata.Width == 2,
+                "Activation switches the logical reference without changing TextureRef");
+        }
+
+        library.TryResolve(texture, out var rolledBack);
+        Check(rolledBack.Handle == 1 && backend.Deleted.SequenceEqual(new[] { 2u }),
+            "Uncommitted replacement restores old mapping and releases staged GPU data");
+
+        using (var replacement = library.BeginReplacement(
+                   new[] { "live" },
+                   new[] { new TextureReplacementSource(
+                       "live", 3, 1, new byte[12], TextureSampler.Smooth) }))
+        {
+            replacement.Activate();
+            replacement.Commit();
+        }
+        library.TryResolve(texture, out var committed);
+        Check(committed.Handle == 3 && committed.Metadata.Width == 3 &&
+              backend.Deleted.SequenceEqual(new[] { 2u, 1u }),
+            "Commit keeps the new mapping and releases the previous GPU handle once");
     }
 
     private static void VerifyManifestLoading()

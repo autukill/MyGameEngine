@@ -12,7 +12,7 @@ using GameEngine.Features.TextureAssets.Infrastructure;
 /// Synchronously loads versioned content packages and owns only the resources assembled by them.
 /// All methods must run on the graphics-context thread.
 /// </summary>
-public sealed class ContentPackageManager : IDisposable
+public sealed partial class ContentPackageManager : IDisposable
 {
     private sealed class GraphNode
     {
@@ -25,8 +25,8 @@ public sealed class ContentPackageManager : IDisposable
     {
         public required string Id { get; init; }
         public required string ManifestPath { get; init; }
-        public required IReadOnlyList<TextureRef> Textures { get; init; }
-        public required IReadOnlyList<SpriteRef> Sprites { get; init; }
+        public required IReadOnlyList<TextureRef> Textures { get; set; }
+        public required IReadOnlyList<SpriteRef> Sprites { get; set; }
         public required IReadOnlyList<PackageState> Dependencies { get; init; }
         public required long LoadOrder { get; init; }
         public int ReferenceCount { get; set; }
@@ -55,6 +55,7 @@ public sealed class ContentPackageManager : IDisposable
     }
 
     public int LoadedPackageCount => _packagesById.Count;
+    public string PackagesRoot => _packagesRoot;
 
     public LoadedContentPackage Load(string rootRelativeManifestPath) =>
         LoadCore(rootRelativeManifestPath, expectedId: null);
@@ -332,6 +333,7 @@ public sealed class ContentPackageManager : IDisposable
             };
             _packagesById.Add(state.Id, state);
             _packagesByPath.Add(state.ManifestPath, state);
+            _revisionGeneration++;
             return state;
         }
         catch
@@ -526,6 +528,7 @@ public sealed class ContentPackageManager : IDisposable
 
         _packagesById.Remove(state.Id);
         _packagesByPath.Remove(state.ManifestPath);
+        _revisionGeneration++;
         for (int i = state.Dependencies.Count - 1; i >= 0; i--)
             Release(state.Dependencies[i]);
     }

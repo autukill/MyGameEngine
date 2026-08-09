@@ -132,13 +132,14 @@ obj/<Configuration>/<TargetFramework>/CompiledAssets/
 
 随后 Target 会：
 
-1. 排除根目录的 `.mygame-assets.json`。
+1. 暂时排除根目录的 `.mygame-assets.json`。
 2. 删除旧的 `bin/.../AssetsCompiled`。
 3. 重新创建目录并复制当前运行时文件。
+4. 最后复制 `.mygame-assets.json`，把它作为完整修订的运行时提交标记。
 
 先删除输出目录可以清除改名或删除资源留下的陈旧文件。相应代价是每次 Build 都会重新复制运行时资产；真正昂贵的图片解码和 Atlas 构建仍由 `obj` 中的增量缓存避免。
 
-`.mygame-assets.json` 保存所有权、输入指纹和输出哈希，只服务于构建过程。游戏运行时不需要它，因此不会复制到 `bin`。
+`.mygame-assets.json` 保存所有权、输入指纹和输出哈希。普通运行时只需 Manifest 和图片；启用 Content 热重载时，Hosting 读取其中的根包身份和输入指纹判断完整修订。因此 Target 会把它复制到 `bin`，但始终最后写入，避免运行时观察到尚未复制完整的新内容。
 
 ## Publish 接入
 
@@ -155,11 +156,12 @@ publish/
 ├── MyGameRunner.dll
 └── AssetsCompiled/
     ├── assets.json
+    ├── .mygame-assets.json
     ├── atlas/
     └── ...
 ```
 
-发布列表同样排除 `.mygame-assets.json`。在一次 MSBuild 调用中，即使编译 Target 同时被 Build 和 Publish 依赖，MSBuild 也只执行该 Target 一次。
+发布列表包含 `.mygame-assets.json`，使同一构建产物保留可诊断的修订身份；是否开启热重载仍由运行时代码显式决定。在一次 MSBuild 调用中，即使编译 Target 同时被 Build 和 Publish 依赖，MSBuild 也只执行该 Target 一次。
 
 ## Build、Run 和 Publish 的关系
 

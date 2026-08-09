@@ -124,9 +124,9 @@ internal static class Program
             "publish", "Consumer.csproj", "--configuration", "Release",
             "--no-restore", "--output", publish);
         Check(File.Exists(Path.Combine(publish, "AssetsCompiled", "assets.json")) &&
-              !File.Exists(Path.Combine(publish, "AssetsCompiled", ".mygame-assets.json")) &&
+              File.Exists(Path.Combine(publish, "AssetsCompiled", ".mygame-assets.json")) &&
               !File.Exists(Path.Combine(publish, "GameEngine.Content.g.cs")),
-            "Publish includes runtime assets and excludes build metadata and generated source");
+            "Publish includes runtime assets and revision metadata but excludes generated source");
 
         ProcessResult invalidMode = RunDotNet(
             consumer,

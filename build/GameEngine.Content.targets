@@ -45,11 +45,16 @@
       <_GameEngineCompiledAsset Remove="@(_GameEngineCompiledAsset)" />
       <_GameEngineCompiledAsset Include="$(GameEngineContentOutput)\**\*"
                                 Exclude="$(GameEngineContentOutput)\.mygame-assets.json" />
+      <_GameEngineCompiledMetadata Include="$(GameEngineContentOutput)\.mygame-assets.json" />
     </ItemGroup>
     <RemoveDir Directories="$(OutDir)$(GameEngineContentOutputSubdirectory)" />
     <MakeDir Directories="$(OutDir)$(GameEngineContentOutputSubdirectory)" />
     <Copy SourceFiles="@(_GameEngineCompiledAsset)"
           DestinationFiles="@(_GameEngineCompiledAsset->'$(OutDir)$(GameEngineContentOutputSubdirectory)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <!-- The revision metadata is copied last and acts as the runtime hot-reload commit marker. -->
+    <Copy SourceFiles="@(_GameEngineCompiledMetadata)"
+          DestinationFolder="$(OutDir)$(GameEngineContentOutputSubdirectory)"
           SkipUnchangedFiles="true" />
   </Target>
 
@@ -58,8 +63,7 @@
           DependsOnTargets="CompileGameEngineContent"
           Condition="'$(GameEngineContentPackagesRoot)' != ''">
     <ItemGroup>
-      <_GameEnginePublishAsset Include="$(GameEngineContentOutput)\**\*"
-                               Exclude="$(GameEngineContentOutput)\.mygame-assets.json" />
+      <_GameEnginePublishAsset Include="$(GameEngineContentOutput)\**\*" />
       <ResolvedFileToPublish Include="@(_GameEnginePublishAsset)"
                              RelativePath="$(GameEngineContentOutputSubdirectory)\%(RecursiveDir)%(Filename)%(Extension)"
                              CopyToPublishDirectory="PreserveNewest" />

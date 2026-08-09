@@ -5,9 +5,14 @@ using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.ContentAssets.Domain;
+using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.ToneMapping.Domain;
+using GameEngine.Features.Sprites.Infrastructure;
+using GameEngine.Features.TextureAssets.Domain;
+using GameEngine.Features.TextureAssets.Infrastructure;
+using SkiaSharp;
 
 internal static class Program
 {
@@ -21,6 +26,9 @@ internal static class Program
         TestResourceOwnership();
         TestDefaultPresentationControllers();
         TestPerformanceTelemetry();
+        TestContentHotReloadOptions();
+        TestContentHotReloadCoordinator();
+        TestShaderHotReloadConfiguration();
         Console.WriteLine();
         Console.WriteLine(_failures == 0
             ? "=== All Engine Hosting smoke tests passed ==="
@@ -259,6 +267,209 @@ internal static class Program
             "The next interval publishes one fresh snapshot");
     }
 
+    private static void TestContentHotReloadOptions()
+    {
+        Console.WriteLine("6. Content hot reload configuration boundary");
+        var sink = new RecordingHotReloadSink();
+        var options = new ContentHotReloadOptions(
+            sink,
+            TimeSpan.FromMilliseconds(100),
+            TimeSpan.FromMilliseconds(200));
+        var package = new ContentPackageRef("game.assets", "game/assets.json");
+        var plan = GameApplication.Create()
+            .UseDefault2DRenderer(renderer => renderer
+                .UseContent(package)
+                .EnableContentHotReload(options))
+            .ConfigureScene("HotReload", _ => { })
+            .BuildPlan();
+        Check(plan.Renderer.ContentHotReload == options,
+            "Hot reload options are frozen into the renderer plan");
+        CheckThrows<InvalidOperationException>(
+            () => new Default2DRendererOptions()
+                .EnableContentHotReload(options)
+                .ToPlan()
+                .Validate(),
+            "Hot reload requires an explicitly configured content package");
+        CheckThrows<InvalidOperationException>(
+            () => new Default2DRendererOptions()
+                .UseContent(package)
+                .EnableContentHotReload(options)
+                .EnableContentHotReload(options),
+            "Hot reload cannot be configured twice");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => _ = new ContentHotReloadOptions(sink, TimeSpan.Zero),
+            "Hot reload polling interval must be positive");
+    }
+
+    private static void TestContentHotReloadCoordinator()
+    {
+        Console.WriteLine("7. Content revision debounce, apply, and failure fallback");
+        string root = Directory.CreateTempSubdirectory("mygame-hosting-reload-").FullName;
+        try
+        {
+            string imagePath = Path.Combine(root, "live.webp");
+            WriteWebp(imagePath, 2, SKColors.Red);
+            WriteContentManifest(root);
+            WriteContentRevision(root, "revision-1");
+
+            var backend = new HotReloadTextureBackend();
+            using var textures = new TextureLibrary(backend);
+            var sprites = new SpriteLibrary(textures);
+            using var manager = new ContentPackageManager(textures, sprites, root);
+            var packageRef = new ContentPackageRef("hosting.reload", "assets.json");
+            using var package = manager.Load(packageRef);
+            var sink = new RecordingHotReloadSink();
+            var time = new ManualTimeProvider();
+            using var coordinator = new ContentHotReloadCoordinator(
+                manager,
+                packageRef,
+                new ContentHotReloadOptions(
+                    sink,
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromMilliseconds(20)),
+                time);
+
+            WriteWebp(imagePath, 4, SKColors.Blue);
+            WriteContentRevision(root, "revision-2");
+            time.Advance(TimeSpan.FromMilliseconds(10));
+            coordinator.Tick();
+            Check(sink.Diagnostics.Select(item => item.Status)
+                    .SequenceEqual(new[] { ContentHotReloadStatus.Detected }),
+                "A changed stable fingerprint is detected before preparation");
+            time.Advance(TimeSpan.FromMilliseconds(10));
+            coordinator.Tick();
+            Check(sink.Diagnostics.Count == 1,
+                "Debounce prevents an early revision preparation");
+            time.Advance(TimeSpan.FromMilliseconds(10));
+            coordinator.Tick();
+            SpinUntilTerminal(coordinator, sink, ContentHotReloadStatus.Applied);
+            textures.TryGetMetadata(package.GetTexture("hosting.texture"), out var applied);
+            Check(applied.Width == 4 && sink.Diagnostics[^1].Status == ContentHotReloadStatus.Applied,
+                "A prepared revision commits at a later frame boundary");
+
+            File.WriteAllBytes(imagePath, [1, 2, 3]);
+            WriteContentRevision(root, "revision-bad");
+            time.Advance(TimeSpan.FromMilliseconds(10));
+            coordinator.Tick();
+            time.Advance(TimeSpan.FromMilliseconds(20));
+            coordinator.Tick();
+            SpinUntilTerminal(coordinator, sink, ContentHotReloadStatus.Failed);
+            int failures = sink.Diagnostics.Count(item => item.Status == ContentHotReloadStatus.Failed);
+            textures.TryGetMetadata(package.GetTexture("hosting.texture"), out var afterFailure);
+            time.Advance(TimeSpan.FromSeconds(1));
+            coordinator.Tick();
+            Check(afterFailure.Width == 4 &&
+                  sink.Diagnostics.Count(item => item.Status == ContentHotReloadStatus.Failed) == failures,
+                "A failed fingerprint keeps the old resource and is not retried every poll");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void TestShaderHotReloadConfiguration()
+    {
+        Console.WriteLine("8. Shader file snapshots and hot reload configuration");
+        string root = Directory.CreateTempSubdirectory("mygame-shader-reload-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "sprite.vert"), "vertex-v1");
+            File.WriteAllText(Path.Combine(root, "sprite.frag"), "fragment-v1");
+            var definition = new ShaderFileDefinition(
+                "game.sprite",
+                "sprite.vert",
+                "sprite.frag");
+            ShaderFileSetSnapshot first = ShaderFileSetReader.Read(root, new[] { definition });
+            File.WriteAllText(Path.Combine(root, "sprite.frag"), "fragment-v2");
+            ShaderFileSetSnapshot second = ShaderFileSetReader.Read(root, new[] { definition });
+            Check(first.Fingerprint != second.Fingerprint &&
+                  second.ChangedNamesFrom(first).SequenceEqual(new[] { "game.sprite" }),
+                "Source content hashes identify the exact changed Shader program");
+
+            var sink = new RecordingShaderHotReloadSink();
+            var options = new ShaderHotReloadOptions(
+                sink,
+                TimeSpan.FromMilliseconds(100),
+                TimeSpan.FromMilliseconds(200));
+            var plan = GameApplication.Create()
+                .UseDefault2DRenderer(renderer => renderer
+                    .UseShaders(root, definition)
+                    .EnableShaderHotReload(options))
+                .ConfigureScene("Shaders", _ => { })
+                .BuildPlan();
+            Check(plan.Renderer.ShaderRoot == root &&
+                  plan.Renderer.ShaderFiles?.Single() == definition &&
+                  plan.Renderer.ShaderHotReload == options,
+                "Shader files and hot reload policy are frozen into the renderer plan");
+
+            CheckThrows<InvalidOperationException>(
+                () => new Default2DRendererOptions()
+                    .EnableShaderHotReload(options)
+                    .ToPlan()
+                    .Validate(),
+                "Shader hot reload requires registered file-backed Shaders");
+            CheckThrows<ArgumentException>(
+                () => new Default2DRendererOptions().UseShaders(
+                    root,
+                    definition,
+                    definition),
+                "Duplicate logical Shader names are rejected before GL initialization");
+            CheckThrows<InvalidDataException>(
+                () => ShaderFileSetReader.Read(root, new[]
+                {
+                    new ShaderFileDefinition("escape", "../outside.vert", "sprite.frag")
+                }),
+                "Shader source paths cannot escape their configured root");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void SpinUntilTerminal(
+        ContentHotReloadCoordinator coordinator,
+        RecordingHotReloadSink sink,
+        ContentHotReloadStatus terminal)
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            coordinator.Tick();
+            if (sink.Diagnostics.Any(item => item.Status == terminal)) return;
+            Thread.Sleep(2);
+        }
+        throw new TimeoutException($"Content hot reload did not report {terminal}.");
+    }
+
+    private static void WriteContentManifest(string root) => File.WriteAllText(
+        Path.Combine(root, "assets.json"),
+        """
+        { "schemaVersion":1, "id":"hosting.reload", "dependencies":[],
+          "textures":[{"name":"hosting.texture","path":"live.webp"}],
+          "sprites":[{"name":"hosting.sprite","layout":"single","texture":"hosting.texture",
+            "origin":{"x":0,"y":0}}] }
+        """);
+
+    private static void WriteContentRevision(string root, string fingerprint) => File.WriteAllText(
+        Path.Combine(root, CompiledContentRevisionReader.MetadataFileName),
+        $$"""
+        { "schemaVersion":1, "owner":"MyGameEngine.AssetCompiler", "compilerVersion":"2",
+          "rootPackageId":"hosting.reload", "rootManifest":"assets.json",
+          "inputFingerprint":"{{fingerprint}}" }
+        """);
+
+    private static void WriteWebp(string path, int size, SKColor color)
+    {
+        using var bitmap = new SKBitmap(
+            new SKImageInfo(size, size, SKColorType.Rgba8888, SKAlphaType.Unpremul));
+        bitmap.Erase(color);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Webp, 100)
+            ?? throw new InvalidOperationException("Could not encode WebP fixture.");
+        File.WriteAllBytes(path, data.ToArray());
+    }
+
     private static void Check(bool condition, string name)
     {
         if (condition)
@@ -305,5 +516,43 @@ internal static class Program
         public List<RuntimePerformanceSnapshot> Snapshots { get; } = new();
 
         public void Publish(RuntimePerformanceSnapshot snapshot) => Snapshots.Add(snapshot);
+    }
+
+    private sealed class RecordingHotReloadSink : IContentHotReloadSink
+    {
+        public List<ContentHotReloadDiagnostic> Diagnostics { get; } = [];
+
+        public void Publish(ContentHotReloadDiagnostic diagnostic) => Diagnostics.Add(diagnostic);
+    }
+
+    private sealed class RecordingShaderHotReloadSink : IShaderHotReloadSink
+    {
+        public List<ShaderHotReloadDiagnostic> Diagnostics { get; } = [];
+
+        public void Publish(ShaderHotReloadDiagnostic diagnostic) => Diagnostics.Add(diagnostic);
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private DateTimeOffset _now = DateTimeOffset.UnixEpoch;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan duration) => _now += duration;
+    }
+
+    private sealed class HotReloadTextureBackend : ITextureBackend
+    {
+        private uint _next = 1;
+
+        public uint CreateTexture(
+            int width,
+            int height,
+            ReadOnlySpan<byte> rgbaPixels,
+            TextureSampler sampler) => _next++;
+
+        public void DeleteTexture(uint handle)
+        {
+        }
     }
 }

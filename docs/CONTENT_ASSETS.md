@@ -282,6 +282,8 @@ shader.Dispose();
 
 显存不足、图片超过解码器/GPU 尺寸上限或 WebP/PNG 数据损坏都会使整个包加载失败；v1 不提供部分成功状态。
 
+开发运行可通过 Hosting 的 `EnableContentHotReload` 消费 AssetCompiler 完整修订。后台准备不会改变当前资源；Texture、Sprite 与包索引只在 Step 和 Draw 之间作为一个事务切换。使用方式、结构化失败诊断和依赖拓扑限制见 [Content 包开发期热重载](CONTENT_HOT_RELOAD.md)。
+
 ## 性能边界
 
 运行时直接加载源包时，会同步解码并上传清单内全部图片，不提供：
@@ -301,4 +303,4 @@ Runner 与 VisualTests 已接入共享 MSBuild Target：Build、Run 和 Publish 
 
 - `src/MyGame.Runner/Assets/assets.json`：单图片 Sprite、逻辑尺寸与中心原点。
 - `src/Engine.Features/Sprites.VisualTests/Assets/assets.json`：规则 WebP 图集、两张独立 WebP 帧、中心与偏置原点。
-- `src/Engine.Features/ContentAssets.Tests`：真实 WebP、多纹理帧、依赖引用计数、安全路径和失败回滚。
+- `src/Engine.Features/ContentAssets.Tests`：真实 WebP、多纹理帧、依赖引用计数、安全路径、失败回滚与编译修订替换。

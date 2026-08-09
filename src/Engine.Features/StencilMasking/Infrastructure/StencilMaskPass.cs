@@ -41,12 +41,18 @@ public sealed class StencilMaskPass : RenderPass
         IShader sceneShader,
         StencilMaskShader maskShader,
         WhiteTexture white,
-        ISpriteResolver? spriteResolver = null) : base(name)
+        ISpriteResolver? spriteResolver = null,
+        IShaderResolver? shaderResolver = null) : base(name)
     {
         _scene = scene;
         _camera = camera;
         _output = output;
-        _batch = new SpriteBatch(gl) { DefaultShader = sceneShader, SpriteResolver = spriteResolver };
+        _batch = new SpriteBatch(gl)
+        {
+            DefaultShader = sceneShader,
+            SpriteResolver = spriteResolver,
+            ShaderResolver = shaderResolver
+        };
         _sceneShader = sceneShader;
         _maskShader = maskShader;
         _whiteTextureHandle = white.Handle;
@@ -62,7 +68,8 @@ public sealed class StencilMaskPass : RenderPass
         StencilMaskShader maskShader,
         TextureRef whiteTexture,
         ITextureResolver textureResolver,
-        ISpriteResolver? spriteResolver = null) : base(name)
+        ISpriteResolver? spriteResolver = null,
+        IShaderResolver? shaderResolver = null) : base(name)
     {
         ArgumentNullException.ThrowIfNull(textureResolver);
         if (!textureResolver.TryResolve(whiteTexture, out var resolved))
@@ -70,7 +77,12 @@ public sealed class StencilMaskPass : RenderPass
         _scene = scene;
         _camera = camera;
         _output = output;
-        _batch = new SpriteBatch(gl) { DefaultShader = sceneShader, SpriteResolver = spriteResolver };
+        _batch = new SpriteBatch(gl)
+        {
+            DefaultShader = sceneShader,
+            SpriteResolver = spriteResolver,
+            ShaderResolver = shaderResolver
+        };
         _sceneShader = sceneShader;
         _maskShader = maskShader;
         _whiteTextureHandle = resolved.Handle;
@@ -129,8 +141,10 @@ public sealed class StencilMaskPass : RenderPass
 
         BlendState.AlphaBlend.Apply(gl);
         GetTestState(State).Apply(gl);
+        Matrix4x4 projection = _camera.GetViewProjectionMatrix();
+        _batch.ShaderResolver?.SetProjection(projection);
         _sceneShader.Use();
-        _sceneShader.SetProjection(_camera.GetViewProjectionMatrix());
+        _sceneShader.SetProjection(projection);
         _batch.DefaultShader = _sceneShader;
         _batch.Begin();
         _scene.DrawActive(_batch);

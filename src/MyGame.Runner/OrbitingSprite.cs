@@ -2,6 +2,7 @@ namespace MyGame.Runner;
 
 using System.Numerics;
 using GameEngine.Core.Domain.Entities;
+using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 
 /// <summary>
@@ -32,7 +33,8 @@ public sealed class OrbitingSprite : GameInstance
         float radius,
         float phase,
         Vector4 color,
-        SpriteRef sprite)
+        SpriteRef sprite,
+        ShaderRef? shader = null)
         : base(
             objectTypeName: nameof(OrbitingSprite),
             position: center,
@@ -43,6 +45,7 @@ public sealed class OrbitingSprite : GameInstance
         _phase = phase;
         Color = color;
         Sprite = sprite;
+        Shader = shader;
     }
 
     /// <summary>GMS Step event: 圆周运动</summary>

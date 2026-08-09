@@ -1,5 +1,7 @@
 namespace GameEngine.Core.Domain.Graphics;
 
+using System.Numerics;
+
 /// <summary>
 /// ShaderRef → GL program handle 解析器抽象。
 /// 由 Infrastructure 的 ShaderLibrary 实现，注入 SpriteBatch / SceneRenderPass。
@@ -12,4 +14,7 @@ public interface IShaderResolver
     /// 未知或空名字返回 0（表示使用默认 shader）。
     /// </summary>
     uint Resolve(ShaderRef shader);
+
+    /// <summary>在一次 Scene 绘制前同步所有自定义 Shader 的投影矩阵。</summary>
+    void SetProjection(Matrix4x4 projection) { }
 }

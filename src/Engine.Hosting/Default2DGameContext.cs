@@ -4,6 +4,7 @@ using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
+using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.RenderPipeline.Domain;
@@ -21,6 +22,7 @@ public sealed class Default2DGameContext
     public SceneAggregate Scene { get; }
     public TextureLibrary Textures { get; }
     public SpriteLibrary Sprites { get; }
+    public ShaderLibrary Shaders { get; }
     public LoadedContentPackage? Content { get; }
     public Camera2D Camera { get; }
     public RenderPipeline Pipeline { get; }
@@ -32,6 +34,7 @@ public sealed class Default2DGameContext
         SceneAggregate scene,
         TextureLibrary textures,
         SpriteLibrary sprites,
+        ShaderLibrary shaders,
         LoadedContentPackage? content,
         Camera2D camera,
         RenderPipeline pipeline,
@@ -45,6 +48,7 @@ public sealed class Default2DGameContext
         Scene = scene;
         Textures = textures;
         Sprites = sprites;
+        Shaders = shaders;
         Content = content;
         Camera = camera;
         Pipeline = pipeline;

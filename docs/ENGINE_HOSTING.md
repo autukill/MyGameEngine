@@ -42,6 +42,10 @@ game.Run();
 
 `UseContent(ContentPackageRef)` 默认从 `AssetsCompiled` 加载，并校验生成引用中的包 ID。需要动态路径时仍可使用 `UseContent(packagesRoot, manifestPath)`；强类型生成规则见[强类型 Content 引用](STRONGLY_TYPED_CONTENT.md)。
 
+开发期可以继续调用 `EnableContentHotReload(options)`。Host 轮询编译指纹、在后台解码新修订，并固定在 Step 与 Draw 之间提交；失败时保留旧资源。完整协议见 [Content 包开发期热重载](CONTENT_HOT_RELOAD.md)。
+
+游戏自定义 Sprite Shader 可通过 `UseShaders(root, definitions)` 注册，随后由 `ShaderRef` 选择。`EnableShaderHotReload(options)` 会在后台读取稳定源码快照，并在相同 Step/Draw 边界整批编译替换；失败保留旧 Program。Context 暴露 `Shaders` 供高级 uniform 设置。详见 [自定义 Sprite Shader 与开发期热重载](SHADER_HOT_RELOAD.md)。
+
 SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()`，避免创建对应 RenderTarget 和 Pass。
 
 ## Default2DGameContext
@@ -77,6 +81,8 @@ Window.Step
   -> Scene.PerformInput
   -> Scene.PerformStep
   -> ScenePipelineBuilder.ApplyEvents
+  -> ContentHotReload.Commit（仅有已准备修订时）
+  -> ShaderHotReload.Commit（仅有稳定源码修订时）
 
 Window.Draw
   -> RenderPipeline.Execute
@@ -97,6 +103,8 @@ ScenePipelineBuilder
 RenderPipeline
 RenderTargetPool
 根 RenderTarget
+ContentHotReloadCoordinator
+ShaderHotReloadCoordinator
 LoadedContentPackage / ContentPackageManager
 TextureLibrary / SpriteBatch
 Shader

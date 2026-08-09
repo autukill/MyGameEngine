@@ -51,13 +51,15 @@ GameAssets.Packages.SharedPrimitives
 - 结构化性能预算、低频 Sink 与 Runner 控制台/JSON Lines 导出。（已实现）
 - 诊断 API 默认只读，不改变运行时状态。
 
-当前验收：`Default2DGameContext.CaptureRenderDiagnostics()` 聚合 Pipeline、Builder、Pool 与可选最近帧统计；`FrameRateSettings` 支持启动及运行时 FPS/UPS/VSync 控制。统计默认关闭，开启后以零帧分配值快照记录内置 SpriteBatch 与后处理 Draw Call。`CapturePerformanceSnapshot()` 进一步聚合 Texture/Atlas、根目标、活动及缓存 RT 和自定义资源，预算超限以结构化值交给低频 Sink；Runner 支持控制台与 JSON Lines。下一步进入阶段 5，优先建立 Content 与 Shader 热重载的原子失败回退边界。
+当前验收：`Default2DGameContext.CaptureRenderDiagnostics()` 聚合 Pipeline、Builder、Pool 与可选最近帧统计；`FrameRateSettings` 支持启动及运行时 FPS/UPS/VSync 控制。统计默认关闭，开启后以零帧分配值快照记录内置 SpriteBatch 与后处理 Draw Call。`CapturePerformanceSnapshot()` 进一步聚合 Texture/Atlas、根目标、活动及缓存 RT 和自定义资源，预算超限以结构化值交给低频 Sink；Runner 支持控制台与 JSON Lines。
 
 ## 阶段 5：开发期热重载
 
 - 优先支持内容包和 Shader 热重载，再考虑代码热重载。
 - 失败时继续使用上一份有效资源，不破坏当前 Scene。
 - 与 Content 指纹、Atlas 原子替换和 Hosting 生命周期共享同一所有权边界。
+
+当前验收：Content 包已使用编译元数据轮询和去抖，后台完成 Manifest 图校验、图片解码与 Sprite 规范化；Texture/Sprite/包索引在 Step 与 Draw 之间事务切换，失败保留旧修订。自定义 Sprite Shader 支持安全根文件注册、稳定源码快照、整批 Program 原子替换和驱动错误诊断；投影同步覆盖主 Scene 与 Stencil 重绘。Runner 提供 `--content-hot-reload` 与 `--shader-hot-reload`。阶段 5 下一步评估材质参数块与代码热重载边界。
 
 ## 设计约束
 

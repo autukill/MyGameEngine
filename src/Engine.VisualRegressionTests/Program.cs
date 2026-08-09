@@ -53,6 +53,7 @@ internal static class Program {
 
     private static IEnumerable<IVisualRegressionScenario> CreateScenarios() {
         yield return new SpriteOriginTransformScenario();
+        yield return new ShaderProgramReloadScenario();
         yield return new StencilOwnerLifecycleScenario();
         yield return new DynamicEffectResizeScenario();
         yield return new StencilSpriteAlphaScenario();

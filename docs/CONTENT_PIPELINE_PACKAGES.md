@@ -73,7 +73,7 @@ dotnet build Game.csproj
 dotnet publish Game.csproj -c Release
 ```
 
-编译缓存保存在 `obj/<Configuration>/<TargetFramework>/CompiledAssets`。同一 Target 默认生成并编译 `GameEngine.Content.g.cs`，提供 `GameAssets.Packages/Sprites/Textures`；运行时文件复制到 `bin/.../AssetsCompiled` 和 Publish 的 `AssetsCompiled`，构建所有权文件与生成源码不会进入运行目录。
+编译缓存保存在 `obj/<Configuration>/<TargetFramework>/CompiledAssets`。同一 Target 默认生成并编译 `GameEngine.Content.g.cs`，提供 `GameAssets.Packages/Sprites/Textures`；运行时文件复制到 `bin/.../AssetsCompiled` 和 Publish 的 `AssetsCompiled`。生成源码不会进入运行目录；`.mygame-assets.json` 会最后复制，作为可选 Content 热重载与诊断使用的修订提交标记。
 
 ## MSBuild 配置
 
