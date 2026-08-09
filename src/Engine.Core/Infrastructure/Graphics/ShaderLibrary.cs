@@ -18,13 +18,24 @@ public sealed class ShaderLibrary : IShaderResolver, IDisposable
     public int MaterialCount => _materials.Count;
 
     public ShaderProgram Create(string name, string vertexSource, string fragmentSource)
+        => Create(new ShaderProgramSource(name, vertexSource, fragmentSource));
+
+    public ShaderProgram Create(ShaderProgramSource source)
     {
         ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(source);
+        string name = source.Name;
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("Shader name cannot be empty.", nameof(name));
         if (_programs.ContainsKey(name))
             throw new ArgumentException($"Shader '{name}' is already registered.", nameof(name));
-        var program = new ShaderProgram(_gl, name, vertexSource, fragmentSource);
+        var program = new ShaderProgram(
+            _gl,
+            name,
+            source.VertexSource,
+            source.FragmentSource,
+            source.VertexPath,
+            source.FragmentPath);
         _programs.Add(name, program);
         return program;
     }
@@ -49,10 +60,14 @@ public sealed class ShaderLibrary : IShaderResolver, IDisposable
         if (_materials.ContainsKey(name))
             throw new ArgumentException($"Material '{name}' is already registered.", nameof(name));
 
+        var parameters = new MaterialParameterBlock(uniforms);
+        ShaderProgram program = _programs[shader.Name];
+        ShaderProgram.ValidateMaterialContract(
+            _gl, program.Handle, shader.Name, name, parameters);
         var material = new ShaderMaterial(
             new MaterialRef(name),
             shader,
-            new MaterialParameterBlock(uniforms));
+            parameters);
         _materials.Add(name, material);
         return material;
     }
@@ -151,7 +166,23 @@ public sealed class ShaderLibrary : IShaderResolver, IDisposable
                     _gl,
                     replacement.Name,
                     replacement.VertexSource,
-                    replacement.FragmentSource)));
+                    replacement.FragmentSource,
+                    replacement.VertexPath,
+                    replacement.FragmentPath)));
+            }
+
+            foreach (var candidate in staged)
+            {
+                foreach (ShaderMaterial material in _materials.Values)
+                {
+                    if (material.Shader.Name != candidate.Program.Name) continue;
+                    ShaderProgram.ValidateMaterialContract(
+                        _gl,
+                        candidate.Handle,
+                        candidate.Program.Name,
+                        material.Ref.Name,
+                        material.Parameters);
+                }
             }
         }
         catch

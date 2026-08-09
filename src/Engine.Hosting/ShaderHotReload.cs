@@ -35,12 +35,26 @@ public enum ShaderHotReloadStatus
     Failed
 }
 
+public sealed record ShaderBuildFailureDiagnostic(
+    string ShaderName,
+    string Stage,
+    string? SourcePath,
+    int? SourceLine,
+    string DriverLog);
+
+public sealed record ShaderContractFailureDiagnostic(
+    string ShaderName,
+    string MaterialName,
+    IReadOnlyList<ShaderUniformContractIssue> Issues);
+
 public sealed record ShaderHotReloadDiagnostic(
     ShaderHotReloadStatus Status,
     IReadOnlyList<string> ShaderNames,
     string? Fingerprint,
     TimeSpan Duration,
-    string? Error = null);
+    string? Error = null,
+    ShaderBuildFailureDiagnostic? BuildFailure = null,
+    ShaderContractFailureDiagnostic? ContractFailure = null);
 
 public interface IShaderHotReloadSink
 {
@@ -110,12 +124,19 @@ internal static class ShaderFileSetReader
         foreach (ShaderFileDefinition definition in definitions.OrderBy(item => item.Name, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            string vertex = File.ReadAllText(ResolveUnderRoot(fullRoot, definition.VertexPath));
-            string fragment = File.ReadAllText(ResolveUnderRoot(fullRoot, definition.FragmentPath));
+            string vertexPath = ResolveUnderRoot(fullRoot, definition.VertexPath);
+            string fragmentPath = ResolveUnderRoot(fullRoot, definition.FragmentPath);
+            string vertex = File.ReadAllText(vertexPath);
+            string fragment = File.ReadAllText(fragmentPath);
             string fingerprint = Hash(definition.Name, vertex, fragment);
             if (!fingerprints.TryAdd(definition.Name, fingerprint))
                 throw new InvalidDataException($"Shader '{definition.Name}' is configured more than once.");
-            sources.Add(new ShaderProgramSource(definition.Name, vertex, fragment));
+            sources.Add(new ShaderProgramSource(
+                definition.Name,
+                vertex,
+                fragment,
+                vertexPath,
+                fragmentPath));
         }
 
         string combined = Hash(string.Join('\n', fingerprints
@@ -276,11 +297,27 @@ internal sealed class ShaderHotReloadCoordinator : IDisposable
         string marker = fingerprint ?? $"{error.GetType().Name}:{error.Message}";
         if (fingerprint is null && StringComparer.Ordinal.Equals(marker, _failedMarker)) return;
         _failedMarker = marker;
+        ShaderBuildFailureDiagnostic? buildFailure = error is ShaderBuildException build
+            ? new ShaderBuildFailureDiagnostic(
+                build.ShaderName,
+                build.Stage,
+                build.SourcePath,
+                build.SourceLine,
+                build.Log)
+            : null;
+        ShaderContractFailureDiagnostic? contractFailure = error is ShaderContractException contract
+            ? new ShaderContractFailureDiagnostic(
+                contract.ShaderName,
+                contract.MaterialName,
+                contract.Issues)
+            : null;
         _options.Sink.Publish(new ShaderHotReloadDiagnostic(
             ShaderHotReloadStatus.Failed,
             names,
             fingerprint,
             duration,
-            error.Message));
+            error.Message,
+            buildFailure,
+            contractFailure));
     }
 }

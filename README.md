@@ -11,6 +11,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
 - 类型化 Shader 材质：逻辑 `MaterialRef`、多材质共享 Program、参数 Revision 批处理与热替换自动重放。
+- Shader 契约诊断：GL 反射校验材质 Uniform 名称/类型/数组，编译错误携带源码路径、行号与原始驱动日志。
 - 动画就绪 Sprite：逻辑资源名、原点、多帧 UV、自动帧推进、旋转/缩放/颜色以及 `batch.DrawSprite*` 便利 API。
 - Texture Assets：逻辑 `TextureRef`、PNG/静态 WebP 解码、采样预设、资产清单与 GPU 句柄统一回收。
 - 声明式 Content Assets：单一版本化 `assets.json`、包依赖、单图/Grid/多图片 Sprite、事务回滚与引用计数卸载。
@@ -253,7 +254,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 ## 下一阶段
 
 1. 为无显示器 CI 固化软件 OpenGL 执行环境。
-2. 在已完成 Content、Shader 与材质参数热重载闭环的基础上，增加构建期 Shader/Material 契约校验和更友好的错误定位。
+2. 在已完成装配期/热重载 Shader 契约校验后，评估声明式 Material Asset 与可选离线 GLSL 编译器，把部分错误继续提前到 MSBuild。
 3. 继续降低 SceneAggregate 每帧 LINQ 与排序分配。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。

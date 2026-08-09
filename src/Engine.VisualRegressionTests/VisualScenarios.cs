@@ -179,6 +179,7 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
 {
     private const string ShaderName = "regression.reload";
     private const string PeerShaderName = "regression.reload.peer";
+    private const string ArrayShaderName = "regression.reload.array";
     private SpriteShader? _defaultShader;
     private ShaderLibrary? _shaders;
     private ShaderMaterial? _material;
@@ -207,6 +208,25 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
         _shaders = new ShaderLibrary(gl);
         _shaders.Create(ShaderName, VertexSource, RedFragmentSource);
         _shaders.Create(PeerShaderName, VertexSource, RedFragmentSource);
+        _shaders.Create(ArrayShaderName, VertexSource, ArrayFragmentSource);
+        AssertContractFailure(
+            () => _shaders.CreateMaterial(
+                "regression.reload.missing",
+                new ShaderRef(ShaderName),
+                ShaderUniformDefinition.Float("uMissing")),
+            ShaderContractIssueKind.MissingUniform);
+        AssertContractFailure(
+            () => _shaders.CreateMaterial(
+                "regression.reload.wrong-type",
+                new ShaderRef(ShaderName),
+                ShaderUniformDefinition.Vector4("uGain")),
+            ShaderContractIssueKind.TypeMismatch);
+        AssertContractFailure(
+            () => _shaders.CreateMaterial(
+                "regression.reload.array",
+                new ShaderRef(ArrayShaderName),
+                ShaderUniformDefinition.Float("uValues")),
+            ShaderContractIssueKind.ArrayUnsupported);
         _material = _shaders.CreateMaterial(
                 "regression.reload.material",
                 new ShaderRef(ShaderName),
@@ -247,12 +267,20 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
                 _shaders!.ReplaceAll(new[]
                 {
                     new ShaderProgramSource(ShaderName, VertexSource, GreenFragmentSource),
-                    new ShaderProgramSource(PeerShaderName, VertexSource, InvalidFragmentSource)
+                    new ShaderProgramSource(
+                        PeerShaderName,
+                        VertexSource,
+                        InvalidFragmentSource,
+                        null,
+                        "peer.invalid.frag.glsl")
                 });
                 throw new InvalidOperationException("Invalid GLSL unexpectedly compiled.");
             }
-            catch (ShaderBuildException)
+            catch (ShaderBuildException exception)
             {
+                if (exception.SourcePath != "peer.invalid.frag.glsl")
+                    throw new InvalidOperationException(
+                        "Shader compilation diagnostic did not retain its fragment path.");
             }
             if (_shaders!.Resolve(new ShaderRef(ShaderName)) != _initialHandle)
                 throw new InvalidOperationException("Failed replacement changed the live Program handle.");
@@ -261,6 +289,23 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
         }
         else if (frameIndex == 2)
         {
+            try
+            {
+                _shaders!.ReplaceAll(new[]
+                {
+                    new ShaderProgramSource(ShaderName, VertexSource, MissingGainFragmentSource)
+                });
+                throw new InvalidOperationException(
+                    "A contract-breaking Shader replacement unexpectedly succeeded.");
+            }
+            catch (ShaderContractException exception)
+            {
+                if (exception.Issues.Single().Kind != ShaderContractIssueKind.MissingUniform)
+                    throw;
+            }
+            if (_shaders!.Resolve(new ShaderRef(ShaderName)) != _initialHandle)
+                throw new InvalidOperationException(
+                    "Contract failure changed the live Program handle.");
             _shaders!.ReplaceAll(new[]
             {
                 new ShaderProgramSource(ShaderName, VertexSource, GreenFragmentSource)
@@ -287,6 +332,23 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
     }
 
     private GL? _gl;
+
+    private static void AssertContractFailure(
+        Action action,
+        ShaderContractIssueKind expected)
+    {
+        try
+        {
+            action();
+        }
+        catch (ShaderContractException exception)
+        {
+            if (exception.Issues.Single().Kind == expected) return;
+            throw;
+        }
+        throw new InvalidOperationException(
+            $"Material contract validation did not report {expected}.");
+    }
 
     private uint ResolveWhiteHandle()
     {
@@ -339,6 +401,25 @@ internal sealed class ShaderProgramReloadScenario : IVisualRegressionScenario
             float value = texture(uTexture, vUv).r * vColor.r * uGain;
             FragColor = vec4(0.1, value, 0.1, 1.0);
         }
+        """;
+
+    private const string MissingGainFragmentSource = """
+        #version 330 core
+        in vec2 vUv;
+        in vec4 vColor;
+        out vec4 FragColor;
+        uniform sampler2D uTexture;
+        void main() { FragColor = texture(uTexture, vUv) * vColor; }
+        """;
+
+    private const string ArrayFragmentSource = """
+        #version 330 core
+        in vec2 vUv;
+        in vec4 vColor;
+        out vec4 FragColor;
+        uniform sampler2D uTexture;
+        uniform float uValues[1];
+        void main() { FragColor = texture(uTexture, vUv) * vColor * uValues[0]; }
         """;
 
     private const string InvalidFragmentSource = """

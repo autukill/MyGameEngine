@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 43 个 .NET 项目、192 个 C# 文件；除十一个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 43 个 .NET 项目、193 个 C# 文件；除十一个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -50,10 +50,11 @@
 - Hosting 通过 `UseShaders` 装配自定义 Sprite Shader，并把 `ShaderLibrary` 注入主 Scene 与 Stencil Batch；`uProjection` 自动同步，Context 提供动态 uniform 入口。
 - Shader 热重载后台读取双重 SHA-256 稳定快照，在 GL 线程整批编译和原子切换 Program；任一编译/链接失败时全部旧 Handle 保持有效，Runner 提供 `--shader-hot-reload`。
 - `MaterialRef`、`ShaderMaterial` 与类型化 `MaterialParameterBlock` 支持同一 Shader 的多套参数；Batch 按材质 Revision 精确 Flush，Program 热替换后自动在新 Handle 上重放 CPU 参数。
+- 材质创建与 Shader 热替换候选通过 GL Active Uniform 反射验证名称、类型和数组边界；失败保持旧 Handle，并输出包含文件路径、行号、阶段与逐 Uniform issue 的结构化诊断。
 
 ## 仍在演进
 
-- 自定义 uniform 仍由使用者逐帧设置；尚无声明式材质参数块、类型化 uniform schema 或热重载后的参数自动重放。
+- 材质 Schema 目前仍在 C# Scene 装配代码中定义，MSBuild/AssetCompiler 无法在不创建 GL Context 的情况下执行同等的权威 Program 反射校验。
 - Stencil 暂时只支持 Circle 与 SpriteAlpha，不支持软边、任意矢量路径或布尔几何运算。
 - Atlas 暂不支持旋转、trim 或相同像素内容哈希去重。
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
@@ -61,10 +62,10 @@
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 - Hosting v1 仅支持单窗口与单初始 Scene，尚无 Scene 切换栈、暂停策略或后台加载。
 
-## 下一里程碑：CI 图形环境与材质参数
+## 下一里程碑：声明式 Material Asset 与离线 Shader 校验边界
 
 1. 固化无显示器 CI 的软件 OpenGL 环境。
-2. 规划材质参数块与类型化 uniform schema，避免热替换后由业务代码手动重放全部参数。
+2. 评估把 Material Schema 纳入声明式资产，使 MSBuild 能在构建期发现 Shader/Material 契约漂移；离线 GLSL 编译器必须作为显式可选工具，不用不可靠的源码正则替代驱动校验。
 3. 评估 Content 热重载的依赖拓扑替换与后台 GPU 上传边界。
 
 ## 已知限制

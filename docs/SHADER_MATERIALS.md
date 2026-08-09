@@ -26,6 +26,16 @@ context.Scene.Add(player);
 
 参数支持 `Float`、`Int`、`Vector2` 和 `Vector4`。Schema 区分大小写，重复名称、未声明参数、类型不匹配、非有限浮点值都会立即抛出异常。`uProjection` 与 `uTexture` 由引擎拥有，不能声明为材质参数。
 
+## Program 契约校验
+
+`CreateMaterial` 会对已经链接的 OpenGL Program 执行 Active Uniform 反射，而不是通过文本正则猜测 GLSL：
+
+- Schema 中的 Uniform 必须在链接结果中存在且处于 active 状态。
+- GLSL 类型必须与 `Float`、`Int`、`Vector2` 或 `Vector4` 精确对应。
+- v1 不支持 Uniform Array；反射到数组会给出专门诊断。
+
+失败会抛出结构化 `ShaderContractException`，其中包含 Shader、Material 和每个 `ShaderUniformContractIssue`。失败材质不会注册。Shader 热重载也会在候选 Program 全部编译、链接后执行同样的契约校验；任何现有材质不兼容时，所有候选 Handle 都会删除，旧 Program 与旧材质继续工作。
+
 ## 动态参数
 
 保留 `ShaderMaterial`，在 Step 阶段修改参数：
@@ -63,4 +73,4 @@ context.Shaders.TryGet("game.player-hit")?.SetFloat("uFlash", value);
 - v1 不支持 Matrix、纹理/采样器参数、Uniform Array、Uniform Buffer Object 或清单驱动材质。
 - 材质与 ShaderLibrary 生命周期一致；当前不提供单个材质删除或热增删 Schema。
 - 参数块面向主线程的 Step/Draw 流程，不保证跨线程并发修改安全。
-- 缺失的 Uniform 会由 OpenGL 返回 `-1` 并安全跳过，便于 Shader 逐步演进；Schema 的名称和类型仍由 C# 侧严格校验。
+- 材质 Schema 中缺失或被编译器优化为 inactive 的 Uniform 会在材质装配或热重载时失败；直接 `ShaderProgram.Set*` 仍保持 OpenGL `-1` 安全跳过语义。

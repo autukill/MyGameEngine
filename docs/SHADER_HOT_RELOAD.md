@@ -106,7 +106,9 @@ dotnet run --project src/MyGame.Runner -- `
 
 同一轮变化是一个事务。例如 Shader A 编译成功但 Shader B 失败时，候选 A 会被删除，A/B 的旧 Program 都继续工作。编译和链接失败不会中断 Scene，也不会让 `ShaderRef` 失效。
 
-`IShaderHotReloadSink` 接收 `Detected`、`Applied`、`Failed` 结构化诊断，包含变化名称、组合指纹、耗时和驱动日志。同一失败指纹不会每帧重复编译；任一源码变化产生新指纹后才重试。
+`IShaderHotReloadSink` 接收 `Detected`、`Applied`、`Failed` 结构化诊断，包含变化名称、组合指纹和耗时。编译失败还提供 `BuildFailure`：Shader 名称、阶段、绝对源码路径、从常见驱动日志格式解析出的首个行号及原始日志；材质契约失败提供 `ContractFailure` 和逐 Uniform issue。同一失败指纹不会每帧重复编译；任一源码变化产生新指纹后才重试。
+
+候选 Program 链接完成后、切换 Handle 前，引擎会用 OpenGL Active Uniform 反射验证所有关联材质。删除、改名、改变类型或把普通 Uniform 改为数组都会使本轮热重载原子失败，避免画面在运行中静默变黑。
 
 ## 当前边界
 

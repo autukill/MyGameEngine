@@ -4,4 +4,6 @@ namespace GameEngine.Core.Domain.Graphics;
 public sealed record ShaderProgramSource(
     string Name,
     string VertexSource,
-    string FragmentSource);
+    string FragmentSource,
+    string? VertexPath = null,
+    string? FragmentPath = null);

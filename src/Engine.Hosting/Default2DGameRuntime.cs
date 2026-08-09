@@ -163,7 +163,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                 : Path.Combine(AppContext.BaseDirectory, configuredShaderRoot));
             shaderSnapshot = ShaderFileSetReader.Read(shaderRoot, shaderFiles);
             foreach (ShaderProgramSource source in shaderSnapshot.Sources)
-                _shaders.Create(source.Name, source.VertexSource, source.FragmentSource);
+                _shaders.Create(source);
         }
 
         TextureRef stencilWhite = default;

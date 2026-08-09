@@ -3,6 +3,7 @@ namespace GameEngine.Hosting.Tests;
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
+using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
@@ -386,6 +387,18 @@ internal static class Program
             Check(first.Fingerprint != second.Fingerprint &&
                   second.ChangedNamesFrom(first).SequenceEqual(new[] { "game.sprite" }),
                 "Source content hashes identify the exact changed Shader program");
+            Check(second.Sources.Single().VertexPath == Path.Combine(root, "sprite.vert") &&
+                  second.Sources.Single().FragmentPath == Path.Combine(root, "sprite.frag"),
+                "Stable snapshots retain exact source paths for driver diagnostics");
+
+            var buildError = new ShaderBuildException(
+                "game.sprite",
+                "FragmentShader",
+                "ERROR: 0:17: unexpected token",
+                Path.Combine(root, "sprite.frag"));
+            Check(buildError.SourceLine == 17 &&
+                  buildError.Message.Contains("sprite.frag':17", StringComparison.Ordinal),
+                "Driver logs are enriched with the source path and parsed line number");
 
             var sink = new RecordingShaderHotReloadSink();
             var options = new ShaderHotReloadOptions(
