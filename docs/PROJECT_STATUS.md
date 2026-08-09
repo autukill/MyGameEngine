@@ -2,7 +2,7 @@
 
 更新日期：2026-08-09
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 45 个 .NET 项目、200 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前共 45 个 .NET 项目、205 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -53,10 +53,11 @@
 - 材质创建与 Shader 热替换候选通过 GL Active Uniform 反射验证名称、类型和数组边界；失败保持旧 Handle，并输出包含文件路径、行号、阶段与逐 Uniform issue 的结构化诊断。
 - 独立 ShaderAssets 切片严格解析版本化 `shaders.json`，统一 Program 文件、Material Schema/default 与安全路径；Hosting 自动装配，AssetCompiler/MSBuild 在 C# 编译前复用同一静态校验。
 - AssetCompiler 从 `shaders.json` 确定性生成 `GameShaders.ManifestPath/Shaders/Materials/Parameters`；`MaterialParameterRef<T>` 在编译期固定值类型并携带所属 Material，Runner 与外部 NuGet 消费项目均不再手写 Shader 资产名称。
+- Gameplay Authoring 第一切片提供 `Position/Rotation/Scale`、输入轴/按键边沿、实例级 `Spawn/Destroy/Find`、End Step 后确定性变更提交和暂停感知的轻量 `AlarmId`；模板展示 WASD、Space 发射与生命周期自动销毁。
 
 ## 仍在演进
 
-- MSBuild 已能静态校验声明式 Material Schema，但不会猜测 GLSL；精确 Program 编译和 active Uniform 类型仍需运行时 GL Context，尚未接入可选离线编译器。
+- MSBuild 已能静态校验声明式 Material Schema，但不会猜测 GLSL；可选离线编译方向已记录并暂缓，精确 Program 编译和 active Uniform 类型继续由运行时 GL Context 复核。
 - Stencil 暂时只支持 Circle 与 SpriteAlpha，不支持软边、任意矢量路径或布尔几何运算。
 - Atlas 暂不支持旋转、trim 或相同像素内容哈希去重。
 - 内容工具包尚未签名或发布到远程 Feed，也没有跨仓库/远程构建缓存。
@@ -64,11 +65,11 @@
 - SceneAggregate 的 ToList、LINQ 过滤和排序仍会产生每帧分配。
 - Hosting v1 仅支持单窗口与单初始 Scene，尚无 Scene 切换栈、暂停策略或后台加载。
 
-## 下一里程碑：可选离线 Shader 编译与 Manifest 热重载
+## 下一里程碑：Gameplay Scene 与实例复用体验
 
-1. 固化无显示器 CI 的软件 OpenGL 环境。
-2. 为离线 GLSL 编译器设计显式可选适配器与结构化诊断，不用不可靠的源码正则替代驱动校验，也不把外部工具变成默认构建硬依赖。
-3. 评估 Content 热重载的依赖拓扑替换与后台 GPU 上传边界。
+1. 把 Scene 定义、注册与切换从单个 `Program.cs` 回调收敛为强类型目录和明确生命周期。
+2. 为常用实例建立可复用 Factory/Prefab 边界，避免把 GPU 资源或全局容器放进玩法对象。
+3. 评估基础碰撞形状、空间查询与 Gameplay Cookbook；继续降低 SceneAggregate 每帧列表和排序分配。
 
 ## 已知限制
 
@@ -77,4 +78,4 @@
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

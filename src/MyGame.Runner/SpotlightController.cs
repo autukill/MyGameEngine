@@ -22,9 +22,7 @@ public sealed class SpotlightController( StencilMaskGroupRef group, Action<IDoma
     }
 
     public override void OnStep( double deltaTime ) {
-        if ( Input is null ) return;
-
-        Request( Input.MousePosition );
+        Request( Controls.MousePosition );
     }
 
     public override void OnDestroy() {

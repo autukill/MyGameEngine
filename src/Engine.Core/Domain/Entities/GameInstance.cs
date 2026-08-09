@@ -3,6 +3,7 @@ namespace GameEngine.Core.Domain.Entities;
 using System.Numerics;
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
@@ -24,6 +25,11 @@ using GameEngine.Core.Domain.ValueObjects;
 /// </summary>
 public class GameInstance
 {
+    private IGameplayContext? _gameplay;
+    private Dictionary<AlarmId, double>? _alarms;
+    private List<AlarmId>? _alarmKeys;
+    private List<AlarmId>? _firedAlarms;
+
     public InstanceId Id { get; } = InstanceId.New();
 
     /// <summary>对象类型名（默认取运行时类名，对应 GMS 的 object_name）</summary>
@@ -31,6 +37,26 @@ public class GameInstance
 
     /// <summary>当前变换状态（位置/旋转/缩放）</summary>
     public Transform2D Transform { get; protected set; } = Transform2D.Default;
+
+    /// <summary>High-frequency gameplay position convenience over Transform.</summary>
+    public Vector2D Position
+    {
+        get => Transform.Position;
+        set => Transform = Transform with { Position = value };
+    }
+
+    /// <summary>Rotation in the engine's existing counter-clockwise radians convention.</summary>
+    public float Rotation
+    {
+        get => Transform.Rotation;
+        set => Transform = Transform with { Rotation = value };
+    }
+
+    public Vector2D Scale
+    {
+        get => Transform.Scale;
+        set => Transform = Transform with { Scale = value };
+    }
 
     /// <summary>图层深度（决定渲染顺序，对应 GMS depth）</summary>
     public LayerDepth Depth { get; protected set; } = LayerDepth.Instances;
@@ -86,6 +112,12 @@ public class GameInstance
     /// 由 SceneAggregate.Add/SetInput 自动注入；OnStep 中轮询查询。
     /// </summary>
     public IInputProvider? Input { get; set; }
+
+    /// <summary>Non-null input access for ordinary gameplay code.</summary>
+    protected IInputProvider Controls => Input ?? NullInputProvider.Instance;
+
+    /// <summary>True after the instance has been added or queued for a Scene.</summary>
+    protected bool HasGameplayContext => _gameplay is not null;
 
     /// <summary>Sprite 元数据/帧解析器，由 SceneAggregate 注入。</summary>
     public ISpriteResolver? SpriteResolver { get; set; }
@@ -163,6 +195,61 @@ public class GameInstance
     /// <summary>Destroy 事件：实例被销毁时调用</summary>
     public virtual void OnDestroy() { }
 
+    /// <summary>Called before Begin Step when a scheduled alarm reaches zero.</summary>
+    public virtual void OnAlarm(AlarmId alarm) { }
+
+    public void MoveBy(Vector2D delta) => Position += delta;
+
+    public void RotateBy(float deltaRadians) => Rotation += deltaRadians;
+
+    public void ScaleBy(Vector2D factor) => Scale = new Vector2D(
+        Scale.X * factor.X,
+        Scale.Y * factor.Y);
+
+    protected bool KeyDown(InputKey key) => Controls.IsKeyDown(key);
+
+    protected bool KeyPressed(InputKey key) => Controls.WasKeyPressed(key);
+
+    protected bool KeyReleased(InputKey key) => Controls.WasKeyReleased(key);
+
+    protected Vector2D InputAxis2D(
+        InputKey left = InputKey.A,
+        InputKey right = InputKey.D,
+        InputKey up = InputKey.W,
+        InputKey down = InputKey.S) => Controls.Axis2D(left, right, up, down);
+
+    protected T Spawn<T>(T instance) where T : GameInstance =>
+        RequireGameplay().Spawn(instance);
+
+    protected void DestroySelf() => RequireGameplay().Destroy(Id);
+
+    protected void Destroy(GameInstance instance)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        RequireGameplay().Destroy(instance.Id);
+    }
+
+    protected GameInstance? FindById(InstanceId id) => RequireGameplay().FindById(id);
+
+    protected T? FindFirst<T>() where T : GameInstance => RequireGameplay().FindFirst<T>();
+
+    protected IReadOnlyList<T> FindAll<T>() where T : GameInstance =>
+        RequireGameplay().FindAll<T>();
+
+    public void SetAlarm(AlarmId alarm, double seconds)
+    {
+        if (alarm.IsEmpty)
+            throw new ArgumentException("Alarm cannot be empty.", nameof(alarm));
+        if (!double.IsFinite(seconds) || seconds < 0d)
+            throw new ArgumentOutOfRangeException(
+                nameof(seconds), "Alarm delay must be finite and non-negative.");
+        (_alarms ??= new Dictionary<AlarmId, double>())[alarm] = seconds;
+    }
+
+    public bool CancelAlarm(AlarmId alarm) => _alarms?.Remove(alarm) == true;
+
+    public bool IsAlarmSet(AlarmId alarm) => _alarms?.ContainsKey(alarm) == true;
+
     internal void AdvanceSpriteAnimation(double deltaTime)
     {
         if (Sprite.IsEmpty || SpriteResolver is null || ImageSpeed == 0f) return;
@@ -175,6 +262,55 @@ public class GameInstance
         if (next < 0f) next += frameCount;
         ImageIndex = next;
     }
+
+    internal void AdvanceAlarms(double deltaTime)
+    {
+        if (_alarms is not { Count: > 0 }) return;
+
+        _alarmKeys ??= new List<AlarmId>(_alarms.Count);
+        _firedAlarms ??= new List<AlarmId>();
+        _alarmKeys.Clear();
+        _firedAlarms.Clear();
+        _alarmKeys.AddRange(_alarms.Keys);
+
+        for (int i = 0; i < _alarmKeys.Count; i++)
+        {
+            AlarmId alarm = _alarmKeys[i];
+            if (!_alarms.TryGetValue(alarm, out double remaining)) continue;
+            remaining -= deltaTime;
+            if (remaining <= 0d)
+            {
+                _alarms.Remove(alarm);
+                _firedAlarms.Add(alarm);
+            }
+            else
+            {
+                _alarms[alarm] = remaining;
+            }
+        }
+
+        for (int i = 0; i < _firedAlarms.Count; i++)
+            OnAlarm(_firedAlarms[i]);
+    }
+
+    internal void AttachGameplayContext(IGameplayContext gameplay)
+    {
+        ArgumentNullException.ThrowIfNull(gameplay);
+        if (_gameplay is not null && !ReferenceEquals(_gameplay, gameplay))
+            throw new InvalidOperationException("Instance already belongs to another Scene.");
+        _gameplay = gameplay;
+    }
+
+    internal void DetachGameplayContext(IGameplayContext gameplay)
+    {
+        if (!ReferenceEquals(_gameplay, gameplay)) return;
+        _gameplay = null;
+        _alarms?.Clear();
+    }
+
+    private IGameplayContext RequireGameplay() => _gameplay ??
+        throw new InvalidOperationException(
+            "This gameplay operation requires the instance to belong to a Scene.");
 
     // ============ DDD 战术行为（状态变更 → 领域事件） ============
 

@@ -226,8 +226,11 @@ internal static class Program
               entries.Contains(
                   "content/templates/mygameengine-game/.config/dotnet-tools.json",
                   StringComparer.Ordinal) &&
+              entries.Contains(
+                  "content/templates/mygameengine-game/Bullet.cs",
+                  StringComparer.Ordinal) &&
               entries.Contains("README.md", StringComparer.Ordinal),
-            "Template package contains metadata, local tools, source, documentation, and WebP asset");
+            "Template package contains metadata, gameplay source, local tools, documentation, and WebP asset");
 
         ZipArchiveEntry project = archive.Entries.Single(entry =>
             entry.FullName.EndsWith("/MyGameTemplate.csproj", StringComparison.Ordinal));

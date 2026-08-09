@@ -7,6 +7,7 @@ using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Diagnostics;
@@ -142,6 +143,7 @@ internal sealed class Program
         VerifyInstanceLifecycleAndRenderState();
         VerifyFrameRateAndStatistics();
         VerifyMaterialParameterBlocks();
+        VerifyGameplayAuthoringExperience();
 
         Console.WriteLine("\n=== All Phase 1.4 DDD tactical design smoke tests passed ===");
     }
@@ -289,6 +291,61 @@ internal sealed class Program
         Console.WriteLine("   [PASS] logical MaterialParameterRef<T> ownership + supported types");
     }
 
+    private static void VerifyGameplayAuthoringExperience()
+    {
+        var scene = new SceneAggregate("GameplayAuthoring");
+        var input = new FakeInputProvider(
+            down: [InputKey.D],
+            pressed: [InputKey.Space],
+            released: [InputKey.E]);
+        scene.SetInput(input);
+        var player = scene.Add(new GameplayProbe());
+
+        scene.PerformStep(.01d);
+        Assert(player.Position == new Vector2D(10, 0) && player.Rotation == .5f &&
+               player.Scale == new Vector2D(2, 3),
+            "Position, rotation, scale, and digital axis helpers author gameplay directly");
+        Assert(player.Pressed && player.Released,
+            "Non-null gameplay input exposes current-frame press and release edges");
+        Assert(player.FoundAfterQueue == 0 && scene.FindByType<GameplayChild>().Count() == 1,
+            "Spawn is invisible during the requesting Step and commits at the frame boundary");
+        GameplayChild child = scene.FindByType<GameplayChild>().Single();
+        Assert(child.Created && child.Steps == 0,
+            "A boundary-spawned instance runs Create immediately but starts Step next frame");
+
+        scene.PerformStep(.01d);
+        Assert(player.AlarmCount == 1 && player.FoundOnSecondStep == child &&
+               child.Steps == 1 && child.Destroyed &&
+               !scene.FindByType<GameplayChild>().Any(),
+            "Alarms fire before Begin Step and queued Find/Destroy preserve deterministic order");
+
+        scene.PerformStep(.01d);
+        Assert(!scene.FindByType<GameplayProbe>().Any(),
+            "DestroySelf removes the owner at the same frame boundary");
+        AssertThrows<InvalidOperationException>(
+            () => new GameplayProbe().RequestDestroy(),
+            "Gameplay operations reject instances that do not belong to a Scene");
+        AssertThrows<ArgumentOutOfRangeException>(
+            () => new GameplayProbe().SetAlarm(GameplayProbe.TickAlarm, -1d),
+            "Alarm delays reject negative values");
+
+        var pauseScene = new SceneAggregate("PausedAlarms");
+        var paused = pauseScene.Add(new AlarmProbe());
+        paused.SetActive(false, pauseScene.RaiseEvent);
+        pauseScene.PerformStep(1d);
+        Assert(paused.AlarmCount == 0 && paused.IsAlarmSet(AlarmProbe.TickAlarm),
+            "Inactive instances pause their alarms");
+        paused.SetActive(true, pauseScene.RaiseEvent);
+        pauseScene.PerformStep(.01d);
+        Assert(paused.AlarmCount == 1,
+            "A reactivated instance resumes its pending alarms");
+
+        Console.WriteLine("\n13. Gameplay authoring experience");
+        Console.WriteLine("   [PASS] transform + input conveniences");
+        Console.WriteLine("   [PASS] instance-scoped Spawn/Find/DestroySelf");
+        Console.WriteLine("   [PASS] deterministic frame-boundary mutations + lightweight alarms");
+    }
+
     private static void AssertThrows<TException>(Action action, string message)
         where TException : Exception
     {
@@ -334,12 +391,86 @@ internal sealed class Program
         public override void OnDrawGUI(ISpriteBatch batch) => Events.Add("DrawGUI");
     }
 
-    private sealed class FakeInputProvider : IInputProvider
+    private sealed class FakeInputProvider(
+        IReadOnlyCollection<InputKey>? down = null,
+        IReadOnlyCollection<InputKey>? pressed = null,
+        IReadOnlyCollection<InputKey>? released = null) : IInputProvider
     {
-        public bool IsKeyDown(InputKey key) => false;
+        public bool IsKeyDown(InputKey key) => down?.Contains(key) == true;
+        public bool WasKeyPressed(InputKey key) => pressed?.Contains(key) == true;
+        public bool WasKeyReleased(InputKey key) => released?.Contains(key) == true;
         public Vector2D MousePosition => Vector2D.Zero;
         public float MouseScrollDelta => 0;
         public bool IsMouseButtonDown(GameEngine.Core.Domain.Input.MouseButton button) => false;
+    }
+
+    private sealed class GameplayProbe : GameInstance
+    {
+        public static readonly AlarmId TickAlarm = new("tick");
+        private int _steps;
+
+        public bool Pressed { get; private set; }
+        public bool Released { get; private set; }
+        public int FoundAfterQueue { get; private set; }
+        public GameplayChild? FoundOnSecondStep { get; private set; }
+        public int AlarmCount { get; private set; }
+
+        public override void OnCreate() => SetAlarm(TickAlarm, .02d);
+
+        public override void OnStep(double deltaTime)
+        {
+            _steps++;
+            if (_steps == 1)
+            {
+                MoveBy(InputAxis2D() * 10f);
+                RotateBy(.5f);
+                ScaleBy(new Vector2D(2, 3));
+                Pressed = KeyPressed(InputKey.Space);
+                Released = KeyReleased(InputKey.E);
+                Spawn(new GameplayChild());
+                FoundAfterQueue = FindAll<GameplayChild>().Count;
+            }
+            else if (_steps == 2)
+            {
+                FoundOnSecondStep = FindFirst<GameplayChild>();
+                if (FoundOnSecondStep is not null) Destroy(FoundOnSecondStep);
+            }
+            else
+            {
+                DestroySelf();
+            }
+        }
+
+        public override void OnAlarm(AlarmId alarm)
+        {
+            if (alarm == TickAlarm) AlarmCount++;
+        }
+
+        public void RequestDestroy() => DestroySelf();
+    }
+
+    private sealed class GameplayChild : GameInstance
+    {
+        public bool Created { get; private set; }
+        public bool Destroyed { get; private set; }
+        public int Steps { get; private set; }
+
+        public override void OnCreate() => Created = true;
+        public override void OnStep(double deltaTime) => Steps++;
+        public override void OnDestroy() => Destroyed = true;
+    }
+
+    private sealed class AlarmProbe : GameInstance
+    {
+        public static readonly AlarmId TickAlarm = new("paused-tick");
+        public int AlarmCount { get; private set; }
+
+        public override void OnCreate() => SetAlarm(TickAlarm, .01d);
+
+        public override void OnAlarm(AlarmId alarm)
+        {
+            if (alarm == TickAlarm) AlarmCount++;
+        }
     }
 
     private sealed class RecordingSpriteBatch : ISpriteBatch

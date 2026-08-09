@@ -55,7 +55,7 @@ public sealed class OrbitingSprite : GameInstance
         var pos = new Vector2D(
             _center.X + MathF.Cos(_animTime + _phase) * _radius,
             _center.Y + MathF.Sin(_animTime + _phase) * _radius);
-        Transform = Transform with { Position = pos };
+        Position = pos;
     }
 
     // Draw 使用 GameInstance 默认 DrawSelf：原点、缩放、旋转、颜色均由统一 Sprite API 处理。

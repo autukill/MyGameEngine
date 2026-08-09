@@ -1,6 +1,7 @@
 namespace GameEngine.Core.Domain.Aggregates;
 
 using GameEngine.Core.Domain.Events;
+using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
@@ -62,6 +63,9 @@ public class SceneAggregate
 
     private readonly Dictionary<InstanceId, GameInstance> _instances = new();
     private readonly List<IDomainEvent> _uncommittedEvents = new();
+    private readonly IGameplayContext _gameplay;
+    private List<PendingInstanceMutation> _pendingMutations = new();
+    private List<PendingInstanceMutation> _committingMutations = new();
     private IInputProvider? _input;
     private ISpriteResolver? _sprites;
 
@@ -95,6 +99,7 @@ public class SceneAggregate
         SceneId = sceneId;
         SceneName = sceneName;
         AggregateId = InstanceId.New();
+        _gameplay = new SceneGameplayContext(this);
 
         // 默认创建 GMS 经典的三个图层
         AddLayer(LayerNameBackground, LayerDepth.Background.Value);
@@ -165,14 +170,30 @@ public class SceneAggregate
     /// </summary>
     public T Add<T>(T instance) where T : GameInstance
     {
+        ArgumentNullException.ThrowIfNull(instance);
+        if (_instances.ContainsKey(instance.Id))
+            throw new ArgumentException(
+                $"Instance '{instance.Id}' is already in Scene '{SceneName}'.",
+                nameof(instance));
+
         // 防御式：无 LayerName 的实例分配到 "Instances" 图层
         if (instance.LayerName == null)
             instance.LayerName = LayerNameInstances;
 
-        _instances[instance.Id] = instance;
+        instance.AttachGameplayContext(_gameplay);
         instance.Input ??= _input;
         instance.SpriteResolver ??= _sprites;
-        instance.OnCreate();
+        _instances.Add(instance.Id, instance);
+        try
+        {
+            instance.OnCreate();
+        }
+        catch
+        {
+            _instances.Remove(instance.Id);
+            instance.DetachGameplayContext(_gameplay);
+            throw;
+        }
         RaiseEvent(new InstanceSpawnedEvent(
             instance.Id, instance.ObjectTypeName,
             instance.Transform.Position, instance.Depth));
@@ -196,6 +217,7 @@ public class SceneAggregate
         if (!_instances.TryGetValue(id, out var instance)) return;
         instance.OnDestroy();
         _instances.Remove(id);
+        instance.DetachGameplayContext(_gameplay);
         RaiseEvent(new InstanceDestroyedEvent(id, instance.ObjectTypeName));
     }
 
@@ -239,6 +261,13 @@ public class SceneAggregate
 
         OnBeforeStep?.Invoke(deltaTime);
 
+        // Lightweight alarms fire before Begin Step. Inactive instances remain paused.
+        foreach (var instance in _instances.Values.ToList())
+        {
+            if (instance.IsActive)
+                instance.AdvanceAlarms(deltaTime);
+        }
+
         // GMS Begin Step：所有活跃实例先执行（输入预处理/状态缓存）
         foreach (var instance in _instances.Values.ToList())
         {
@@ -266,6 +295,8 @@ public class SceneAggregate
             if (instance.IsActive)
                 instance.AdvanceSpriteAnimation(deltaTime);
         }
+
+        ApplyPendingMutations();
 
         OnAfterStep?.Invoke(deltaTime);
     }
@@ -436,12 +467,117 @@ public class SceneAggregate
     /// <summary>重置场景：调用 OnDestroy + 移除所有非持久实例。</summary>
     public void Reset()
     {
+        ClearPendingMutations();
         var nonPersistent = _instances.Values.Where(i => !i.IsPersistent).ToList();
         foreach (var instance in nonPersistent)
         {
             instance.OnDestroy();
             _instances.Remove(instance.Id);
+            instance.DetachGameplayContext(_gameplay);
             RaiseEvent(new InstanceDestroyedEvent(instance.Id, instance.ObjectTypeName));
         }
+        ClearPendingMutations();
+    }
+
+    private T QueueSpawn<T>(T instance) where T : GameInstance
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        if (_instances.ContainsKey(instance.Id) ||
+            _pendingMutations.Any(mutation =>
+                mutation.Kind == InstanceMutationKind.Spawn &&
+                mutation.Instance?.Id == instance.Id))
+        {
+            throw new ArgumentException(
+                $"Instance '{instance.Id}' is already added or queued for Scene '{SceneName}'.",
+                nameof(instance));
+        }
+
+        instance.AttachGameplayContext(_gameplay);
+        _pendingMutations.Add(PendingInstanceMutation.Spawn(instance));
+        return instance;
+    }
+
+    private void QueueDestroy(InstanceId id) =>
+        _pendingMutations.Add(PendingInstanceMutation.Destroy(id));
+
+    private void ApplyPendingMutations()
+    {
+        if (_pendingMutations.Count == 0) return;
+        (_pendingMutations, _committingMutations) =
+            (_committingMutations, _pendingMutations);
+        try
+        {
+            for (int i = 0; i < _committingMutations.Count; i++)
+            {
+                PendingInstanceMutation mutation = _committingMutations[i];
+                if (mutation.Kind == InstanceMutationKind.Spawn)
+                    Add(mutation.Instance!);
+                else
+                    Destroy(mutation.InstanceId);
+            }
+        }
+        catch
+        {
+            DetachQueuedSpawns(_committingMutations);
+            throw;
+        }
+        finally
+        {
+            _committingMutations.Clear();
+        }
+    }
+
+    private void ClearPendingMutations()
+    {
+        DetachQueuedSpawns(_pendingMutations);
+        DetachQueuedSpawns(_committingMutations);
+        _pendingMutations.Clear();
+        _committingMutations.Clear();
+    }
+
+    private void DetachQueuedSpawns(IReadOnlyList<PendingInstanceMutation> mutations)
+    {
+        for (int i = 0; i < mutations.Count; i++)
+        {
+            GameInstance? instance = mutations[i].Instance;
+            if (mutations[i].Kind == InstanceMutationKind.Spawn && instance is not null &&
+                !_instances.ContainsKey(instance.Id))
+            {
+                instance.DetachGameplayContext(_gameplay);
+            }
+        }
+    }
+
+    private enum InstanceMutationKind
+    {
+        Spawn,
+        Destroy
+    }
+
+    private readonly record struct PendingInstanceMutation(
+        InstanceMutationKind Kind,
+        GameInstance? Instance,
+        InstanceId InstanceId)
+    {
+        public static PendingInstanceMutation Spawn(GameInstance instance) =>
+            new(InstanceMutationKind.Spawn, instance, instance.Id);
+
+        public static PendingInstanceMutation Destroy(InstanceId id) =>
+            new(InstanceMutationKind.Destroy, null, id);
+    }
+
+    private sealed class SceneGameplayContext(SceneAggregate owner) : IGameplayContext
+    {
+        public T Spawn<T>(T instance) where T : GameInstance => owner.QueueSpawn(instance);
+
+        public void Destroy(InstanceId id) => owner.QueueDestroy(id);
+
+        public GameInstance? FindById(InstanceId id) => owner.FindById(id);
+
+        public T? FindFirst<T>() where T : GameInstance =>
+            owner._instances.Values.OfType<T>().FirstOrDefault();
+
+        public IReadOnlyList<T> FindAll<T>() where T : GameInstance =>
+            owner._instances.Values.OfType<T>().ToArray();
     }
 }

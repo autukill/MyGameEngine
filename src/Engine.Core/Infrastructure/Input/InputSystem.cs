@@ -86,6 +86,10 @@ public sealed class InputSystem : IInputProvider, IDisposable
     public bool IsKeyDown(InputKey key) =>
         _keyboard is not null && _keyboard.IsKeyPressed(ToSilkKey(key));
 
+    public bool WasKeyPressed(InputKey key) => _pressedRead.Contains(key);
+
+    public bool WasKeyReleased(InputKey key) => _releasedRead.Contains(key);
+
     public Vector2D MousePosition => _mousePosition;
 
     public float MouseScrollDelta => _scrollDelta;

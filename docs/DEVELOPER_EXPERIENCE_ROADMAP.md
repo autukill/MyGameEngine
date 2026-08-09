@@ -59,7 +59,24 @@ GameAssets.Packages.SharedPrimitives
 - 失败时继续使用上一份有效资源，不破坏当前 Scene。
 - 与 Content 指纹、Atlas 原子替换和 Hosting 生命周期共享同一所有权边界。
 
-当前验收：Content 包已使用编译元数据轮询和去抖，后台完成 Manifest 图校验、图片解码与 Sprite 规范化；Texture/Sprite/包索引在 Step 与 Draw 之间事务切换，失败保留旧修订。自定义 Sprite Shader 支持安全根文件注册、稳定源码快照、整批 Program 原子替换和驱动错误诊断；投影同步覆盖主 Scene 与 Stencil 重绘。类型化材质参数块以逻辑 Shader 引用保存 CPU 参数，支持多材质共享 Program、按 Revision 批处理和热替换后自动重放。材质装配与热重载候选使用 GL 反射验证 Uniform 名称、类型和数组边界；编译诊断保留源码路径、行号、阶段和原始驱动日志。`shaders.json` 已把 Program 文件、Material Schema 和默认值暴露给 Hosting 与 MSBuild；AssetCompiler 在 CoreCompile 前静态校验，并生成 `GameShaders` 下的强类型 Shader、Material 与 Uniform 参数键，运行时继续由真实驱动复核。Runner 提供 `--content-hot-reload` 与 `--shader-hot-reload`。阶段 5 下一步评估可选离线 GLSL 编译器和 Manifest 变更热重载，暂不进入代码热重载。
+当前验收：Content 包已使用编译元数据轮询和去抖，后台完成 Manifest 图校验、图片解码与 Sprite 规范化；Texture/Sprite/包索引在 Step 与 Draw 之间事务切换，失败保留旧修订。自定义 Sprite Shader 支持安全根文件注册、稳定源码快照、整批 Program 原子替换和驱动错误诊断；投影同步覆盖主 Scene 与 Stencil 重绘。类型化材质参数块以逻辑 Shader 引用保存 CPU 参数，支持多材质共享 Program、按 Revision 批处理和热替换后自动重放。材质装配与热重载候选使用 GL 反射验证 Uniform 名称、类型和数组边界；编译诊断保留源码路径、行号、阶段和原始驱动日志。`shaders.json` 已把 Program 文件、Material Schema 和默认值暴露给 Hosting 与 MSBuild；AssetCompiler 在 CoreCompile 前静态校验，并生成 `GameShaders` 下的强类型 Shader、Material 与 Uniform 参数键，运行时继续由真实驱动复核。Runner 提供 `--content-hot-reload` 与 `--shader-hot-reload`。
+
+离线 GLSL 编译仍保留为显式可选方向，但不再占用当前开发体验主线；适配器、诊断、缓存与恢复条件记录在[可选离线 Shader 编译方向](OFFLINE_SHADER_COMPILATION.md)。
+
+## 阶段 6：Gameplay Authoring Experience（当前主线）
+
+目标从“继续完善引擎装配基础设施”转向“减少普通玩法类每天重复编写的样板”。游戏对象应能在不接触 `SceneAggregate`、领域事件回调、可空输入或渲染基础设施的情况下完成常见行为。
+
+- `Position/Rotation/Scale` 与 `MoveBy/RotateBy/ScaleBy` 提供直接变换入口。
+- 非空 `Controls`、`KeyDown/KeyPressed/KeyReleased` 和 WASD `InputAxis2D` 收敛输入查询。
+- Scene 注入实例级 `IGameplayContext`，提供 `Spawn/DestroySelf/Destroy/Find`，不引入全局 Service Locator。
+- Gameplay Spawn/Destroy 在 End Step 后按请求顺序确定性提交；新实例下一帧 Step，待销毁实例完成当前 End Step。
+- `AlarmId`、`SetAlarm/CancelAlarm/OnAlarm` 提供无协程依赖的轻量计时。
+- 项目模板使用 WASD 移动、Space 生成 Bullet 和 Alarm 自动销毁展示黄金路径。
+
+当前验收：上述第一切片已有无窗口顺序测试，覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm 和非法上下文。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)。
+
+下一步优先级：Scene 定义与切换体验 → 可复用实例 Factory/Prefab → 基础碰撞与空间查询 → 更多 Gameplay Cookbook。暂不进入 UI、完整协程或物理系统。
 
 ## 设计约束
 

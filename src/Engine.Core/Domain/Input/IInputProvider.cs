@@ -14,6 +14,12 @@ public interface IInputProvider
     /// <summary>该键当前是否按住（每帧轮询，对应 keyboard_check）</summary>
     bool IsKeyDown(InputKey key);
 
+    /// <summary>Whether the key transitioned to down during the current input frame.</summary>
+    bool WasKeyPressed(InputKey key) => false;
+
+    /// <summary>Whether the key transitioned to up during the current input frame.</summary>
+    bool WasKeyReleased(InputKey key) => false;
+
     /// <summary>鼠标屏幕坐标（像素，左上原点）</summary>
     Vector2D MousePosition { get; }
 

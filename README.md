@@ -7,6 +7,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 ## 当前能力
 
 - GMS 风格实例生命周期：Create、Begin/Step/End Step、Begin/Draw/End Draw、Draw GUI、Key Down/Up、Destroy。
+- Gameplay Authoring：直接 Position/Rotation/Scale、非空输入便利 API、实例级 Spawn/Destroy/Find、确定性帧边界提交与轻量 Alarm。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
@@ -256,8 +257,10 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 ## 下一阶段
 
-1. 为无显示器 CI 固化软件 OpenGL 执行环境。
-2. 在声明式 Material Asset 与强类型生成引用基础上，评估可选离线 GLSL 编译器和 Manifest 变更热重载。
-3. 继续降低 SceneAggregate 每帧 LINQ 与排序分配。
+1. 收敛强类型 Scene 定义、注册和切换体验。
+2. 设计可复用实例 Factory/Prefab 与基础碰撞/空间查询边界。
+3. 扩充 Gameplay Cookbook，并继续降低 SceneAggregate 每帧 LINQ 与排序分配。
+
+可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
 
 设计推演原稿保存在 [docs/C# 2D 游戏引擎从零构建.md](docs/C%23%202D%20游戏引擎从零构建.md)，它是路线参考，不代表所有示例都已实现。
