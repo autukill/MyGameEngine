@@ -98,7 +98,7 @@ Scene contributor 包含：Scene 名称、完整 `SimulationClockSnapshot`、暂
 - Hash 是分叉检测，不是状态快照，不能恢复或回溯对象。
 - 浮点按 bit 比较；`+0/-0`、NaN payload 或跨平台数学库差异会被视为不同。
 - `GameplayStateSnapshot` 和每 Tick contributor 数组是显式诊断成本；未启用 Record/Verify 时不执行 Hash 捕获。
-- v1 状态轨迹仍是内存模型，没有磁盘容器、压缩、版本迁移或 Checkpoint。
+- 状态轨迹本身仍是内存模型；[可持久化 Replay Bundle](REPLAY_BUNDLES.md) 已能把它与逻辑输入保存为单一二进制文件，但仍没有压缩、版本迁移或 Checkpoint。
 - 当前 Scene 自动写入暂停结果与请求数量，但不把 owner GUID 写入协议；若自定义暂停身份会影响未来分支，应由拥有该规则的玩法对象贡献相应逻辑状态。
 
-下一阶段可把输入流与状态轨迹封装为单一回放文件，并在较长会话中加入周期 Checkpoint；时间回溯仍需要真正可恢复的状态模型，不能只依靠 Hash。
+Replay Bundle 已收敛输入、状态轨迹、构建身份和读取限制。较长会话只有在真实调试成本证明值得时才引入周期 Checkpoint；时间回溯仍需要真正可恢复的状态模型，不能只依靠 Hash。

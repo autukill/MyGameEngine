@@ -26,6 +26,10 @@
     <Project Path="src/Engine.Features/Presentation.Tests/Presentation.Tests.csproj" />
     <Project Path="src/Engine.Features/Presentation/Presentation.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/Replay/">
+    <Project Path="src/Engine.Features/Replay.Tests/Replay.Tests.csproj" />
+    <Project Path="src/Engine.Features/Replay/Replay.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/SceneSystem/">
     <Project Path="src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csproj" />
     <Project Path="src/Engine.Features/SceneSystem.VisualTests/SceneSystem.VisualTests.csproj" />

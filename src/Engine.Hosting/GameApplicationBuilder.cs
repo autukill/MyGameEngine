@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Features.Replay.Application;
 
 public sealed class GameApplicationBuilder
 {
@@ -19,6 +20,7 @@ public sealed class GameApplicationBuilder
     private LogicalInputRecording? _inputPlayback;
     private GameplayStateRecorder? _stateRecorder;
     private GameplayStateVerifier? _stateVerifier;
+    private bool _closeOnReplayCompletion;
 
     internal GameApplicationBuilder(EngineWindowOptions windowOptions)
     {
@@ -152,6 +154,39 @@ public sealed class GameApplicationBuilder
         return this;
     }
 
+    /// <summary>
+    /// Records logical input and deterministic gameplay-state hashes into one session. Save the
+    /// session after GameApplication.Run returns.
+    /// </summary>
+    public GameApplicationBuilder UseReplayRecording(ReplaySession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        session.RequireMode(ReplaySessionMode.Recording);
+        RequireInputReplayNotConfigured();
+        RequireGameplayStateDiagnosticsNotConfigured();
+        _inputRecorder = session.InputRecorder!;
+        _stateRecorder = session.StateRecorder!;
+        return this;
+    }
+
+    /// <summary>
+    /// Replays logical input and verifies state hashes. By default the application closes after
+    /// the final verified Tick, making unattended regression playback straightforward.
+    /// </summary>
+    public GameApplicationBuilder UseReplayPlayback(
+        ReplaySession session,
+        bool closeWhenComplete = true)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        session.RequireMode(ReplaySessionMode.Playback);
+        RequireInputReplayNotConfigured();
+        RequireGameplayStateDiagnosticsNotConfigured();
+        _inputPlayback = session.Bundle!.Input;
+        _stateVerifier = new GameplayStateVerifier(session.Bundle.GameplayState);
+        _closeOnReplayCompletion = closeWhenComplete;
+        return this;
+    }
+
     public GameApplication Build() => new(BuildPlan());
 
     internal GameApplicationPlan BuildPlan()
@@ -259,7 +294,8 @@ public sealed class GameApplicationBuilder
             _inputRecorder,
             _inputPlayback,
             _stateRecorder,
-            _stateVerifier);
+            _stateVerifier,
+            _closeOnReplayCompletion);
     }
 
     private void RequireInputReplayNotConfigured()
@@ -287,7 +323,8 @@ internal sealed record GameApplicationPlan(
     LogicalInputRecorder? InputRecorder,
     LogicalInputRecording? InputPlayback,
     GameplayStateRecorder? StateRecorder,
-    GameplayStateVerifier? StateVerifier)
+    GameplayStateVerifier? StateVerifier,
+    bool CloseOnReplayCompletion)
 {
     public SceneRef InitialScene => InitialSceneActivation.Scene;
     public string SceneName => InitialScene.Name;

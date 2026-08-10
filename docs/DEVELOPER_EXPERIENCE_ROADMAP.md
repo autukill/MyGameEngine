@@ -93,10 +93,11 @@ GameAssets.Packages.SharedPrimitives
 - SceneAggregate 使用可复用阶段快照和原地稳定排序；Input、Step、Draw、DrawGUI 在实例规模预热后保持 0 B/帧，同时保留阶段间直接变更与 Gameplay 帧边界提交语义。
 - `GameplayStateMachine<TState>` 提供强类型 Enter/Step/Exit、状态计时、确定性回调后切换和冲突/循环保护；配置后 Update/Change/Restart 保持零稳态分配。
 - `GameplayQueryBuffer<T>`、`CountInstances<T>()` 与 Buffer 查询重载保留便利数组 API，同时给高频路径提供 0 B 结果复用；可选遥测按真实 Step 汇总调用、候选、命中和耗时。
+- `ReplaySession` 已把逻辑输入与状态 Hash 收敛为版本化 `.mgreplay`：Hosting 一次装配 Record/Playback、Build 身份和 fixed delta 启动前校验、首次分叉诊断、受限读取与最后 Tick 自动退出；Asteroids 提供录制/回放入口。
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：Gameplay Authoring 已具备查询 Buffer、状态机、暂停时间域、Cooldown、Health/Damage、Instance Ref、确定性 Clock/Random、逻辑输入录制回放，以及稳定状态 Hash/首次分叉诊断。下一切片评估把 Input + State Trace 封装为版本化磁盘回放文件，并为长会话设计周期 Checkpoint；是否立刻实施取决于真实调试需求。Gameplay Signal 继续等待真实一对多用例，不预建全局总线。暂不展开完整 Skill/Buff、UI、协程或物理系统；逐帧异形碰撞继续保持需求记录。
+下一步优先级：版本化磁盘 Replay 已闭环 Input + State Trace，并暂时退出当前开发主线；只有真实长会话暴露中途跳转成本时才重新评估游戏参与的 Checkpoint。当前回到 Gameplay Authoring Experience，优先继续减少普通玩法对象之间协作与状态编排的样板。Gameplay Signal 仍需以真实一对多用例限定边界，不预建全局总线。暂不展开完整 Skill/Buff、UI、协程或物理系统；逐帧异形碰撞继续保持需求记录。
 
 ## 设计约束
 

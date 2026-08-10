@@ -16,4 +16,8 @@
     <PackageReference Include="Silk.NET.Maths" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Replay" />
+  </ItemGroup>
+
 </Project>

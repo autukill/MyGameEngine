@@ -7,6 +7,8 @@ using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Features.Replay.Application;
+using GameEngine.Features.Replay.Domain;
 using GameEngine.Hosting;
 
 internal static class Program
@@ -15,6 +17,16 @@ internal static class Program
     {
         bool smoke = args.Contains("--smoke", StringComparer.Ordinal);
         bool diagnostics = args.Contains("--diagnostics", StringComparer.Ordinal);
+        string? recordReplayPath = GetOptionValue(args, "--record-replay");
+        string? playReplayPath = GetOptionValue(args, "--replay");
+        if (recordReplayPath is not null && playReplayPath is not null)
+            throw new ArgumentException("Use either --record-replay or --replay, not both.");
+        var replayIdentity = new ReplayIdentity("playground.asteroids", "1");
+        ReplaySession? replay = recordReplayPath is not null
+            ? ReplaySession.Record(replayIdentity)
+            : playReplayPath is not null
+                ? ReplaySession.Load(playReplayPath, replayIdentity)
+                : null;
         var queryTelemetry = diagnostics ? new QueryTelemetrySink() : null;
         EngineWindowOptions options = (EngineWindowOptions.Default with
         {
@@ -23,7 +35,7 @@ internal static class Program
             VSync = !smoke
         }).WithFixedUpdateRate(60d);
 
-        using var game = GameApplication
+        GameApplicationBuilder builder = GameApplication
             .Create(options)
             .ConfigureInput(input => input
                 .BindAction(GameInputs.TurnLeft, InputKey.A, InputKey.Left)
@@ -83,10 +95,30 @@ internal static class Program
                     new Vector2D(context.Window.Width * 0.5f, context.Window.Height * 0.5f),
                     gameOver));
             })
-            .StartScene(GameScenes.Main)
-            .Build();
+            .StartScene(GameScenes.Main);
+
+        if (replay is { Mode: ReplaySessionMode.Recording })
+            builder.UseReplayRecording(replay);
+        else if (replay is { Mode: ReplaySessionMode.Playback })
+            builder.UseReplayPlayback(replay);
+
+        using var game = builder.Build();
 
         game.Run();
+        if (recordReplayPath is not null)
+        {
+            replay!.Save(recordReplayPath);
+            Console.WriteLine($"Replay saved: {Path.GetFullPath(recordReplayPath)}");
+        }
+    }
+
+    private static string? GetOptionValue(string[] args, string option)
+    {
+        int index = Array.IndexOf(args, option);
+        if (index < 0) return null;
+        if (index == args.Length - 1 || string.IsNullOrWhiteSpace(args[index + 1]))
+            throw new ArgumentException($"{option} requires a file path.");
+        return args[index + 1];
     }
 
     private sealed class QueryTelemetrySink : IPerformanceTelemetrySink

@@ -28,6 +28,7 @@
     <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\Presentation\Presentation.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\RenderPipeline\RenderPipeline.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\Engine.Features\Replay\Replay.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\SceneSystem\SceneSystem.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\ShaderAssets\ShaderAssets.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" PrivateAssets="all" />
@@ -49,6 +50,7 @@
       <TfmSpecificPackageFile Include="..\Engine.Features\ContentAssets\bin\$(Configuration)\net10.0\ContentAssets.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\Presentation\bin\$(Configuration)\net10.0\Presentation.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\RenderPipeline\bin\$(Configuration)\net10.0\RenderPipeline.dll" />
+      <TfmSpecificPackageFile Include="..\Engine.Features\Replay\bin\$(Configuration)\net10.0\Replay.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\SceneSystem\bin\$(Configuration)\net10.0\SceneSystem.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\ShaderAssets\bin\$(Configuration)\net10.0\ShaderAssets.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\Sprites\bin\$(Configuration)\net10.0\Sprites.dll" />

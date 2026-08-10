@@ -34,7 +34,7 @@
 - AssetCompiler 可打包为 `gameengine-assets` .NET Tool；ContentPipeline NuGet 包通过 `buildTransitive` 为外部项目提供内置编译器、增量 Build 与 Publish 接入。
 - 内容构建从编译后 Manifest 图生成 `GameAssets.Packages/Sprites/Textures`；Atlas 内部页和已吞并源 Texture 不进入公开 API，标识符冲突在构建期失败。
 - 包集成测试使用临时本地 Feed，真实验证 Tool 安装、带空格路径、Debug/Release、缓存命中与 Publish 边界。
-- `MyGameEngine.GameSdk` 已聚合 14 个正式运行时程序集并声明 Silk.NET/SkiaSharp 依赖；包内不包含源码项目依赖、符号或仓库绝对路径。
+- `MyGameEngine.GameSdk` 已聚合 15 个正式运行时程序集（包含 Replay）并声明 Silk.NET/SkiaSharp 依赖；包内不包含源码项目依赖、符号或仓库绝对路径。
 - `MyGameEngine.Templates` 已提供 `dotnet new mygameengine-game`；生成项目包含 Hosting、GameInstance、声明式 WebP 内容与强类型引用，不包含 `ProjectReference`。
 - 分发集成测试使用隔离 CLI Home、NuGet 包目录和临时本地 Feed，真实验证 Pack、模板安装、仓库外 Restore/Build、三帧 smoke run 与 Publish。
 - `MyGameEngine.Cli` 提供 `gameengine doctor`：默认执行无图形副作用的项目与内容诊断，`--probe-opengl` 显式创建隐藏 OpenGL 3.3 Context。
@@ -73,6 +73,7 @@
 - `SimulationClock` 为同一 Step 提供共享 Tick、缩放/非缩放 delta 与累计时间，暂停时只冻结 Gameplay 轴且跨 Scene 保留；`GameplayRandom` 固定 PCG32 v1 bit sequence，支持无偏范围、概率、几何、Choose/Shuffle 和状态恢复，稳态 0 B。
 - `LogicalInputRecorder/Recording/Playback` 按模拟 Tick 冻结 Action held/edge、Axis2D 与 fixed delta；Hosting 以 `RecordLogicalInput/ReplayLogicalInput` 装配，要求 delta 逐位一致、协议匹配和完整 Tick 1 流，回放查询保持 0 B。
 - `GameplayStateWriter` 提供版本化 FNV-1a 64 显式状态协议；Scene 按稳定加入序号聚合时间、实例内建状态与自定义 contributor，`RecordGameplayState/VerifyGameplayState` 在首次分叉 Tick 抛出结构化诊断。
+- `ReplaySession` 将逻辑输入与状态轨迹保存为确定性 `.mgreplay` 二进制文件；Game/Build 身份、fixed delta、组件版本、SHA-256、受限读取和首次分叉验证形成完整开发期回放边界，Asteroids 提供 `--record-replay/--replay` 示例。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
 - Hosting 第二阶段多 Camera 已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Runner `--split-cameras` 验证两台真实 Camera。
 - 多 View 效果策略已显式化：主 View 由 `UseHdr` 配置；次级 View 默认 Direct，也可独立选择 HDR + Tone Mapping 与可选 Bloom。配置报告额外 Pass/租约，工厂按输入 Surface 尺寸创建目标，次级 View 不承担未声明成本。
@@ -102,13 +103,14 @@
 4. 已完成 Layer 过滤、小地图式样例、显式效果成本、Scene Draw 分项诊断、Layer/Depth 有序索引、保守 Camera 可见性剔除，以及独立 Camera 跟随/Dead Zone/边界/震屏控制器。
 5. 已把静态跟随策略接入声明式 RenderView 配置，同时保留 Gameplay 运行时换目标的出口。
 6. 已建立独立多 View 稳定基准；本机 10,000 实例、双 View、剔除路径约 `0.431 ms` 且 `0 B/frame`，不足以证明跨 View 缓存值得引入，当前明确保留简单逐 View 检查。
-7. 多 Camera/View 当前里程碑闭环；Gameplay Authoring 已继续落地 Cooldown、Health/Damage、Instance Ref、确定性 Clock/Random、逻辑输入录制回放及状态 Hash/首次分叉诊断。下一项评估磁盘回放容器与周期 Checkpoint；Gameplay Signal 暂只验证需求。
+7. 多 Camera/View 当前里程碑闭环；Gameplay Authoring 已继续落地 Cooldown、Health/Damage、Instance Ref、确定性 Clock/Random、逻辑输入、状态 Hash 与磁盘 Replay。Replay 里程碑现已关闭，不继续推进 Checkpoint；主线返回普通玩法对象的协作与状态编排体验。
 
 ## 已知限制
 
 - RenderTarget 当前支持 RGBA8/RGBA16F 与可选 Depth24Stencil8，但不支持 MSAA、多 Attachment、sRGB framebuffer 或自动曝光。
 - ContentAssets 仍是同步全量解码上传，没有流式驻留、显存预算或 LRU。
 - 暂无物理/Spatial Hash、音频、完整编辑器和 AI Bridge 运行时代码。
+- Replay v1 全程保留输入帧与状态 contributor，不包含压缩、Checkpoint、状态恢复或跨版本迁移；长会话需由游戏限制录制时长。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Gameplay Cooldown](GAMEPLAY_COOLDOWN.md)、[Gameplay Health 与 Damage](GAMEPLAY_HEALTH.md)、[强类型 Instance 引用](INSTANCE_REFERENCES.md)、[确定性 Simulation](DETERMINISTIC_SIMULATION.md)、[逻辑输入回放](LOGICAL_INPUT_REPLAY.md)、[Gameplay 状态 Hash](GAMEPLAY_STATE_HASHING.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Gameplay 查询性能](GAMEPLAY_QUERY_PERFORMANCE.md)、[Camera/Viewport 边界](CAMERA_VIEWPORT_STATUS.md)、[多 View 性能基准](MULTI_VIEW_PERFORMANCE.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Gameplay Cooldown](GAMEPLAY_COOLDOWN.md)、[Gameplay Health 与 Damage](GAMEPLAY_HEALTH.md)、[强类型 Instance 引用](INSTANCE_REFERENCES.md)、[确定性 Simulation](DETERMINISTIC_SIMULATION.md)、[逻辑输入回放](LOGICAL_INPUT_REPLAY.md)、[Gameplay 状态 Hash](GAMEPLAY_STATE_HASHING.md)、[可持久化 Replay Bundle](REPLAY_BUNDLES.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Gameplay 查询性能](GAMEPLAY_QUERY_PERFORMANCE.md)、[Camera/Viewport 边界](CAMERA_VIEWPORT_STATUS.md)、[多 View 性能基准](MULTI_VIEW_PERFORMANCE.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

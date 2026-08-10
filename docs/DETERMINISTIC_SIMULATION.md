@@ -72,4 +72,4 @@ Vector2D offset = _random.InsideCircle(24f);
 2. 外部 IO、线程完成顺序和平台浮点差异。
 3. 引擎/游戏版本和 Hash schema 的匹配。
 
-状态录制与验证见[Gameplay 状态 Hash 与首次分叉诊断](GAMEPLAY_STATE_HASHING.md)。后续可增加单一磁盘回放容器与 Checkpoint；不在基础 Clock 或输入流中隐藏存档、网络同步或时间回溯系统。
+状态录制与验证见[Gameplay 状态 Hash 与首次分叉诊断](GAMEPLAY_STATE_HASHING.md)，输入与状态轨迹可通过[可持久化 Replay Bundle](REPLAY_BUNDLES.md)保存为单一文件。Checkpoint 仍等待长会话真实需求；不在基础 Clock 或输入流中隐藏存档、网络同步或时间回溯系统。

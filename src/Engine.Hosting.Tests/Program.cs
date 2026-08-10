@@ -15,6 +15,8 @@ using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
+using GameEngine.Features.Replay.Application;
+using GameEngine.Features.Replay.Domain;
 using GameEngine.Features.ToneMapping.Domain;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
@@ -479,6 +481,49 @@ internal static class Program
             "The same seed and logical Tick stream produce the same gameplay result");
 
         var fixedOptions = EngineWindowOptions.Default.WithFixedUpdateRate(60d);
+        var replayRecordingSession = ReplaySession.Record(
+            new ReplayIdentity("hosting-tests", "dev"));
+        var replayRecordingPlan = GameApplication.Create(fixedOptions)
+            .ConfigureInput(input => input.BindAction(fire, InputKey.Space))
+            .UseReplayRecording(replayRecordingSession)
+            .UseDefault2DRenderer()
+            .ConfigureScene("ReplayRecord", _ => { })
+            .BuildPlan();
+        Check(ReferenceEquals(replayRecordingPlan.InputRecorder,
+                  replayRecordingSession.InputRecorder) &&
+              ReferenceEquals(replayRecordingPlan.StateRecorder,
+                  replayRecordingSession.StateRecorder) &&
+              replayRecordingPlan.InputPlayback is null &&
+              replayRecordingPlan.StateVerifier is null,
+            "Replay recording configures logical input and state hashing as one session");
+
+        var sourceSession = ReplaySession.Record(
+            new ReplayIdentity("hosting-tests", "dev"), 1);
+        sourceSession.InputRecorder!.Prepare(map, fixedDelta);
+        sourceSession.InputRecorder.BeginStep(1, map, physical);
+        sourceSession.StateRecorder!.Prepare(fixedDelta);
+        var replayScene = new SceneAggregate("Replay");
+        replayScene.PerformStep(fixedDelta);
+        sourceSession.StateRecorder.Capture(replayScene.CaptureGameplayState());
+        ReplaySession replayPlaybackSession = ReplaySession.Play(
+            sourceSession.Snapshot(),
+            new ReplayIdentity("hosting-tests", "dev"));
+        var replaySessionPlan = GameApplication.Create(fixedOptions)
+            .ConfigureInput(input => input
+                .BindAction(fire, InputKey.Enter)
+                .BindAction(dash, InputKey.Control)
+                .BindAxis2D(move, InputKey.Left, InputKey.Right, InputKey.Up, InputKey.Down))
+            .UseReplayPlayback(replayPlaybackSession)
+            .UseDefault2DRenderer()
+            .ConfigureScene("Replay", _ => { })
+            .BuildPlan();
+        Check(ReferenceEquals(replaySessionPlan.InputPlayback,
+                  replayPlaybackSession.Bundle!.Input) &&
+              ReferenceEquals(replaySessionPlan.StateVerifier!.Recording,
+                  replayPlaybackSession.Bundle.GameplayState) &&
+              replaySessionPlan.CloseOnReplayCompletion,
+            "Replay playback validates both streams and closes after the final verified Tick");
+
         var recordingPlan = GameApplication.Create(fixedOptions)
             .ConfigureInput(input => input.BindAction(fire, InputKey.Space))
             .RecordLogicalInput(new LogicalInputRecorder())

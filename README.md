@@ -7,7 +7,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 ## 当前能力
 
 - GMS 风格实例生命周期：Create、Begin/Step/End Step、Begin/Draw/End Draw、Draw GUI、Key Down/Up、Destroy。
-- Gameplay Authoring：直接变换、逻辑输入、时间原语、Health/Damage、Instance Ref、确定性 Clock/Random、Tick 输入录制回放、状态 Hash/首次分叉诊断、实例级生命周期与轻量 Behavior。
+- Gameplay Authoring：直接变换、逻辑输入、时间原语、Health/Damage、Instance Ref、确定性 Clock/Random、可持久化 Replay、状态 Hash/首次分叉诊断、实例级生命周期与轻量 Behavior。
 - Gameplay Motion：21 种无状态 Easing、标量/位置/颜色/最短角 Tween，以及限速和半衰期平滑追踪。
 - Gameplay Time：Gameplay/Unscaled 时间域、owner/key 暂停、单一 TimeScale；暂停冻结逻辑但继续渲染和安全帧边界。
 - Gameplay Runtime：Scene Input/Step/Draw/DrawGUI 使用可复用快照，实例规模预热后保持零托管分配，并保留确定性阶段边界。
@@ -54,6 +54,7 @@ src/
 │   ├── ContentAssets/                   # 声明式包、依赖图、Texture/Sprite 装配与租约
 │   ├── Presentation/                    # 显式 RGBA8/Display 屏幕终端与稳定合成层级
 │   ├── RenderPipeline/                  # RenderTarget、RenderPass DAG、后处理与合成
+│   ├── Replay/                          # 版本化输入 + 状态轨迹 Bundle 与会话 API
 │   ├── SceneSystem/                     # Layer、RenderCommand（旧 Context 正在退役）
 │   ├── ShaderAssets/                    # shaders.json、Material Schema/default 与安全路径校验
 │   ├── Sprites/                         # SpriteLibrary、帧解析与动画资源元数据
@@ -61,7 +62,7 @@ src/
 │   ├── TextureAssets/                   # TextureLibrary、Skia 解码与资产清单
 │   ├── TextureAtlas/                    # 纯 CPU Atlas 排布与像素页面生成
 │   ├── ToneMapping/                     # HDR 曝光、ACES/Reinhard 与 RGBA8 显示输出
-│   ├── *.Tests/                         # 11 个 Feature 无窗口控制台冒烟项目
+│   ├── *.Tests/                         # 13 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
@@ -90,6 +91,7 @@ Engine.Core
   ├─ TextureAssets
   │    └─ ContentAssets（同时依赖 Sprites）
   ├─ TextureAtlas
+  ├─ Replay
 └─ Camera
        └─ RenderPipeline
             ├─ Bloom
@@ -98,10 +100,10 @@ Engine.Core
             ├─ StencilMasking
             └─ ToneMapping
 
-Engine.Hosting -> Core + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
+Engine.Hosting -> Core + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 47 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 50 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -286,7 +288,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 ## 下一阶段
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
-2. 确定性 Gameplay Authoring 的 Clock/Random、逻辑输入录制回放和状态 Hash/首次分叉诊断已落地；下一项根据真实调试需求评估版本化磁盘回放文件与周期 Checkpoint，Gameplay Signal 继续等待真实一对多用例。
+2. 确定性 Gameplay Authoring 的 Clock/Random、逻辑输入、状态 Hash 和版本化磁盘 Replay 已闭环；下一项先用真实回放评估长会话跳转成本，再决定是否引入周期 Checkpoint，Gameplay Signal 继续等待真实一对多用例。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
 

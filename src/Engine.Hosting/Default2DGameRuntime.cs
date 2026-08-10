@@ -444,6 +444,12 @@ internal sealed class Default2DGameRuntime : IDisposable
         }
         if (!_stateVerifier!.Verify(snapshot))
             throw new GameplayStateDivergenceException(_stateVerifier.FirstDivergence!);
+        if (_plan.CloseOnReplayCompletion &&
+            _stateVerifier.IsComplete &&
+            _inputPlayback is { IsComplete: true })
+        {
+            _close();
+        }
     }
 
     private void ConfigureScene(ISceneActivation activation)

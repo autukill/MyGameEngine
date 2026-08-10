@@ -17,6 +17,7 @@
 - [确定性 Simulation Clock 与 Gameplay Random](DETERMINISTIC_SIMULATION.md)：固定 Tick、暂停/缩放累计时间、PCG32 随机流与回放边界。
 - [逻辑输入 Tick 录制与回放](LOGICAL_INPUT_REPLAY.md)：Action/Axis 帧协议、Hosting Record/Replay、兼容性与失败边界。
 - [Gameplay 状态 Hash 与首次分叉诊断](GAMEPLAY_STATE_HASHING.md)：显式状态贡献、稳定 contributor、基线录制和回放分叉定位。
+- [可持久化 Replay Bundle](REPLAY_BUNDLES.md)：版本化二进制文件、会话式 Hosting API、身份校验、安全读取上限与 Playground 用法。
 - [Gameplay 空间查询基准](GAMEPLAY_QUERY_PERFORMANCE.md)：线性扫描测量方法、当前基线和 Spatial Hash 引入条件。
 - [Camera 与 Viewport 当前边界](CAMERA_VIEWPORT_STATUS.md)：单主视图现状、底层多视图能力和声明式 View 后续边界。
 - [Camera 跟随、Dead Zone、边界与震屏](CAMERA_FOLLOWING.md)：每 View 独立控制器、平滑参数、世界约束和可叠加震屏请求。

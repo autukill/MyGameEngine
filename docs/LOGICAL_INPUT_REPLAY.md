@@ -69,9 +69,9 @@ Live、Record 和 Replay 都经过同一个 `InputMap` 查询入口。当前帧�
 ## 明确不在 v1 中的内容
 
 - 原始 `KeyDown/KeyPressed/KeyReleased`、Mouse 查询和 `OnKeyDown/OnKeyUp` 不属于确定性录制。Record/Replay 模式会拒绝直接物理查询，而不是静默返回可能导致分叉的值。
-- `LogicalInputRecording` 当前是版本化的内存模型，尚未提供磁盘 JSON/二进制格式、压缩或跨版本迁移。
+- `LogicalInputRecording` 本身仍是版本化内存模型；需要磁盘持久化时使用[可持久化 Replay Bundle](REPLAY_BUNDLES.md)，它会与 Gameplay 状态轨迹一起写入确定性二进制容器。v1 尚无压缩或跨版本迁移。
 - 回放流保存并校验 fixed delta，但不保存随机状态、Scene/实例状态或外部 IO；调用方仍须使用相同确定性 `GameplayRandom` seed。
-- v1 不自动在流结束时关闭窗口；继续请求不存在的 Tick 会抛出清晰异常。
+- 底层 `ReplayLogicalInput(recording)` 不自动关闭窗口；`UseReplayPlayback(session)` 默认在输入和状态轨迹同时完成后关闭。关闭自动行为后，继续请求不存在的 Tick 会抛出清晰异常。
 - 手动 `LogicalInputRecorder.BeginStep` 可以从任意正 Tick 录制局部片段，但 Hosting 的整局回放目前只接收从 Tick 1 开始的流。局部回放要等状态 Checkpoint 边界落地。
 
-稳定 Gameplay 状态 Hash 和首次分叉 Tick 诊断已经落地，可与输入录制同时启用；见[Gameplay 状态 Hash 与首次分叉诊断](GAMEPLAY_STATE_HASHING.md)。Hash 不包含 GPU、墙钟时间、Domain Event 的 `OccurredOn` 或字典物理布局。
+稳定 Gameplay 状态 Hash 和首次分叉 Tick 诊断已经落地，可与输入录制同时启用；见[Gameplay 状态 Hash 与首次分叉诊断](GAMEPLAY_STATE_HASHING.md)。推荐使用 [Replay Bundle](REPLAY_BUNDLES.md) 统一管理两条流。Hash 不包含 GPU、墙钟时间、Domain Event 的 `OccurredOn` 或字典物理布局。
