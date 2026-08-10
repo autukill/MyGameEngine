@@ -1,6 +1,6 @@
 # 《神意难测 / The God They Made》
 
-> 状态：Gate 1A 灰盒原型开发；尚未进入正式内容制作。
+> 状态：Gate 1B 可观察世界已完成，正在进入 Gate 2 信仰误解；尚未进入正式内容制作。
 
 《神意难测》是一款俯视角 2D 上帝游戏：玩家扮演一位无法直接说话的小神，通过有限的神迹影响村落；村民会观察事件、推断因果并形成可能正确、也可能荒诞的信仰；一只守护神兽则会从玩家和村民的行为中学习。
 
@@ -17,6 +17,8 @@
 - 48×32 声明式《鸣钟谷》Tilemap 和 Content Package。
 - Camera 平移、滚轮缩放、世界 Cell Hover、Pointer Press/Drag/Release 与捕获。
 - 点击水闸巨石可解除阻挡并递增 Navigation Revision。
+- 点击世界 Cell 可把最终落点转换成固定 Tick 的局部降雨命令；神意消耗与 45 秒恢复、水库、水闸、水渠以及三块田地湿度均由无窗口 Simulation 驱动。
+- 钟声、降雨开始/结束、作物枯萎/恢复和水闸打开会形成单调 ID 的 `WorldObservation`；12 名村民仅按 Visual/Auditory/Direct 范围与 Bresenham 视线记录实际感知，个人记忆上限为 32 条。
 - 游戏侧确定性四方向 A*、稳定破局、复用 Path Buffer 和预热后零分配查询。
 - 12 名村民按 600 秒日程执行工作、集会和归家，并按脚底 Y 排序。
 - 一只猿形神兽占位体；尚未接入强化学习。
@@ -51,7 +53,6 @@ dotnet run --project games/TheGodTheyMade/tests/TheGodTheyMade.Simulation.Tests/
 
 ## 当前未实现
 
-- 降雨神迹及水位、田地湿度运行时。
-- 村民观察、个人信仰和公共教义传播。
+- 个人信仰和公共教义传播。
 - 神兽示范、奖励、Q 表与梦境解释。
 - 葬礼、湿遗迹、正式壁画、正式 UI、美术和音频。

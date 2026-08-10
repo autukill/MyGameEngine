@@ -2,6 +2,7 @@ namespace TheGodTheyMade.Simulation.Tests;
 
 using TheGodTheyMade.Simulation.Navigation;
 using TheGodTheyMade.Simulation.Village;
+using TheGodTheyMade.Simulation.World;
 
 internal static class Program
 {
@@ -18,6 +19,14 @@ internal static class Program
         Run("Village assignments deterministic", VillageAssignmentsDeterministic);
         Run("All work anchors reachable", AllWorkAnchorsReachable);
         Run("Twelve villagers complete ten-minute day", VillagersCompleteTenMinuteDay);
+        Run("Observable world initial contract", ObservableWorldInitialContract);
+        Run("Commands use deterministic tick boundary", CommandsUseDeterministicTickBoundary);
+        Run("Rain withers and recovers covered crop", RainWithersAndRecoversCrop);
+        Run("Reservoir gate and canal transition", ReservoirGateAndCanalTransition);
+        Run("Observation channels respect sight and hearing", ObservationChannelsRespectSightAndHearing);
+        Run("Observation memory keeps strongest recent evidence", ObservationMemoryCapacity);
+        Run("Observable world deterministic hash", ObservableWorldDeterministicHash);
+        Run("Observable world stable allocation", ObservableWorldStableAllocation);
         Console.WriteLine($"TheGodTheyMade Simulation: {_passed} checks passed.");
     }
 
@@ -223,6 +232,153 @@ internal static class Program
             }
         }
         return hash;
+    }
+
+    private static void ObservableWorldInitialContract()
+    {
+        var world = NewWorld();
+        Check(world.Tick == 0, "World should begin at tick zero.");
+        Check(world.GodIntent == 2, "World should begin with two God Intent charges.");
+        Check(world.Reservoir == ReservoirLevel.Low, "Reservoir should begin low.");
+        Check(world.Gate == GateState.Blocked, "Gate should begin blocked.");
+        Check(world.Canal == CanalState.Dry, "Canal should begin dry.");
+        Check(world.FieldCount == 3, "Mingzhong should have three fields.");
+        Check(world.GetField(0).Moisture == 28 &&
+              world.GetField(1).Moisture == 22 &&
+              world.GetField(2).Moisture == 18,
+            "Field moisture must match the first-playable contract.");
+    }
+
+    private static void CommandsUseDeterministicTickBoundary()
+    {
+        var world = NewWorld();
+        Check(!world.TryApply(MingzhongCommand.Rain(1, new GridCell(41, 24))),
+            "A future-tick command must not execute early.");
+        Check(world.TryApply(MingzhongCommand.Rain(0, new GridCell(41, 24))),
+            "A command at the current fixed tick should execute.");
+        Check(!world.TryApply(MingzhongCommand.Rain(0, new GridCell(29, 22))),
+            "Overlapping rain commands should be rejected deterministically.");
+        Check(world.GodIntent == 1, "Only the accepted rain command may spend intent.");
+        Check(world.Observations[^1].Kind == ObservationKind.RainStarted,
+            "Accepted rain should publish its logical result, not pointer pixels.");
+    }
+
+    private static void RainWithersAndRecoversCrop()
+    {
+        var world = NewWorld();
+        Advance(world, 42 * MingzhongVillage.TicksPerSecond + 1);
+        FieldSnapshot east = world.GetField(2);
+        Check(east.Withered, "The initially dry east field should wither at the scripted boundary.");
+        Check(world.TryApply(MingzhongCommand.Rain(world.Tick, east.Center, 4)),
+            "Rain should be accepted over the east field.");
+        Advance(world, MingzhongWorldSimulation.RainDurationTicks);
+        east = world.GetField(2);
+        Check(!east.Withered && east.Moisture >= 25,
+            "Covered rain should recover a withered field after crossing the moisture threshold.");
+        Check(world.Observations.ToArray().Any(o => o.Kind == ObservationKind.CropWithered),
+            "Withering should be published as a world observation.");
+        Check(world.Observations.ToArray().Any(o => o.Kind == ObservationKind.CropRecovered),
+            "Recovery should be published as a world observation.");
+        Check(world.Observations.ToArray().Any(o => o.Kind == ObservationKind.RainEnded),
+            "A finite local rain should publish its end.");
+    }
+
+    private static void ReservoirGateAndCanalTransition()
+    {
+        var world = NewWorld();
+        Check(world.TryApply(MingzhongCommand.Rain(world.Tick, new GridCell(29, 4), 6)),
+            "Rain should cover the reservoir.");
+        Check(world.TryApply(MingzhongCommand.OpenGate(world.Tick)),
+            "Gate opening is an independent final gameplay command.");
+        Advance(world, MingzhongWorldSimulation.RainDurationTicks);
+        Check(world.Reservoir == ReservoirLevel.Ready,
+            $"Reservoir should become ready, units={world.ReservoirUnits}.");
+        Check(world.Canal == CanalState.Filling, "Ready water behind an open gate should fill the canal.");
+        Advance(world, MingzhongWorldSimulation.CanalFillTicks);
+        Check(world.Canal == CanalState.Flowing, "Canal should become flowing after its fixed delay.");
+    }
+
+    private static void ObservationChannelsRespectSightAndHearing()
+    {
+        VillagerDefinition observer = MingzhongVillage.Roster[0] with
+        {
+            Home = new GridCell(0, 0),
+            Work = new GridCell(0, 0)
+        };
+        var world = new MingzhongWorldSimulation(
+            new[] { observer },
+            cell => cell == new GridCell(1, 0));
+        world.Publish(ObservationKind.CropWithered, "field.test", null, new GridCell(2, 0));
+        Check(world.GetMemory(observer.Id).Count == 0,
+            "A visual event behind an opaque cell must not enter memory.");
+        world.Publish(ObservationKind.BellRang, "bell.test", null, new GridCell(2, 0));
+        Check(world.GetMemory(observer.Id).Count == 1,
+            "An auditory event in range should pass through visual obstruction.");
+        world.Publish(ObservationKind.VillagerInjured, "hazard", observer.Id.Value, new GridCell(47, 31));
+        Check(world.GetMemory(observer.Id).Count == 2,
+            "A direct event should reach its participant independent of distance.");
+    }
+
+    private static void ObservationMemoryCapacity()
+    {
+        VillagerDefinition observer = MingzhongVillage.Roster[0] with
+        {
+            Home = MingzhongVillage.Bell,
+            Work = MingzhongVillage.Bell
+        };
+        var world = new MingzhongWorldSimulation(new[] { observer });
+        for (int i = 0; i < 40; i++)
+        {
+            world.Publish(ObservationKind.BellRang, "bell.test", null, MingzhongVillage.Bell);
+            world.AdvanceTick();
+        }
+        VillagerObservationMemory memory = world.GetMemory(observer.Id);
+        Check(memory.Count == VillagerObservationMemory.Capacity,
+            "Observation memory must remain bounded.");
+        Check(memory[0].Id.Value == 9 && memory[VillagerObservationMemory.Capacity - 1].Id.Value == 40,
+            "Equal-salience overflow should evict the oldest observations first.");
+    }
+
+    private static void ObservableWorldDeterministicHash()
+    {
+        ulong first = SimulateObservableWorld();
+        ulong second = SimulateObservableWorld();
+        Check(first == second, "The same logical commands must produce the same observable world hash.");
+    }
+
+    private static void ObservableWorldStableAllocation()
+    {
+        var world = NewWorld();
+        Advance(world, 8);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Advance(world, 1024);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated == 0, $"Stable world ticks should allocate 0 B, allocated {allocated} B.");
+    }
+
+    private static ulong SimulateObservableWorld()
+    {
+        var world = NewWorld();
+        world.TryApply(MingzhongCommand.Rain(0, new GridCell(29, 4)));
+        world.TryApply(MingzhongCommand.OpenGate(0));
+        for (int i = 0; i < 8 * 60 * MingzhongVillage.TicksPerSecond; i++)
+        {
+            if (world.Tick == 7L * 60 * MingzhongVillage.TicksPerSecond + 10)
+                world.TryApply(MingzhongCommand.Rain(world.Tick, new GridCell(41, 24)));
+            world.AdvanceTick();
+        }
+        return world.ComputeStateHash();
+    }
+
+    private static MingzhongWorldSimulation NewWorld()
+    {
+        NavigationGrid navigation = MingzhongNavigation.CreateGrid();
+        return new MingzhongWorldSimulation(MingzhongVillage.Roster, navigation.IsBlocked);
+    }
+
+    private static void Advance(MingzhongWorldSimulation world, int ticks)
+    {
+        for (int i = 0; i < ticks; i++) world.AdvanceTick();
     }
 
     private static void Run(string name, Action test)

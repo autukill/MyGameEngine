@@ -11,6 +11,7 @@ using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.Tilemaps.Infrastructure;
 using TheGodTheyMade.Game.Content;
 using TheGodTheyMade.Simulation.Navigation;
+using TheGodTheyMade.Simulation.World;
 
 internal sealed class MingzhongWorldInstance : GameInstance
 {
@@ -34,6 +35,7 @@ internal sealed class MingzhongWorldInstance : GameInstance
     private readonly Func<Vector2D, Vector2D?> _screenToWorld;
     private readonly NavigationGrid _navigation;
     private readonly Action _close;
+    private readonly MingzhongWorldSimulation _world;
     private readonly bool _smoke;
     private bool _previousPrimaryDown;
     private bool _captured;
@@ -41,7 +43,7 @@ internal sealed class MingzhongWorldInstance : GameInstance
     private Vector2D? _pointerWorld;
     private int _steps;
 
-    public bool GateBlocked { get; private set; } = true;
+    public bool GateBlocked => _world.Gate == GateState.Blocked;
 
     public MingzhongWorldInstance(
         TileMap map,
@@ -49,6 +51,7 @@ internal sealed class MingzhongWorldInstance : GameInstance
         Camera2D camera,
         Func<Vector2D, Vector2D?> screenToWorld,
         NavigationGrid navigation,
+        MingzhongWorldSimulation world,
         Action close,
         bool smoke)
         : base("MingzhongWorld", Vector2D.Zero, LayerDepth.Background)
@@ -58,6 +61,7 @@ internal sealed class MingzhongWorldInstance : GameInstance
         _camera = camera;
         _screenToWorld = screenToWorld;
         _navigation = navigation;
+        _world = world;
         _close = close;
         _smoke = smoke;
         ViewCulling = InstanceViewCullingMode.AlwaysVisible;
@@ -89,6 +93,8 @@ internal sealed class MingzhongWorldInstance : GameInstance
         }
         _previousPrimaryDown = primaryDown;
 
+        _world.AdvanceTick();
+
         if (KeyPressed(InputKey.Escape)) _close();
         if (_smoke && ++_steps >= 4) _close();
     }
@@ -102,10 +108,28 @@ internal sealed class MingzhongWorldInstance : GameInstance
 
         DrawCellRect(batch, 6, 5, 4, 5, new Vector4(0.42f, 0.28f, 0.12f, 1f));
         DrawCellRect(batch, 29, 8, 5, 5, new Vector4(0.11f, 0.31f, 0.38f, 1f));
+        float reservoirFill = _world.ReservoirUnits / 100f;
+        DrawCellRect(batch, 21, 2, 16, 5, new Vector4(0.08f, 0.25f + reservoirFill * 0.24f, 0.48f + reservoirFill * 0.28f, 0.92f));
+        DrawField(batch, 0, 26, 17, 6, 12);
+        DrawField(batch, 1, 33, 17, 5, 12);
+        DrawField(batch, 2, 39, 17, 6, 12);
         DrawCellRect(batch, 18, 22, 1, 1, new Vector4(0.18f, 0.46f, 0.62f, 1f));
         DrawCellRect(batch, 31, 11, 1, 1, GateBlocked
             ? new Vector4(0.48f, 0.18f, 0.10f, 1f)
             : new Vector4(0.13f, 0.42f, 0.21f, 0.7f));
+        if (_world.Canal != CanalState.Dry)
+            DrawCellRect(batch, 30, 6, 2, 12, _world.Canal == CanalState.Flowing
+                ? new Vector4(0.12f, 0.48f, 0.72f, 0.78f)
+                : new Vector4(0.18f, 0.38f, 0.58f, 0.52f));
+        if (_world.IsRaining)
+        {
+            Vector2D rainCenter = new(
+                (_world.RainCenter.X + 0.5f) * MingzhongNavigation.TileSize,
+                (_world.RainCenter.Y + 0.5f) * MingzhongNavigation.TileSize);
+            DrawCircle(batch, rainCenter,
+                _world.RainRadiusCells * MingzhongNavigation.TileSize,
+                new Vector4(0.22f, 0.56f, 0.94f, 0.18f));
+        }
 
         if (_pointerWorld is not { } pointer) return;
         GridCell hover = WorldToCell(pointer);
@@ -120,14 +144,30 @@ internal sealed class MingzhongWorldInstance : GameInstance
         writer.Write("mingzhong.gateBlocked", GateBlocked);
         writer.Write("mingzhong.navigationRevision", _navigation.Revision);
         writer.Write("mingzhong.pointerCaptured", _captured);
+        writer.Write("mingzhong.tick", _world.Tick);
+        writer.Write("mingzhong.godIntent", _world.GodIntent);
+        writer.Write("mingzhong.reservoir", _world.ReservoirUnits);
+        writer.Write("mingzhong.canal", (int)_world.Canal);
+        for (int i = 0; i < _world.FieldCount; i++)
+        {
+            FieldSnapshot field = _world.GetField(i);
+            writer.Write($"mingzhong.field.{i}.moisture", field.Moisture);
+            writer.Write($"mingzhong.field.{i}.withered", field.Withered);
+        }
+        writer.Write("mingzhong.worldHash", _world.ComputeStateHash());
     }
 
     private void HandleRelease(Vector2D world)
     {
         GridCell cell = WorldToCell(world);
-        if (!GateBlocked || cell != MingzhongNavigation.GateBoulder) return;
-        GateBlocked = false;
-        _navigation.SetBlocked(MingzhongNavigation.GateBoulder, false);
+        if (GateBlocked && cell == MingzhongNavigation.GateBoulder)
+        {
+            if (_world.TryApply(MingzhongCommand.OpenGate(_world.Tick)))
+                _navigation.SetBlocked(MingzhongNavigation.GateBoulder, false);
+            return;
+        }
+
+        _world.TryApply(MingzhongCommand.Rain(_world.Tick, cell));
     }
 
     private void ConstrainCamera()
@@ -175,6 +215,16 @@ internal sealed class MingzhongWorldInstance : GameInstance
                 new Vector2(halfWidth * 2f, height + 1f),
                 color);
         }
+    }
+
+    private void DrawField(ISpriteBatch batch, int index, int x, int y, int width, int height)
+    {
+        FieldSnapshot field = _world.GetField(index);
+        float wet = field.Moisture / 100f;
+        Vector4 color = field.Withered
+            ? new Vector4(0.34f, 0.20f, 0.07f, 0.92f)
+            : new Vector4(0.36f - wet * 0.14f, 0.31f + wet * 0.30f, 0.08f, 0.92f);
+        DrawCellRect(batch, x, y, width, height, color);
     }
 
     private readonly record struct Region(

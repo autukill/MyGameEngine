@@ -62,7 +62,7 @@
 ## 游戏设计档案
 
 - [《驮春 / Bloomback》](../games/Bloomback/README.md)：尚未立项的迁徙巨兽与生态花园概念档案。
-- [《神意难测 / The God They Made》](../games/TheGodTheyMade/README.md)：正在开发 Gate 1A 灰盒原型的上帝游戏；已具备声明式地图、Pointer、确定性导航、12 名村民日程及完整策划规格。
+- [《神意难测 / The God They Made》](../games/TheGodTheyMade/README.md)：已完成 Gate 1B 可观察世界的上帝游戏；具备声明式地图、确定性导航、12 名村民日程、局部降雨、水系统和逐村民观察记忆，正在进入信仰误解。
 
 ## 更新约定
 

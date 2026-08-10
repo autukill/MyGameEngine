@@ -9,6 +9,7 @@ using GameEngine.Hosting;
 using TheGodTheyMade.Game.Content;
 using TheGodTheyMade.Simulation.Navigation;
 using TheGodTheyMade.Simulation.Village;
+using TheGodTheyMade.Simulation.World;
 
 internal static class Program
 {
@@ -40,6 +41,9 @@ internal static class Program
                 NavigationGrid navigation = MingzhongNavigation.CreateGrid();
                 var navigationQuery = new NavigationQuery(navigation.CellCount);
                 var villageDirector = new VillageDirector();
+                var worldSimulation = new MingzhongWorldSimulation(
+                    MingzhongVillage.Roster,
+                    navigation.IsBlocked);
                 var world = new MingzhongWorldInstance(
                     context.TileMaps.Get(GameAssets.TileMaps.MingzhongWorld),
                     context.TileMapRenderer,
@@ -48,6 +52,7 @@ internal static class Program
                         ? position
                         : null,
                     navigation,
+                    worldSimulation,
                     context.Close,
                     smoke);
                 context.Scene.Add(world);
@@ -61,7 +66,8 @@ internal static class Program
                         navigation,
                         navigationQuery,
                         villageDirector,
-                        () => world.GateBlocked));
+                        () => world.GateBlocked,
+                        worldSimulation));
                 }
                 context.Scene.Add(new FamiliarInstance());
             })

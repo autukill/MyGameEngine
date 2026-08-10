@@ -7,6 +7,7 @@ using GameEngine.Core.Domain.ValueObjects;
 using TheGodTheyMade.Game.Content;
 using TheGodTheyMade.Simulation.Navigation;
 using TheGodTheyMade.Simulation.Village;
+using TheGodTheyMade.Simulation.World;
 
 internal sealed class VillagerInstance : GameInstance
 {
@@ -26,6 +27,7 @@ internal sealed class VillagerInstance : GameInstance
     private readonly VillageDirector _director;
     private readonly Func<bool> _gateBlocked;
     private readonly NavigationAgent _agent;
+    private readonly MingzhongWorldSimulation _world;
     private VillageTaskAssignment _assignment;
     private int _plannedRevision = -1;
     private int _failedPlans;
@@ -38,7 +40,8 @@ internal sealed class VillagerInstance : GameInstance
         NavigationGrid navigation,
         NavigationQuery query,
         VillageDirector director,
-        Func<bool> gateBlocked)
+        Func<bool> gateBlocked,
+        MingzhongWorldSimulation world)
         : base(
             $"Villager.{definition.Id.Value}",
             CellCenter(definition.Home),
@@ -49,6 +52,7 @@ internal sealed class VillagerInstance : GameInstance
         _query = query;
         _director = director;
         _gateBlocked = gateBlocked;
+        _world = world;
         _agent = new NavigationAgent(
             definition.Home,
             MingzhongNavigation.TileSize,
@@ -61,6 +65,7 @@ internal sealed class VillagerInstance : GameInstance
             VillageTaskKind.ReturnHome,
             definition.Home,
             -1);
+        _world.SetVillagerCell(_definition.Id, definition.Home);
     }
 
     public override void OnStep(double deltaTime)
@@ -80,6 +85,7 @@ internal sealed class VillagerInstance : GameInstance
 
         _agent.Update((float)deltaTime);
         Position = new Vector2D(_agent.Position.X, _agent.Position.Y);
+        _world.SetVillagerCell(_definition.Id, _agent.CurrentCell);
         Depth = new LayerDepth(5000 - (int)Position.Y);
         _tick++;
     }
