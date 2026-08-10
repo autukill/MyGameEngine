@@ -36,6 +36,7 @@ internal static class Program
         TestGameplayHealth();
         TestInstanceReferences();
         TestDeterministicSimulationPrimitives();
+        TestGameplayStateHashing();
         TestGameplayTags();
         TestGameplayBehaviors();
         TestSceneCatalogAndPrefabs();
@@ -838,6 +839,155 @@ internal static class Program
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         Check(allocated == 0,
             $"Deterministic random helpers remain allocation-free ({allocated:N0} B)");
+    }
+
+    private static void TestGameplayStateHashing()
+    {
+        Console.WriteLine("3f. Gameplay state hash and divergence diagnostics");
+        var goldenWriter = new GameplayStateWriter();
+        goldenWriter.Write("score", 42);
+        goldenWriter.Write("alive", true);
+        goldenWriter.Write("position", new Vector2D(1.5f, -2.25f));
+        Check(GameplayStateWriter.AlgorithmVersion == 1 &&
+              goldenWriter.Hash == 0x84AF633F1EED9740UL,
+            "State writer exposes one versioned cross-runtime golden hash");
+
+        var reorderedWriter = new GameplayStateWriter();
+        reorderedWriter.Write("alive", true);
+        reorderedWriter.Write("score", 42);
+        reorderedWriter.Write("position", new Vector2D(1.5f, -2.25f));
+        Check(reorderedWriter.Hash != goldenWriter.Hash,
+            "Field names, types, values, and declaration order form the hash schema");
+
+        const double fixedDelta = 1d / 60d;
+        (SceneAggregate first, StateHashProbe firstProbe) = CreateStateScene(reverseMetadata: false);
+        (SceneAggregate second, StateHashProbe secondProbe) = CreateStateScene(reverseMetadata: true);
+        first.PerformStep(fixedDelta);
+        second.PerformStep(fixedDelta);
+        GameplayStateSnapshot firstSnapshot = first.CaptureGameplayState();
+        GameplayStateSnapshot secondSnapshot = second.CaptureGameplayState();
+        Check(firstSnapshot.Hash == secondSnapshot.Hash &&
+              firstSnapshot.Contributors.SequenceEqual(secondSnapshot.Contributors) &&
+              firstProbe.Id != secondProbe.Id,
+            "Independent Scenes hash equally without including random InstanceId or metadata order");
+        Check(firstSnapshot.Contributors.Count == 2 &&
+              firstSnapshot.Contributors[0].Kind == "Scene:StateHash" &&
+              firstSnapshot.Contributors[1].Sequence == 0 &&
+              firstSnapshot.Contributors[1].Kind == nameof(StateHashProbe),
+            "Snapshot separates Scene and stable-sequence Instance contributors");
+
+        var recorder = new GameplayStateRecorder(initialCapacity: 2);
+        recorder.Prepare(fixedDelta);
+        recorder.Capture(firstSnapshot);
+        first.PerformStep(fixedDelta);
+        recorder.Capture(first.CaptureGameplayState());
+        GameplayStateRecording recording = recorder.Snapshot();
+        Check(recording.FormatVersion == 1 &&
+              recording.FixedDeltaSeconds == fixedDelta &&
+              recording.SnapshotCount == 2 &&
+              recording.FirstStepIndex == 1 &&
+              recording.LastStepIndex == 2,
+            "State recorder freezes a versioned fixed-delta Tick trace");
+
+        var verifier = new GameplayStateVerifier(recording);
+        Check(verifier.Verify(secondSnapshot),
+            "Verifier accepts the matching first Tick");
+        secondProbe.Score++;
+        second.PerformStep(fixedDelta);
+        GameplayStateSnapshot divergentSnapshot = second.CaptureGameplayState();
+        Check(!verifier.Verify(divergentSnapshot) &&
+              verifier.FirstDivergence is { StepIndex: 2 } divergence &&
+              divergence.ExpectedHash != divergence.ActualHash &&
+              divergence.ExpectedContributor is { Sequence: 0 } &&
+              divergence.ActualContributor is { Sequence: 0, Kind: nameof(StateHashProbe) },
+            "Verifier retains the first divergent Tick and Instance contributor");
+        CheckThrows<GameplayStateDivergenceException>(
+            () => throw new GameplayStateDivergenceException(verifier.FirstDivergence!),
+            "Divergence exception carries the structured first-difference diagnostic");
+
+        var fixedOptions = EngineWindowOptions.Default.WithFixedUpdateRate(60d);
+        var stateRecorder = new GameplayStateRecorder();
+        var recordPlan = GameApplication.Create(fixedOptions)
+            .RecordGameplayState(stateRecorder)
+            .UseDefault2DRenderer()
+            .ConfigureScene("StateRecord", _ => { })
+            .BuildPlan();
+        Check(ReferenceEquals(recordPlan.StateRecorder, stateRecorder) &&
+              recordPlan.StateVerifier is null,
+            "Hosting plan freezes an explicit gameplay state recording mode");
+        var verifyPlan = GameApplication.Create(fixedOptions)
+            .VerifyGameplayState(new GameplayStateVerifier(recording))
+            .UseDefault2DRenderer()
+            .ConfigureScene("StateVerify", _ => { })
+            .BuildPlan();
+        Check(verifyPlan.StateRecorder is null && verifyPlan.StateVerifier is not null,
+            "Hosting plan freezes first-divergence verification before window creation");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create()
+                .RecordGameplayState(new GameplayStateRecorder())
+                .UseDefault2DRenderer()
+                .ConfigureScene("NoFixedState", _ => { })
+                .BuildPlan(),
+            "Hosting state diagnostics require a fixed delta");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create(
+                    EngineWindowOptions.Default.WithFixedUpdateRate(30d))
+                .VerifyGameplayState(new GameplayStateVerifier(recording))
+                .UseDefault2DRenderer()
+                .ConfigureScene("WrongStateDelta", _ => { })
+                .BuildPlan(),
+            "Hosting rejects state baselines recorded with a different fixed delta");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create(fixedOptions)
+                .RecordGameplayState(new GameplayStateRecorder())
+                .VerifyGameplayState(new GameplayStateVerifier(recording)),
+            "Hosting rejects simultaneous state recording and verification modes");
+
+        ulong allocationHash = 0;
+        for (int i = 0; i < 64; i++)
+        {
+            var writer = new GameplayStateWriter();
+            writer.Write("score", i);
+            writer.Write("position", new Vector2D(i, -i));
+            allocationHash ^= writer.Hash;
+        }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            var writer = new GameplayStateWriter();
+            writer.Write("score", i);
+            writer.Write("position", new Vector2D(i, -i));
+            allocationHash ^= writer.Hash;
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0 && allocationHash != 0,
+            $"State writer remains allocation-free ({allocated:N0} B)");
+
+        static (SceneAggregate Scene, StateHashProbe Probe) CreateStateScene(bool reverseMetadata)
+        {
+            var scene = new SceneAggregate("StateHash");
+            var probe = new StateHashProbe
+            {
+                Position = new Vector2D(12f, 34f),
+                Collider = CollisionShape2D.Circle(5f)
+            };
+            if (reverseMetadata)
+            {
+                probe.AddTag(new GameplayTag("actor.player"));
+                probe.AddTag(new GameplayTag("combat.damageable"));
+                probe.SetAlarm(new AlarmId("fire"), 2d);
+                probe.SetAlarm(new AlarmId("spawn"), 1d);
+            }
+            else
+            {
+                probe.AddTag(new GameplayTag("combat.damageable"));
+                probe.AddTag(new GameplayTag("actor.player"));
+                probe.SetAlarm(new AlarmId("spawn"), 1d);
+                probe.SetAlarm(new AlarmId("fire"), 2d);
+            }
+            scene.Add(probe);
+            return (scene, probe);
+        }
     }
 
     private static void TestInstanceReferences()
@@ -1770,6 +1920,25 @@ internal static class Program
         public SimulationClockSnapshot Observed { get; private set; }
 
         public override void OnStep(double deltaTime) => Observed = SimulationTime;
+    }
+
+    private sealed class StateHashProbe : GameInstance
+    {
+        private readonly GameplayRandom _random = new(0x5EEDUL);
+        public GameplayHealth Health { get; } = new(10f);
+        public int Score { get; set; } = 7;
+
+        public override void OnStep(double deltaTime)
+        {
+            Score += _random.Range(1, 4);
+        }
+
+        protected override void OnWriteGameplayState(ref GameplayStateWriter writer)
+        {
+            writer.Write("probe.score", Score);
+            writer.Write("probe.health", Health);
+            writer.Write("probe.random", _random.CaptureState());
+        }
     }
 
     private sealed class TaggedProbe : GameInstance

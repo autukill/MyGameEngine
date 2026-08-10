@@ -31,4 +31,7 @@ public sealed class Laser : GameInstance
             Destroy(enemy);
         }
     }
+
+    protected override void OnWriteGameplayState(ref GameplayStateWriter writer) =>
+        writer.Write("laser.velocity", _velocity);
 }

@@ -37,4 +37,11 @@ public sealed class LifetimeBehavior : GameplayBehavior
         IsCompleted = true;
         DestroyOwner();
     }
+
+    protected override void OnWriteGameplayState(ref GameplayStateWriter writer)
+    {
+        writer.Write("duration", DurationSeconds);
+        writer.Write("remaining", RemainingSeconds);
+        writer.Write("completed", IsCompleted);
+    }
 }

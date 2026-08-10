@@ -45,4 +45,12 @@ public sealed class Asteroid : GameInstance, IHasGameplayHealth
         else if (y > _worldHeight + 40f) y = -40f;
         Position = new Vector2D(x, y);
     }
+
+    protected override void OnWriteGameplayState(ref GameplayStateWriter writer)
+    {
+        writer.Write("asteroid.velocity", _velocity);
+        writer.Write("asteroid.worldWidth", _worldWidth);
+        writer.Write("asteroid.worldHeight", _worldHeight);
+        writer.Write("asteroid.health", Health);
+    }
 }

@@ -117,6 +117,7 @@ Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后�
 - `SetFrameRate()`，运行时统一更新 VSync、渲染 FPS 与更新 UPS 目标。
 - `EngineWindowOptions.WithFixedUpdateRate(ups)`，启动时同时绑定 UPS 与固定逻辑 delta，作为确定性模拟入口。
 - `RecordLogicalInput(recorder)` / `ReplayLogicalInput(recording)`，在固定 Tick 边界捕获或注入逻辑 Action/Axis；完整协议见[逻辑输入 Tick 录制与回放](LOGICAL_INPUT_REPLAY.md)。
+- `RecordGameplayState(recorder)` / `VerifyGameplayState(verifier)`，在提交后的 Tick 边界记录状态 Hash，并在首次分叉时抛出结构化诊断；见[Gameplay 状态 Hash](GAMEPLAY_STATE_HASHING.md)。
 - `TryCaptureFrameStatistics()`，读取显式启用后的最近完成帧统计。
 - `CapturePerformanceSnapshot()`，低频聚合帧计数、Texture/Atlas、根目标、Pool 缓存和预算超限项。
 - `RegisterGpuMemoryUsage()`，为绕过引擎资源库的高级 GPU 资源补充动态估算。

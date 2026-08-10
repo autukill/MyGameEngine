@@ -66,6 +66,7 @@ public class SceneAggregate : IInstanceDrawTracker
     private readonly Dictionary<InstanceId, IndexedInstance> _indexedInstances = new();
     private readonly Dictionary<string, List<IndexedInstance>> _instancesByLayer =
         new(StringComparer.Ordinal);
+    private readonly List<IndexedInstance> _gameplayStateOrder = new();
     private readonly List<IDomainEvent> _uncommittedEvents = new();
     private readonly List<GameInstance> _lifecycleSnapshot = new();
     private readonly List<GameInstance> _guiSnapshot = new();
@@ -82,6 +83,7 @@ public class SceneAggregate : IInstanceDrawTracker
     private bool _gameplayQueryStatisticsEnabled;
     private long _querySampledSteps;
     private long _nextDrawSequence;
+    private long _nextGameplaySequence;
 
     public IReadOnlyCollection<IDomainEvent> UncommittedEvents => _uncommittedEvents.AsReadOnly();
     public IReadOnlyCollection<GameInstance> AllInstances => _instances.Values.ToList();
@@ -90,6 +92,50 @@ public class SceneAggregate : IInstanceDrawTracker
     public GameplayTimeController Time { get; } = new();
     public SimulationClock Clock { get; } = new();
     public bool GameplayQueryStatisticsEnabled => _gameplayQueryStatisticsEnabled;
+
+    /// <summary>
+    /// Captures a diagnostic gameplay hash after a stable Step boundary. This explicit operation
+    /// allocates an immutable contributor snapshot and is not part of the ordinary frame path.
+    /// </summary>
+    public GameplayStateSnapshot CaptureGameplayState()
+    {
+        var contributors = new GameplayStateContributor[_gameplayStateOrder.Count + 1];
+        var sceneWriter = new GameplayStateWriter();
+        SimulationClockSnapshot clock = Clock.Current;
+        sceneWriter.Write("hash.algorithm", GameplayStateWriter.AlgorithmVersion);
+        sceneWriter.Write("scene.name", SceneName);
+        sceneWriter.Write("scene.step", clock.StepIndex);
+        sceneWriter.Write("scene.unscaledDelta", clock.UnscaledDeltaSeconds);
+        sceneWriter.Write("scene.gameplayDelta", clock.GameplayDeltaSeconds);
+        sceneWriter.Write("scene.unscaledElapsed", clock.UnscaledElapsedSeconds);
+        sceneWriter.Write("scene.gameplayElapsed", clock.GameplayElapsedSeconds);
+        sceneWriter.Write("scene.timeScale", clock.TimeScale);
+        sceneWriter.Write("scene.paused", clock.IsPaused);
+        sceneWriter.Write("scene.pauseRequests", Time.PauseRequestCount);
+        sceneWriter.Write("scene.instanceCount", _gameplayStateOrder.Count);
+        contributors[0] = new GameplayStateContributor(-1, $"Scene:{SceneName}", sceneWriter.Hash);
+
+        for (int i = 0; i < _gameplayStateOrder.Count; i++)
+        {
+            IndexedInstance indexed = _gameplayStateOrder[i];
+            contributors[i + 1] = new GameplayStateContributor(
+                indexed.GameplaySequence,
+                indexed.Instance.ObjectTypeName,
+                indexed.Instance.CaptureGameplayState(indexed.GameplaySequence));
+        }
+
+        var overall = new GameplayStateWriter();
+        overall.Write("hash.algorithm", GameplayStateWriter.AlgorithmVersion);
+        overall.Write("contributor.count", contributors.Length);
+        for (int i = 0; i < contributors.Length; i++)
+        {
+            GameplayStateContributor contributor = contributors[i];
+            overall.Write("contributor.sequence", contributor.Sequence);
+            overall.Write("contributor.kind", contributor.Kind);
+            overall.Write("contributor.hash", contributor.Hash);
+        }
+        return new GameplayStateSnapshot(clock.StepIndex, SceneName, overall.Hash, contributors);
+    }
 
     // ============ Scene 级生命周期 Hook（委托） ============
 
@@ -1372,20 +1418,25 @@ public class SceneAggregate : IInstanceDrawTracker
         var indexed = new IndexedInstance(
             instance,
             _nextDrawSequence++,
+            _nextGameplaySequence++,
             instance.LayerName,
             instance.Depth);
         _indexedInstances.Add(instance.Id, indexed);
         AddToLayer(indexed);
+        _gameplayStateOrder.Add(indexed);
     }
 
     private void UnindexInstance(InstanceId id)
     {
         if (!_indexedInstances.Remove(id, out IndexedInstance? indexed)) return;
         RemoveFromLayer(indexed);
+        _gameplayStateOrder.Remove(indexed);
         if (_indexedInstances.Count == 0)
         {
             _nextDrawSequence = 0;
+            _nextGameplaySequence = 0;
             _instancesByLayer.Clear();
+            _gameplayStateOrder.Clear();
         }
     }
 
@@ -1551,12 +1602,14 @@ public class SceneAggregate : IInstanceDrawTracker
 
     private sealed class IndexedInstance(
         GameInstance instance,
-        long sequence,
+        long drawSequence,
+        long gameplaySequence,
         string? layerName,
         LayerDepth depth)
     {
         public GameInstance Instance { get; } = instance;
-        public long Sequence { get; } = sequence;
+        public long DrawSequence { get; } = drawSequence;
+        public long GameplaySequence { get; } = gameplaySequence;
         public string? LayerName { get; set; } = layerName;
         public LayerDepth Depth { get; set; } = depth;
     }
@@ -1580,7 +1633,7 @@ public class SceneAggregate : IInstanceDrawTracker
     private static int CompareIndexedInstances(IndexedInstance x, IndexedInstance y)
     {
         int depth = y.Depth.Value.CompareTo(x.Depth.Value);
-        return depth != 0 ? depth : x.Sequence.CompareTo(y.Sequence);
+        return depth != 0 ? depth : x.DrawSequence.CompareTo(y.DrawSequence);
     }
 
     private sealed class SceneGameplayContext(SceneAggregate owner) : IGameplayContext

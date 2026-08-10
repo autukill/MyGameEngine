@@ -6,6 +6,7 @@
 - `GameInputs` 与 `ConfigureInput` 把移动、射击和重开意图从具体键位中分离。
 - 按住空格通过内置 `GameplayCooldown` 连续发射子弹，无需手写递减计时字段。
 - 使用 `WithFixedUpdateRate(60)` 绑定更新频率和逻辑 delta，移动、冷却与动画运行在稳定 Tick 上。
+- PlayerPlane 与 Target 显式贡献 Cooldown、Health 和状态机状态，可直接接入 Gameplay 状态 Hash 与首次分叉诊断。
 - 飞机被限制在窗口范围内。
 - 子弹通过类型安全的 `PrefabRef<PlayerBullet>` 创建，并通过 `LifetimeBehavior` 自动销毁，展示可复用的 Owner 局部生命周期组合。
 - 子弹与目标使用轻量 Box Collider；命中后在安全帧边界切换到 Victory Scene。

@@ -55,4 +55,11 @@ public sealed class AsteroidSpawner : GameInstance
         }
         SetAlarm(SpawnTimer, 0.45d);
     }
+
+    protected override void OnWriteGameplayState(ref GameplayStateWriter writer)
+    {
+        writer.Write("spawner.random", _random.CaptureState());
+        writer.Write("spawner.worldWidth", _worldWidth);
+        writer.Write("spawner.worldHeight", _worldHeight);
+    }
 }

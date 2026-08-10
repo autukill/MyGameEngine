@@ -1,6 +1,6 @@
 # 确定性 Simulation Clock 与 Gameplay Random
 
-确定性模拟的基础不是读取现实时间，而是让玩法只依赖明确的 Step 序列、固定 delta、逻辑输入和受控随机流。当前已提供 `SimulationClock`、固定 PCG32 `GameplayRandom`、一键固定 UPS 配置，以及按 Tick 的逻辑输入录制/回放；状态 Hash 和首次分叉诊断留给后续切片。
+确定性模拟的基础不是读取现实时间，而是让玩法只依赖明确的 Step 序列、固定 delta、逻辑输入和受控随机流。当前已提供 `SimulationClock`、固定 PCG32 `GameplayRandom`、一键固定 UPS 配置、按 Tick 的逻辑输入录制/回放，以及状态 Hash 和首次分叉诊断。
 
 ## 固定更新配置
 
@@ -66,10 +66,10 @@ Vector2D offset = _random.InsideCircle(24f);
 
 当前可以保证：给定相同引擎版本、固定更新配置、相同 pause/time-scale 操作、相同逻辑输入 Tick 流、相同随机 seed 与状态，Clock、输入和 RNG 序列可复现。录制与回放用法见[逻辑输入 Tick 录制与回放](LOGICAL_INPUT_REPLAY.md)。
 
-当前尚不能自动保证完整游戏回放，因为还缺少：
+当前尚不能保证跨所有环境的完整游戏回放，因为仍需约束：
 
-1. Gameplay 状态快照或稳定 Hash。
-2. 首次分叉 Tick 的诊断报告。
-3. 对所有外部 IO、线程完成顺序和平台浮点差异的约束。
+1. 所有会影响未来模拟的自定义字段都必须显式贡献到状态 Hash。
+2. 外部 IO、线程完成顺序和平台浮点差异。
+3. 引擎/游戏版本和 Hash schema 的匹配。
 
-后续应增加状态 Hash 与首次分叉诊断；不在基础 Clock 或输入流中隐藏存档、网络同步或时间回溯系统。
+状态录制与验证见[Gameplay 状态 Hash 与首次分叉诊断](GAMEPLAY_STATE_HASHING.md)。后续可增加单一磁盘回放容器与 Checkpoint；不在基础 Clock 或输入流中隐藏存档、网络同步或时间回溯系统。

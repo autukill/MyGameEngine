@@ -17,6 +17,8 @@ public sealed class GameApplicationBuilder
     private bool _inputConfigured;
     private LogicalInputRecorder? _inputRecorder;
     private LogicalInputRecording? _inputPlayback;
+    private GameplayStateRecorder? _stateRecorder;
+    private GameplayStateVerifier? _stateVerifier;
 
     internal GameApplicationBuilder(EngineWindowOptions windowOptions)
     {
@@ -132,6 +134,24 @@ public sealed class GameApplicationBuilder
         return this;
     }
 
+    /// <summary>Captures one stable gameplay state hash after every committed simulation Step.</summary>
+    public GameApplicationBuilder RecordGameplayState(GameplayStateRecorder recorder)
+    {
+        ArgumentNullException.ThrowIfNull(recorder);
+        RequireGameplayStateDiagnosticsNotConfigured();
+        _stateRecorder = recorder;
+        return this;
+    }
+
+    /// <summary>Fails at the first simulation Step that differs from a recorded state trace.</summary>
+    public GameApplicationBuilder VerifyGameplayState(GameplayStateVerifier verifier)
+    {
+        ArgumentNullException.ThrowIfNull(verifier);
+        RequireGameplayStateDiagnosticsNotConfigured();
+        _stateVerifier = verifier;
+        return this;
+    }
+
     public GameApplication Build() => new(BuildPlan());
 
     internal GameApplicationPlan BuildPlan()
@@ -191,6 +211,42 @@ public sealed class GameApplicationBuilder
             }
             _inputPlayback?.ValidateAgainst(_inputMap);
         }
+        if (_stateRecorder is not null || _stateVerifier is not null)
+        {
+            if (windowOptions.FixedDeltaTime is not { } fixedDeltaTime ||
+                !double.IsFinite(fixedDeltaTime) || fixedDeltaTime <= 0d)
+            {
+                throw new InvalidOperationException(
+                    "Gameplay state recording and verification require a fixed delta. " +
+                    "Configure EngineWindowOptions with WithFixedUpdateRate.");
+            }
+            if (_stateRecorder is { SnapshotCount: > 0 })
+                throw new InvalidOperationException(
+                    "Hosting requires a fresh GameplayStateRecorder with no snapshots.");
+            if (_stateRecorder is { FixedDeltaSeconds: { } preparedDelta } &&
+                BitConverter.DoubleToInt64Bits(preparedDelta) !=
+                BitConverter.DoubleToInt64Bits(fixedDeltaTime))
+            {
+                throw new InvalidOperationException(
+                    "The GameplayStateRecorder was prepared with a different fixed delta.");
+            }
+            if (_stateVerifier is { CurrentStepIndex: not 0 })
+                throw new InvalidOperationException(
+                    "Hosting requires a fresh GameplayStateVerifier.");
+            if (_stateVerifier is { Recording.SnapshotCount: 0 })
+                throw new InvalidOperationException(
+                    "Gameplay state verification requires at least one baseline snapshot.");
+            if (_stateVerifier is { Recording.FirstStepIndex: not 1 })
+                throw new InvalidOperationException(
+                    "Hosting gameplay state verification must begin at simulation Step 1.");
+            if (_stateVerifier is { } verifier &&
+                BitConverter.DoubleToInt64Bits(verifier.Recording.FixedDeltaSeconds) !=
+                BitConverter.DoubleToInt64Bits(fixedDeltaTime))
+            {
+                throw new InvalidOperationException(
+                    "Gameplay state baseline fixed delta does not match the configured value.");
+            }
+        }
         var scenes = new ReadOnlyDictionary<string, ISceneDefinition>(
             new Dictionary<string, ISceneDefinition>(_scenes, StringComparer.Ordinal));
         return new GameApplicationPlan(
@@ -201,7 +257,9 @@ public sealed class GameApplicationBuilder
             _instances.Build(),
             _inputMap,
             _inputRecorder,
-            _inputPlayback);
+            _inputPlayback,
+            _stateRecorder,
+            _stateVerifier);
     }
 
     private void RequireInputReplayNotConfigured()
@@ -209,6 +267,13 @@ public sealed class GameApplicationBuilder
         if (_inputRecorder is not null || _inputPlayback is not null)
             throw new InvalidOperationException(
                 "Logical input recording or playback is already configured.");
+    }
+
+    private void RequireGameplayStateDiagnosticsNotConfigured()
+    {
+        if (_stateRecorder is not null || _stateVerifier is not null)
+            throw new InvalidOperationException(
+                "Gameplay state recording or verification is already configured.");
     }
 }
 
@@ -220,7 +285,9 @@ internal sealed record GameApplicationPlan(
     IInstanceFactory Instances,
     InputMap InputMap,
     LogicalInputRecorder? InputRecorder,
-    LogicalInputRecording? InputPlayback)
+    LogicalInputRecording? InputPlayback,
+    GameplayStateRecorder? StateRecorder,
+    GameplayStateVerifier? StateVerifier)
 {
     public SceneRef InitialScene => InitialSceneActivation.Scene;
     public string SceneName => InitialScene.Name;

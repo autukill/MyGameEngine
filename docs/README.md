@@ -16,6 +16,7 @@
 - [强类型 Instance 引用](INSTANCE_REFERENCES.md)：跨帧弱引用、O(1) 解析、类型安全销毁和 Scene 生命周期语义。
 - [确定性 Simulation Clock 与 Gameplay Random](DETERMINISTIC_SIMULATION.md)：固定 Tick、暂停/缩放累计时间、PCG32 随机流与回放边界。
 - [逻辑输入 Tick 录制与回放](LOGICAL_INPUT_REPLAY.md)：Action/Axis 帧协议、Hosting Record/Replay、兼容性与失败边界。
+- [Gameplay 状态 Hash 与首次分叉诊断](GAMEPLAY_STATE_HASHING.md)：显式状态贡献、稳定 contributor、基线录制和回放分叉定位。
 - [Gameplay 空间查询基准](GAMEPLAY_QUERY_PERFORMANCE.md)：线性扫描测量方法、当前基线和 Spatial Hash 引入条件。
 - [Camera 与 Viewport 当前边界](CAMERA_VIEWPORT_STATUS.md)：单主视图现状、底层多视图能力和声明式 View 后续边界。
 - [Camera 跟随、Dead Zone、边界与震屏](CAMERA_FOLLOWING.md)：每 View 独立控制器、平滑参数、世界约束和可叠加震屏请求。

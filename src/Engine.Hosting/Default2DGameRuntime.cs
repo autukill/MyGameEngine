@@ -51,6 +51,8 @@ internal sealed class Default2DGameRuntime : IDisposable
     private readonly List<RenderView> _renderViews = [];
     private LogicalInputRecorder? _inputRecorder;
     private LogicalInputPlayback? _inputPlayback;
+    private GameplayStateRecorder? _stateRecorder;
+    private GameplayStateVerifier? _stateVerifier;
     private bool _disposed;
 
     public Default2DGameContext Context { get; private set; } = null!;
@@ -101,6 +103,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _renderViews[i].Camera.Update(deltaTime);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
         ApplyPendingSceneSwitch();
+        CaptureOrVerifyGameplayState();
         _contentHotReload?.Tick();
         _shaderHotReload?.Tick();
     }
@@ -248,6 +251,15 @@ internal sealed class Default2DGameRuntime : IDisposable
             _scene.SetInput(_window.Input);
         }
         _scene.SetInputMap(_plan.InputMap);
+        if (_plan.StateRecorder is { } stateRecorder)
+        {
+            stateRecorder.Prepare(_plan.WindowOptions.FixedDeltaTime!.Value);
+            _stateRecorder = stateRecorder;
+        }
+        else if (_plan.StateVerifier is { } stateVerifier)
+        {
+            _stateVerifier = stateVerifier;
+        }
         _scene.SetSprites(_sprites);
         _scene.SetInstanceFactory(_plan.Instances);
         _scene.SetGameplayQueryStatisticsEnabled(renderer.PerformanceTelemetry is not null);
@@ -419,6 +431,19 @@ internal sealed class Default2DGameRuntime : IDisposable
         ConfigureScene(next);
         _scene.Start();
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+    }
+
+    private void CaptureOrVerifyGameplayState()
+    {
+        if (_stateRecorder is null && _stateVerifier is null) return;
+        GameplayStateSnapshot snapshot = _scene!.CaptureGameplayState();
+        if (_stateRecorder is not null)
+        {
+            _stateRecorder.Capture(snapshot);
+            return;
+        }
+        if (!_stateVerifier!.Verify(snapshot))
+            throw new GameplayStateDivergenceException(_stateVerifier.FirstDivergence!);
     }
 
     private void ConfigureScene(ISceneActivation activation)

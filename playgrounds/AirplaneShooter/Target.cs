@@ -60,6 +60,14 @@ public sealed class Target : GameInstance, IHasGameplayHealth
 
     private void UpdateActive(double deltaTime) => RotateBy((float)deltaTime);
 
+    protected override void OnWriteGameplayState(ref GameplayStateWriter writer)
+    {
+        writer.Write("target.health", Health);
+        writer.Write("target.state", (int)_states.CurrentState);
+        writer.Write("target.stateElapsed", _states.Elapsed);
+        writer.Write("target.stateStarted", _states.IsStarted);
+    }
+
     private enum TargetState
     {
         Spawning,

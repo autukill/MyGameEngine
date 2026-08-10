@@ -34,6 +34,7 @@ public class GameInstance
     private List<AlarmId>? _alarmKeys;
     private List<AlarmId>? _firedAlarms;
     private HashSet<GameplayTag>? _gameplayTags;
+    private List<GameplayTag>? _stateTagKeys;
     private List<GameplayBehavior>? _behaviors;
     private bool _behaviorsFrozen;
 
@@ -225,6 +226,12 @@ public class GameInstance
 
     /// <summary>End Step 事件：所有实例后执行——校验/后处理（GMS End Step）</summary>
     public virtual void OnEndStep(double deltaTime) { }
+
+    /// <summary>
+    /// Writes custom gameplay state used by deterministic replay diagnostics. The engine already
+    /// writes common Instance state; derived types add only fields that can affect future gameplay.
+    /// </summary>
+    protected virtual void OnWriteGameplayState(ref GameplayStateWriter writer) { }
 
     /// <summary>
     /// Draw 事件：每个渲染帧调用。
@@ -607,6 +614,66 @@ public class GameInstance
         if (failures.Count == 1)
             ExceptionDispatchInfo.Capture(failures[0]).Throw();
         throw new AggregateException("Gameplay behavior destruction failed.", failures);
+    }
+
+    internal ulong CaptureGameplayState(long sequence)
+    {
+        var writer = new GameplayStateWriter();
+        writer.Write("instance.sequence", sequence);
+        writer.Write("instance.type", ObjectTypeName);
+        writer.Write("instance.active", IsActive);
+        writer.Write("instance.persistent", IsPersistent);
+        writer.Write("instance.timeMode", (int)TimeMode);
+        writer.Write("instance.transform", Transform);
+        writer.Write("instance.sprite", Sprite.Name);
+        writer.Write("instance.imageIndex", ImageIndex);
+        writer.Write("instance.imageSpeed", ImageSpeed);
+
+        writer.Write("instance.hasCollider", Collider.HasValue);
+        if (Collider is { } collider)
+        {
+            writer.Write("instance.colliderKind", (int)collider.Kind);
+            writer.Write("instance.colliderOffset", collider.Offset);
+            writer.Write("instance.colliderSize", collider.Size);
+            writer.Write("instance.colliderRadius", collider.Radius);
+        }
+
+        writer.Write("instance.tagCount", TagCount);
+        if (_gameplayTags is { Count: > 0 })
+        {
+            _stateTagKeys ??= new List<GameplayTag>(_gameplayTags.Count);
+            _stateTagKeys.Clear();
+            _stateTagKeys.AddRange(_gameplayTags);
+            _stateTagKeys.Sort(static (left, right) =>
+                StringComparer.Ordinal.Compare(left.Name, right.Name));
+            for (int i = 0; i < _stateTagKeys.Count; i++)
+                writer.Write("instance.tag", _stateTagKeys[i].Name);
+        }
+
+        writer.Write("instance.alarmCount", _alarms?.Count ?? 0);
+        if (_alarms is { Count: > 0 })
+        {
+            _alarmKeys ??= new List<AlarmId>(_alarms.Count);
+            _alarmKeys.Clear();
+            _alarmKeys.AddRange(_alarms.Keys);
+            _alarmKeys.Sort(static (left, right) =>
+                StringComparer.Ordinal.Compare(left.Name, right.Name));
+            for (int i = 0; i < _alarmKeys.Count; i++)
+            {
+                AlarmId alarm = _alarmKeys[i];
+                writer.Write("instance.alarm", alarm.Name);
+                writer.Write("instance.alarmRemaining", _alarms[alarm]);
+            }
+        }
+
+        OnWriteGameplayState(ref writer);
+        writer.Write("instance.behaviorCount", BehaviorCount);
+        if (_behaviors is not null)
+        {
+            for (int i = 0; i < _behaviors.Count; i++)
+                writer.Write("instance.behavior", _behaviors[i].CaptureGameplayState());
+        }
+        return writer.Hash;
     }
 
     internal void RequestDestroyFromBehavior() => RequireGameplay().Destroy(Id);

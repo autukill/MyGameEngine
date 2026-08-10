@@ -74,4 +74,4 @@ Live、Record 和 Replay 都经过同一个 `InputMap` 查询入口。当前帧�
 - v1 不自动在流结束时关闭窗口；继续请求不存在的 Tick 会抛出清晰异常。
 - 手动 `LogicalInputRecorder.BeginStep` 可以从任意正 Tick 录制局部片段，但 Hosting 的整局回放目前只接收从 Tick 1 开始的流。局部回放要等状态 Checkpoint 边界落地。
 
-下一切片将增加稳定 Gameplay 状态 Hash 和首次分叉 Tick 诊断。Hash 不应包含 GPU、墙钟时间、Domain Event 的 `OccurredOn` 或字典物理布局。
+稳定 Gameplay 状态 Hash 和首次分叉 Tick 诊断已经落地，可与输入录制同时启用；见[Gameplay 状态 Hash 与首次分叉诊断](GAMEPLAY_STATE_HASHING.md)。Hash 不包含 GPU、墙钟时间、Domain Event 的 `OccurredOn` 或字典物理布局。

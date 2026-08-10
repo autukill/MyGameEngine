@@ -15,4 +15,7 @@ public sealed class SpinBehavior : GameplayBehavior<Asteroid>
 
     public override void OnStep(double deltaTime) =>
         Owner.RotateBy(RadiansPerSecond * (float)deltaTime);
+
+    protected override void OnWriteGameplayState(ref GameplayStateWriter writer) =>
+        writer.Write("spin.radiansPerSecond", RadiansPerSecond);
 }

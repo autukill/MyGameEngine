@@ -22,6 +22,9 @@ public abstract class GameplayBehavior
     public virtual void OnEndStep(double deltaTime) { }
     public virtual void OnDestroy() { }
 
+    /// <summary>Writes behavior-local values that can affect future deterministic gameplay.</summary>
+    protected virtual void OnWriteGameplayState(ref GameplayStateWriter writer) { }
+
     protected void DestroyOwner() => Owner.RequestDestroyFromBehavior();
 
     internal void Attach(GameInstance owner)
@@ -36,6 +39,14 @@ public abstract class GameplayBehavior
                 $"'{RequiredOwnerType.Name}', but received '{owner.GetType().Name}'.",
                 nameof(owner));
         _owner = owner;
+    }
+
+    internal ulong CaptureGameplayState()
+    {
+        var writer = new GameplayStateWriter();
+        writer.Write("behavior.type", GetType().FullName);
+        OnWriteGameplayState(ref writer);
+        return writer.Hash;
     }
 }
 

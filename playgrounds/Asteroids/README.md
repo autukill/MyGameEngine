@@ -12,6 +12,7 @@
 - Alarm 周期生成带半径、位置和速度参数的 Asteroid。
 - `AsteroidSpawner` 保存弱、强类型 `InstanceRef<PlayerShip>`，生成时 O(1) 解析玩家位置；目标失效时回退世界中心，不持有过期对象。
 - 游戏以 `WithFixedUpdateRate(60)` 固定 Tick；Spawner 使用固定 seed 的 owner-local `GameplayRandom`，生成边缘、速度和半径可复现。
+- PlayerShip、Spawner、Asteroid、Laser 与 SpinBehavior 通过 `OnWriteGameplayState` 贡献速度、RNG、Health、Cooldown 和输入缓冲，可直接配合 `RecordGameplayState/VerifyGameplayState` 定位首次分叉 Tick。
 - Circle Collider 驱动 Laser/Asteroid 与 Ship/Asteroid 碰撞。
 - Ship 命中后通过 `SceneRef<GameOverArgs>` 把生存时长和发射次数交给 GameOver Scene，按 `Enter` 无参切回 Main。
 - `P` 键通过 Unscaled `PauseController` 冻结/恢复 Gameplay；窗口循环和 Draw 保持运行，不依赖暂停菜单。

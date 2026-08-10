@@ -46,4 +46,11 @@ public sealed class PlayerPlane : GameInstance
             Spawn(BulletPrefab, Position + new Vector2D(0f, -HalfSize));
         }
     }
+
+    protected override void OnWriteGameplayState(ref GameplayStateWriter writer)
+    {
+        writer.Write("plane.fireCooldown", _fireCooldown);
+        writer.Write("plane.worldWidth", _worldWidth);
+        writer.Write("plane.worldHeight", _worldHeight);
+    }
 }

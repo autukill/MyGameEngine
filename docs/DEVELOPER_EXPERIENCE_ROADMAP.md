@@ -96,7 +96,7 @@ GameAssets.Packages.SharedPrimitives
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：Gameplay Authoring 已具备查询 Buffer、状态机、暂停时间域、Cooldown、Health/Damage、Instance Ref、确定性 Clock/Random，以及按 Tick 的逻辑 Action/Axis 录制回放。下一切片增加稳定 Gameplay 状态 Hash 和首次分叉 Tick 诊断；之后再评估磁盘回放格式与 Checkpoint。Gameplay Signal 继续等待真实一对多用例，不预建全局总线。暂不展开完整 Skill/Buff、UI、协程或物理系统；逐帧异形碰撞继续保持需求记录。
+下一步优先级：Gameplay Authoring 已具备查询 Buffer、状态机、暂停时间域、Cooldown、Health/Damage、Instance Ref、确定性 Clock/Random、逻辑输入录制回放，以及稳定状态 Hash/首次分叉诊断。下一切片评估把 Input + State Trace 封装为版本化磁盘回放文件，并为长会话设计周期 Checkpoint；是否立刻实施取决于真实调试需求。Gameplay Signal 继续等待真实一对多用例，不预建全局总线。暂不展开完整 Skill/Buff、UI、协程或物理系统；逐帧异形碰撞继续保持需求记录。
 
 ## 设计约束
 

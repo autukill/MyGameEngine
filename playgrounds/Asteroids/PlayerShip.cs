@@ -77,4 +77,15 @@ public sealed class PlayerShip : GameInstance
         else if (y > _worldHeight) y -= _worldHeight;
         Position = new Vector2D(x, y);
     }
+
+    protected override void OnWriteGameplayState(ref GameplayStateWriter writer)
+    {
+        writer.Write("ship.velocity", _velocity);
+        writer.Write("ship.survivalSeconds", _survivalSeconds);
+        writer.Write("ship.shotsFired", _shotsFired);
+        writer.Write("ship.fireBuffer", _fireBuffer);
+        writer.Write("ship.fireCooldown", _fireCooldown);
+        writer.Write("ship.worldWidth", _worldWidth);
+        writer.Write("ship.worldHeight", _worldHeight);
+    }
 }
