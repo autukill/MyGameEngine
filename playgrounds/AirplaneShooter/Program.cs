@@ -51,6 +51,7 @@ internal static class Program
                     new Vector4(0.015f, 0.025f, 0.075f, 1f));
                 context.Scene.Add(new PlayerPlane(
                     GameAssets.Sprites.PlayerPlane,
+                    context.Transforms,
                     new Vector2D(
                         context.Window.Width * 0.5f,
                         context.Window.Height - 90f),

@@ -13,6 +13,7 @@
 - [Text Rendering 使用指南](TEXT_RENDERING.md)：真实 TTF/OTF、中文 Fallback、Glyph Atlas、TextureLibrary 上传及 World/SceneGui DrawText。
 - [Audio 基础垂直切片](AUDIO_RUNTIME.md)：逻辑 Clip/Bus、代际 Voice、优先级抢占、Backend 所有权和真实播放后续边界。
 - [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)：Local/World 变换、父子挂点、Reparent、生命周期边界、扁平系统索引及与 Yoga UI 树的关系。
+- [Transform Hierarchy 创作指南](TRANSFORM_HIERARCHY_AUTHORING.md)：`context.Transforms`、GameInstance Binding、纯挂点、帧边界 Reparent 与销毁语义。
 - [缓动、插值与平滑运动](EASING_TWEEN_MOTION.md)：Easing 曲线、有限时长 Tween、最短弧度角和与帧率无关的 Motion。
 - [Gameplay 暂停、时间缩放与回溯方向](GAMEPLAY_TIME_CONTROL.md)：无 UI 时间域、Pause owner 生命周期、调度语义及可选快照回溯边界。
 - [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)：声明式 Scene 切换、类型安全实例工厂、Box/Circle 与区域/半径查询。

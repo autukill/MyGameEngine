@@ -1,6 +1,6 @@
 # Scene Graph 与 Transform Hierarchy 设计思考
 
-本文记录 MyGameEngine 对 Node Tree、Scene Graph 与父子 Transform 的术语、使用场景、边界和渐进实施方向。独立 `Engine.Features.TransformHierarchy` 已实现阶段 0 的数学与 Handle 核心；**当前 `GameInstance` 仍未接入父子节点或局部坐标**。
+本文记录 MyGameEngine 对 Node Tree、Scene Graph 与父子 Transform 的术语、使用场景、边界和渐进实施方向。独立 `Engine.Features.TransformHierarchy` 已完成数学/Handle 核心与 Scene/GameInstance 第一轮接入；实际 API 和样例见 [Transform Hierarchy 创作指南](TRANSFORM_HIERARCHY_AUTHORING.md)。
 
 参考实现中，Unity 的 `Transform` 同时提供相对父节点的 `localPosition/localRotation/localScale` 与世界空间变换；PixiJS 则以 `Container` 构成 Scene Graph，让父节点的变换、可见性和透明度影响子节点。参考：[Unity Transform](https://docs.unity3d.com/ja/6000.0/ScriptReference/Transform.html)、[PixiJS Scene Graph](https://pixijs.com/8.x/guides/concepts/scene-graph)和 [PixiJS Scene Objects](https://pixijs.com/8.x/guides/components/scene-objects)。
 
@@ -261,7 +261,7 @@ Engine.Integrations.FairyGUI
 - 无 GameInstance 的纯挂点节点。
 - 无窗口测试覆盖深层组合和世界/局部往返。
 
-### 阶段 1：Scene 与 GameInstance 接入
+### 阶段 1：Scene 与 GameInstance 接入（已完成）
 
 - Scene 拥有 `TransformHierarchy`。
 - GameInstance 暴露 Local/World 便利 API，现有根实例保持兼容。
@@ -269,11 +269,11 @@ Engine.Integrations.FairyGUI
 - Draw、Camera 剔除和 Collider 改用 World Transform。
 - 预热后无变更树保持 0 B/帧。
 
-### 阶段 2：组合 Authoring 与嵌套 Prefab
+### 阶段 2：组合 Authoring 与嵌套 Prefab（第一版已完成）
 
-- 强类型挂点。
-- 嵌套 Prefab 和构建期校验。
-- AirplaneShooter 迁移为 Plane/Muzzle/Engine Effect 真实样例。
+- `TransformPrefab<TParts>`、强类型具名挂点和嵌套纯节点。
+- 重名、跨 owner、回调后 Builder 使用和失败装配回滚校验。
+- AirplaneShooter 已迁移纯 Muzzle 挂点；后续增加强类型嵌套 Prefab 与 Engine Effect 组合。
 - 明确 Destroy/Detach、Active/Visible 级联。
 
 ### 阶段 3：高级系统桥接
@@ -285,7 +285,7 @@ Engine.Integrations.FairyGUI
 
 ## 当前决策
 
-- Transform Hierarchy 数学核心已完成，Scene/GameInstance 接入仍是 Gameplay Authoring 的高价值 P1 路线。
+- Transform Hierarchy 数学核心、Scene/GameInstance、纯挂点和强类型 Transform Prefab 已完成；原子多 GameInstance Composite Prefab 等真实玩法验证后再决定。
 - Spawn/Wave Authoring 已完成；下一次接入只修改世界空间组合，不夹带渲染顺序或 UI 树。
 - 第一阶段只做空间层级，不夹带完整 ECS、物理、GUI、编辑器或通用序列化系统。
 - 世界变换树、生命周期、渲染顺序和 UI 布局保持显式分离。

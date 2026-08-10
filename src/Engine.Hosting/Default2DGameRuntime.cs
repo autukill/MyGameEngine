@@ -25,6 +25,7 @@ using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.TextRendering.Infrastructure;
 using GameEngine.Features.ToneMapping.Domain;
 using GameEngine.Features.ToneMapping.Infrastructure;
+using GameEngine.Features.TransformHierarchy.Gameplay;
 
 internal sealed class Default2DGameRuntime : IDisposable
 {
@@ -40,6 +41,7 @@ internal sealed class Default2DGameRuntime : IDisposable
     private TextRuntime _text = null!;
     private SpriteLibrary _sprites = null!;
     private AnimationLibrary _animations = null!;
+    private SceneTransformRuntime _transforms = null!;
     private ShaderLibrary _shaders = null!;
     private SceneAggregate? _scene;
     private Camera2D _camera = null!;
@@ -107,6 +109,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _renderViews[i].Camera.Update(deltaTime);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
         ApplyPendingSceneSwitch();
+        _transforms.Synchronize();
         CaptureOrVerifyGameplayState();
         _contentHotReload?.Tick();
         _shaderHotReload?.Tick();
@@ -187,6 +190,7 @@ internal sealed class Default2DGameRuntime : IDisposable
         _text = _resources.Add(new TextRuntime(_textures));
         _sprites = new SpriteLibrary(_textures);
         _animations = new AnimationLibrary();
+        _transforms = _resources.Add(new SceneTransformRuntime());
         _shaders = _resources.Add(new ShaderLibrary(gl));
         _batch.SpriteResolver = _sprites;
         _batch.ShaderResolver = _shaders;
@@ -385,6 +389,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _textures,
             _sprites,
             _animations,
+            _transforms,
             _text,
             _shaders,
             content,

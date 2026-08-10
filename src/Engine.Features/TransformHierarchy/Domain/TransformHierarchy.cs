@@ -160,6 +160,37 @@ public sealed class TransformHierarchy
         return _slots[index].World;
     }
 
+    /// <summary>Gets the world matrix decomposed into the hierarchy's TRS representation.</summary>
+    public LocalTransform2D GetWorldTransform(TransformNodeHandle node) =>
+        DecomposeTrsOrThrow(GetWorldMatrix(node));
+
+    /// <summary>
+    /// Sets a node from a desired world-space TRS value. The operation is atomic and rejects
+    /// non-invertible parents or local shear that cannot be represented by LocalTransform2D.
+    /// </summary>
+    public void SetWorldTransform(
+        TransformNodeHandle node,
+        in LocalTransform2D worldTransform)
+    {
+        int nodeIndex = RequireAlive(node, nameof(node));
+        LocalTransform2D.Validate(worldTransform, nameof(worldTransform));
+
+        LocalTransform2D nextLocal = worldTransform;
+        int parentIndex = _slots[nodeIndex].Parent;
+        if (parentIndex >= 0)
+        {
+            UpdateWorldTransforms();
+            if (!Matrix3x2.Invert(_slots[parentIndex].World, out Matrix3x2 inverseParent))
+            {
+                throw new InvalidOperationException(
+                    "Setting a world transform requires an invertible parent world matrix.");
+            }
+            nextLocal = DecomposeTrsOrThrow(worldTransform.ToMatrix() * inverseParent);
+        }
+
+        SetLocalTransform(node, nextLocal);
+    }
+
     public Vector2 GetWorldPosition(TransformNodeHandle node)
     {
         Matrix3x2 world = GetWorldMatrix(node);
@@ -480,7 +511,7 @@ public sealed class TransformHierarchy
         if (!NearlyEqual(matrix, reconstructed))
         {
             throw new InvalidOperationException(
-                "KeepWorld reparenting would require shear, which LocalTransform2D cannot represent.");
+                "The requested transform would require shear, which LocalTransform2D cannot represent.");
         }
 
         return result;

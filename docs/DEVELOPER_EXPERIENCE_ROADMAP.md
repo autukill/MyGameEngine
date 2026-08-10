@@ -107,7 +107,7 @@ GameAssets.Packages.SharedPrimitives
 
 下一步优先级：Animation 与 TextRendering 两条黄金路径已经闭环，不再继续横向扩张模型。当前转入 TransformHierarchy → Scene/GameInstance/Prefab 挂点；Text 的多行中文 Layout/动态 Buffer 和真实 Audio Backend 随后推进。暂不展开完整 Skill/Buff、GUI 控件、协程或物理系统；逐帧异形碰撞继续保持需求记录。
 
-Transform Hierarchy 数学与 Handle 核心已经完成，后续 P1 是 Scene/GameInstance/Prefab 接入：以 Local/World Transform、纯挂点节点、`KeepLocal/KeepWorld` Reparent 和嵌套 Prefab 改善飞机枪口、角色武器、Boss 部位与跟随效果的组合体验。接入时保留 Scene 扁平 Step、Layer/Depth、Collider 索引和安全帧边界，不让空间父子关系隐式接管生命周期、渲染排序或 UI 布局。完整边界见 [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
+Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一版强类型组合 Authoring：`context.Transforms`、opt-in Binding、纯挂点、Local/World、`KeepLocal/KeepWorld`、`TransformPrefab<TParts>`、具名类型节点与帧边界同步均已落地；AirplaneShooter 使用 `root → weapon → muzzle` 真实样例。仍保留 Scene 扁平 Step、Layer/Depth、Collider 索引，不让空间父子关系接管生命周期、渲染排序或 UI 布局。下一步先由玩法验证是否需要原子多 GameInstance Composite Prefab。使用见 [Transform Hierarchy 创作指南](TRANSFORM_HIERARCHY_AUTHORING.md)。
 
 ## 候选视觉主线：2D Lighting（已规划，尚未实施）
 
@@ -140,7 +140,7 @@ Transform Hierarchy 数学与 Handle 核心已经完成，后续 P1 是 Scene/Ga
 |---|---|---|
 | 已完成基础 | Gameplay Signals、Spawn/Wave Authoring | Asteroids 已验证一对多通知与确定性生成时间线 |
 | 已完成接入 | Animation Authoring | Content、强类型生成、Hosting、GameInstance 与 Hot Reload 已闭环 |
-| P1 接入 | Scene Graph / Transform Hierarchy | 数学/Handle 核心已完成；下一步接入 Scene、挂点与嵌套 Prefab |
+| 已完成接入 | Scene Graph / Transform Hierarchy | Scene、GameInstance、纯挂点与强类型 Transform Prefab 已接入；多实例 Composite Prefab 等真实需求验证 |
 | P1 | Tilemap/World Authoring | 关卡生产、Chunk、碰撞和未来静态光照遮挡的共同基础 |
 | 已完成接入 | 原生中文 Text Rendering | 真实 Font、Texture Uploader、Hosting 与 World/SceneGui Draw 已闭环；多行/Shaping 后续推进 |
 | P1 接入 | Audio 基础 | Clip/Bus/Voice 核心已完成；下一步真实 Decoder/Backend/Streaming |

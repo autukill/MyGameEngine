@@ -18,6 +18,7 @@ using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.TextRendering.Infrastructure;
+using GameEngine.Features.TransformHierarchy.Gameplay;
 
 /// <summary>Scene 装配期的强类型上下文；不是全局服务容器。</summary>
 public sealed class Default2DGameContext
@@ -31,6 +32,8 @@ public sealed class Default2DGameContext
     public TextureLibrary Textures { get; }
     public SpriteLibrary Sprites { get; }
     public AnimationLibrary Animations { get; }
+    /// <summary>Scene-scoped parent/child transforms and lightweight gameplay attachments.</summary>
+    public SceneTransformRuntime Transforms { get; }
     public TextRuntime Text { get; }
     public ShaderLibrary Shaders { get; }
     public LoadedContentPackage? Content { get; }
@@ -51,6 +54,7 @@ public sealed class Default2DGameContext
         TextureLibrary textures,
         SpriteLibrary sprites,
         AnimationLibrary animations,
+        SceneTransformRuntime transforms,
         TextRuntime text,
         ShaderLibrary shaders,
         LoadedContentPackage? content,
@@ -72,6 +76,7 @@ public sealed class Default2DGameContext
         Textures = textures;
         Sprites = sprites;
         Animations = animations ?? throw new ArgumentNullException(nameof(animations));
+        Transforms = transforms ?? throw new ArgumentNullException(nameof(transforms));
         Text = text ?? throw new ArgumentNullException(nameof(text));
         Shaders = shaders;
         Content = content;

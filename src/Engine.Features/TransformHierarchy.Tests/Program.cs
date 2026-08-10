@@ -1,7 +1,11 @@
 namespace TransformHierarchy.Tests;
 
 using System.Numerics;
+using GameEngine.Core.Domain.Aggregates;
+using GameEngine.Core.Domain.Entities;
+using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.TransformHierarchy.Domain;
+using GameEngine.Features.TransformHierarchy.Gameplay;
 
 internal static class Program
 {
@@ -19,6 +23,9 @@ internal static class Program
         VerifyInvalidOperations();
         VerifyDestroySubtreeAndRevisions();
         VerifyAllocationFreeSteadyState();
+        VerifyWorldTransformAuthoring();
+        VerifySceneBindingsAndAttachments();
+        VerifyTypedTransformPrefabs();
 
         Console.WriteLine();
         Console.WriteLine(s_failures == 0
@@ -268,6 +275,200 @@ internal static class Program
         Check(allocated == 0,
             $"Dirty subtree propagation uses no temporary allocations ({allocated:N0} B)");
     }
+
+    private static void VerifyWorldTransformAuthoring()
+    {
+        var hierarchy = new TransformHierarchy();
+        TransformNodeHandle parent = hierarchy.Create(new LocalTransform2D(
+            new Vector2(20, 30), 0f, Vector2.One));
+        TransformNodeHandle child = hierarchy.CreateChild(parent, LocalTransform2D.Identity);
+
+        hierarchy.SetWorldTransform(child, new LocalTransform2D(
+            new Vector2(45, 60), 0f, new Vector2(2, 3)));
+        CheckVector(hierarchy.GetLocalTransform(child).Position, new Vector2(25, 30),
+            "SetWorldTransform converts through the parent");
+        CheckVector(hierarchy.GetWorldTransform(child).Position, new Vector2(45, 60),
+            "GetWorldTransform exposes decomposed world TRS");
+    }
+
+    private static void VerifySceneBindingsAndAttachments()
+    {
+        using var transforms = new SceneTransformRuntime();
+        var scene = new SceneAggregate("transform-authoring");
+        var parent = new BoundProbe(transforms, new Vector2D(100, 100));
+        var child = new BoundProbe(
+            transforms,
+            new Vector2D(10, 0),
+            parent.Binding.Anchor);
+        TransformAnchor muzzle = parent.Binding.CreateAttachment(
+            "muzzle",
+            new LocalTransform2D(new Vector2(0, -20), 0f, Vector2.One));
+
+        scene.Add(parent);
+        scene.Add(child);
+        transforms.Synchronize();
+
+        Check(child.Position == new Vector2D(110, 100),
+            "Bound child publishes composed world position to GameInstance");
+        CheckVector(muzzle.WorldPosition, new Vector2(100, 80),
+            "Pure attachment composes without a GameInstance");
+
+        parent.Position = new Vector2D(150, 120);
+        CheckVector(muzzle.WorldPosition, new Vector2(150, 100),
+            "Attachment reads observe same-Step direct owner motion");
+        transforms.Synchronize();
+        Check(child.Position == new Vector2D(160, 120),
+            "Legacy direct world edits remain compatible for bound instances");
+        CheckVector(muzzle.WorldPosition, new Vector2(150, 100),
+            "Attachment remains stable after synchronization boundary");
+
+        TransformAnchor lateAttachment = parent.Binding.CreateAttachment(
+            "late",
+            new LocalTransform2D(new Vector2(5, 0), 0f, Vector2.One));
+        Check(!lateAttachment.IsReady,
+            "Attachments created after Scene entry wait for the safe synchronization boundary");
+        transforms.Synchronize();
+        CheckVector(lateAttachment.WorldPosition, new Vector2(155, 120),
+            "Deferred attachment becomes usable at the next synchronization boundary");
+
+        Vector2D preserved = child.Position;
+        scene.Destroy(parent.Id);
+        transforms.Synchronize();
+        Check(child.Position == preserved && scene.FindById(child.Id) is not null,
+            "Destroying a spatial parent preserves and detaches surviving children");
+        Check(muzzle.IsDestroyed,
+            "Owner-created pure attachments follow owner Scene lifecycle");
+        Check(lateAttachment.IsDestroyed,
+            "Deferred attachments share the same owner lifecycle");
+
+        var cycleA = new BoundProbe(transforms, Vector2D.Zero);
+        var cycleB = new BoundProbe(transforms, Vector2D.Zero);
+        scene.Add(cycleA);
+        scene.Add(cycleB);
+        cycleA.Binding.Anchor.AttachTo(cycleB.Binding.Anchor);
+        CheckThrows<InvalidOperationException>(
+            () => cycleB.Binding.Anchor.AttachTo(cycleA.Binding.Anchor),
+            "Queued authoring cycles are rejected before the synchronization boundary");
+
+        transforms.Synchronize();
+        Vector2D cycleWorld = cycleA.Position;
+        cycleA.Binding.Anchor.Detach(TransformReparentMode.KeepWorld);
+        Check(cycleA.Position == cycleWorld,
+            "Queued detach does not mutate published world pose during Step");
+        transforms.Synchronize();
+        Check(cycleA.Position == cycleWorld,
+            "KeepWorld detach preserves the published world pose at commit");
+    }
+
+    private static void VerifyTypedTransformPrefabs()
+    {
+        var prefab = new TransformPrefab<TestRig>(
+            "test.ship-rig",
+            static builder =>
+            {
+                TransformNodeRef<TestWeapon> weapon = builder.Attachment<TestWeapon>(
+                    "weapon",
+                    new LocalTransform2D(new Vector2(10, 0), 0f, Vector2.One));
+                TransformNodeRef<TestMuzzle> muzzle = builder.Attachment<TestMuzzle, TestWeapon>(
+                    "muzzle",
+                    new LocalTransform2D(new Vector2(0, -5), 0f, Vector2.One),
+                    weapon);
+                return new TestRig(weapon, muzzle);
+            });
+
+        using var transforms = new SceneTransformRuntime();
+        var scene = new SceneAggregate("typed-transform-prefab");
+        var root = new PrefabProbe(new Vector2D(100, 100));
+        TransformPrefabInstance<TestRig> instance = prefab.Instantiate(root, transforms);
+        var child = new BoundProbe(transforms, new Vector2D(3, 0));
+        instance.Parts.Weapon.Attach(child.Binding);
+        scene.Add(root);
+        scene.Add(child);
+        transforms.Synchronize();
+
+        Check(instance.Name == "test.ship-rig" &&
+              instance.Parts.Weapon.Name == "weapon" &&
+              instance.Parts.Muzzle.Name == "muzzle",
+            "Transform Prefab returns stable typed named node references");
+        CheckVector(instance.Parts.Muzzle.WorldPosition, new Vector2(110, 95),
+            "Nested root to weapon to muzzle topology composes deterministically");
+        Check(child.Position == new Vector2D(113, 100),
+            "A typed Prefab node can parent an independent GameInstance binding");
+
+        scene.Destroy(root.Id);
+        transforms.Synchronize();
+        Check(!instance.Parts.Weapon.IsReady && !instance.Parts.Muzzle.IsReady,
+            "Typed pure nodes follow their Prefab root Scene lifecycle");
+        Check(child.Position == new Vector2D(113, 100),
+            "Attached GameInstance survives Prefab root destruction with world pose preserved");
+
+        using var failedRuntime = new SceneTransformRuntime();
+        var invalid = new TransformPrefab<int>(
+            "invalid.duplicates",
+            static builder =>
+            {
+                _ = builder.Attachment<TestWeapon>("same", LocalTransform2D.Identity);
+                _ = builder.Attachment<TestMuzzle>("same", LocalTransform2D.Identity);
+                return 0;
+            });
+        CheckThrows<ArgumentException>(
+            () => invalid.Instantiate(new PrefabProbe(Vector2D.Zero), failedRuntime),
+            "Duplicate attachment names are rejected during Prefab assembly");
+        Check(failedRuntime.DeclaredAnchorCount == 0 && failedRuntime.ActiveNodeCount == 0,
+            "Failed Prefab assembly rolls back every declared transform node");
+
+        TransformPrefabBuilder? escapedBuilder = null;
+        var escaping = new TransformPrefab<int>(
+            "invalid.escaped-builder",
+            builder =>
+            {
+                escapedBuilder = builder;
+                return 1;
+            });
+        _ = escaping.Instantiate(new PrefabProbe(Vector2D.Zero), failedRuntime);
+        CheckThrows<InvalidOperationException>(
+            () => escapedBuilder!.Attachment<TestWeapon>("late", LocalTransform2D.Identity),
+            "Transform Prefab builder freezes after its assembly callback");
+
+        var duplicateOwner = new PrefabProbe(Vector2D.Zero);
+        _ = duplicateOwner.UseTransformHierarchy(failedRuntime);
+        CheckThrows<InvalidOperationException>(
+            () => duplicateOwner.UseTransformHierarchy(failedRuntime),
+            "One GameInstance cannot publish two transform hierarchy bindings");
+    }
+
+    private sealed class BoundProbe : GameInstance
+    {
+        public BoundProbe(
+            SceneTransformRuntime transforms,
+            Vector2D position,
+            TransformAnchor? parent = null)
+        {
+            Position = position;
+            Binding = this.UseTransformHierarchy(transforms);
+            if (parent is not null)
+            {
+                Binding.LocalTransform = new LocalTransform2D(
+                    new Vector2((float)position.X, (float)position.Y),
+                    0f,
+                    Vector2.One);
+                Binding.Anchor.AttachTo(parent);
+            }
+        }
+
+        public TransformBindingBehavior Binding { get; }
+    }
+
+    private sealed class PrefabProbe : GameInstance
+    {
+        public PrefabProbe(Vector2D position) => Position = position;
+    }
+
+    private sealed class TestWeapon { }
+    private sealed class TestMuzzle { }
+    private readonly record struct TestRig(
+        TransformNodeRef<TestWeapon> Weapon,
+        TransformNodeRef<TestMuzzle> Muzzle);
 
     private static void Check(bool condition, string name)
     {

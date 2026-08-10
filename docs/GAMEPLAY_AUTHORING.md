@@ -24,7 +24,7 @@ public override void OnStep(double deltaTime)
 - `InputAxis2D()` 默认使用 WASD，返回每轴 `-1/0/1`，不会自动归一化对角线。
 - `MoveBy/RotateBy/ScaleBy` 直接更新逻辑 Transform，不创建 GPU 状态。
 
-当前这些属性仍表示根实例的世界空间变换，尚不支持父子节点、Local/World 双视图或挂点。后续不会简单把 Scene、生命周期、渲染顺序和碰撞都改成递归树，而是在 Scene 的扁平实例调度旁增加专用 `TransformHierarchy`。完整术语、矩阵组合、Reparent、销毁策略、嵌套 Prefab 和 Yoga UI 边界见 [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
+这些属性继续表示实例的世界空间变换。需要父子节点、Local/World 双视图或轻量挂点时，通过 `context.Transforms` 和 `UseTransformHierarchy` 显式启用；Scene 生命周期、渲染顺序和碰撞仍保持扁平调度。API 与示例见 [Transform Hierarchy 创作指南](TRANSFORM_HIERARCHY_AUTHORING.md)，完整设计边界见 [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
 
 需要有限时长插值、摄像机/对象平滑跟随或固定速度追踪时，使用无状态 `Easing`、`Tween` 和 `Motion`。时间参数直接接受 `OnStep` 的 `double deltaTime`，不需要 Gameplay 类每帧强转；完整选择与示例见[缓动、插值与平滑运动](EASING_TWEEN_MOTION.md)。
 

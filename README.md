@@ -68,7 +68,7 @@ src/
 │   ├── TextureAtlas/                    # 纯 CPU Atlas 排布与像素页面生成
 │   ├── ToneMapping/                     # HDR 曝光、ACES/Reinhard 与 RGBA8 显示输出
 │   ├── TextRendering/                   # 真实字体、Fallback、Glyph Atlas 与 World/SceneGui DrawText
-│   ├── TransformHierarchy/              # Local/World Transform 与父子层级数学核心
+│   ├── TransformHierarchy/              # Local/World、GameInstance Binding、纯挂点与父子层级
 │   ├── *.Tests/                         # 17 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器

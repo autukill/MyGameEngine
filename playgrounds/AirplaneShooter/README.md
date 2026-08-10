@@ -5,6 +5,7 @@
 - 方向键或 `WASD` 移动飞机。
 - `GameInputs` 与 `ConfigureInput` 把移动、射击和重开意图从具体键位中分离。
 - 按住空格通过内置 `GameplayCooldown` 连续发射子弹，无需手写递减计时字段。
+- 飞机用静态 `TransformPrefab<PlaneRig>` 声明 `root → weapon → muzzle`，并通过强类型 `Muzzle` 节点读取发射世界坐标，不再手写世界偏移或字符串查找。
 - 使用 `WithFixedUpdateRate(60)` 绑定更新频率和逻辑 delta，移动、冷却与动画运行在稳定 Tick 上。
 - PlayerPlane 与 Target 显式贡献 Cooldown、Health 和状态机状态，可直接接入 Gameplay 状态 Hash 与首次分叉诊断。
 - 飞机被限制在窗口范围内。

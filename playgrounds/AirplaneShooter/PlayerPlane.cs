@@ -1,8 +1,11 @@
 namespace AirplaneShooter;
 
+using System.Numerics;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Features.TransformHierarchy.Domain;
+using GameEngine.Features.TransformHierarchy.Gameplay;
 
 public sealed class PlayerPlane : GameInstance
 {
@@ -10,13 +13,28 @@ public sealed class PlayerPlane : GameInstance
     private const float MoveSpeed = 360f;
     private const double FireInterval = 0.12d;
     private const float HalfSize = 40f;
+    private static readonly TransformPrefab<PlaneRig> s_transformPrefab = new(
+        "player-plane.rig",
+        static builder =>
+        {
+            TransformNodeRef<WeaponPivot> weapon = builder.Attachment<WeaponPivot>(
+                "weapon",
+                LocalTransform2D.Identity);
+            TransformNodeRef<Muzzle> muzzle = builder.Attachment<Muzzle, WeaponPivot>(
+                "muzzle",
+                new LocalTransform2D(new Vector2(0f, -HalfSize), 0f, Vector2.One),
+                weapon);
+            return new PlaneRig(weapon, muzzle);
+        });
 
     private readonly float _worldWidth;
     private readonly float _worldHeight;
     private readonly GameplayCooldown _fireCooldown = new(FireInterval);
+    private readonly PlaneRig _rig;
 
     public PlayerPlane(
         SpriteRef sprite,
+        SceneTransformRuntime transforms,
         Vector2D position,
         float worldWidth,
         float worldHeight)
@@ -26,6 +44,7 @@ public sealed class PlayerPlane : GameInstance
         Collider = CollisionShape2D.Box(52f, 64f);
         _worldWidth = worldWidth;
         _worldHeight = worldHeight;
+        _rig = s_transformPrefab.Instantiate(this, transforms).Parts;
     }
 
     public override void OnStep(double deltaTime)
@@ -43,7 +62,8 @@ public sealed class PlayerPlane : GameInstance
         _fireCooldown.Update(deltaTime);
         if (ActionDown(GameInputs.Fire) && _fireCooldown.TryUse())
         {
-            Spawn(BulletPrefab, Position + new Vector2D(0f, -HalfSize));
+            Vector2 muzzle = _rig.Muzzle.WorldPosition;
+            Spawn(BulletPrefab, new Vector2D(muzzle.X, muzzle.Y));
         }
     }
 
@@ -53,4 +73,10 @@ public sealed class PlayerPlane : GameInstance
         writer.Write("plane.worldWidth", _worldWidth);
         writer.Write("plane.worldHeight", _worldHeight);
     }
+
+    private sealed class WeaponPivot { }
+    private sealed class Muzzle { }
+    private readonly record struct PlaneRig(
+        TransformNodeRef<WeaponPivot> Weapon,
+        TransformNodeRef<Muzzle> Muzzle);
 }
