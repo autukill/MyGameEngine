@@ -4,12 +4,26 @@ using TheGodTheyMade.Simulation.Navigation;
 using TheGodTheyMade.Simulation.Village;
 using TheGodTheyMade.Simulation.World;
 using TheGodTheyMade.Simulation.Beliefs;
+using TheGodTheyMade.Simulation.Familiar;
 
 internal static class Program
 {
     private static int _passed;
 
     private static void Main()
+    {
+        try
+        {
+            RunAll();
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"[FAIL] {exception}");
+            Environment.ExitCode = 1;
+        }
+    }
+
+    private static void RunAll()
     {
         Run("Grid validation and revision", GridValidationAndRevision);
         Run("Deterministic shortest path", DeterministicShortestPath);
@@ -35,6 +49,12 @@ internal static class Program
         Run("Gathering establishes public doctrine", GatheringEstablishesPublicDoctrine);
         Run("Belief changes village behavior", BeliefChangesVillageBehavior);
         Run("Belief script deterministic and allocation stable", BeliefDeterministicAndStable);
+        Run("Familiar situation priority and ape affordances", FamiliarSituationAndAffordances);
+        Run("Familiar demonstration and bounded Q update", FamiliarDemonstrationAndReward);
+        Run("Illegal action and failure cooldown are hard filters", FamiliarHardFilters);
+        Run("Familiar praise stop and explainable correction", FamiliarPraiseStopAndCorrection);
+        Run("Familiar snapshot restores next decision", FamiliarSnapshotRestoresNextDecision);
+        Run("Familiar training deterministic and allocation stable", FamiliarTrainingDeterministicAndStable);
         Console.WriteLine($"TheGodTheyMade Simulation: {_passed} checks passed.");
     }
 
@@ -546,6 +566,211 @@ internal static class Program
 
     private static ulong RotateLeft(ulong value, int amount) =>
         value << amount | value >> (64 - amount);
+
+    private static void FamiliarSituationAndAffordances()
+    {
+        FamiliarSituation situation = FamiliarSituationClassifier.Classify(new FamiliarPerception(
+            HasReachableFire: true,
+            HasVillagerInDanger: true,
+            HasBlockedWaterGate: true,
+            HasDryCrop: true,
+            IsHoldingWater: true,
+            CanLocateWater: true,
+            AreVillagersGathered: true));
+        Check(situation == FamiliarSituation.FireEmergency,
+            "Classifier must choose the highest authored priority instead of feature combinations.");
+        Check(ApeFamiliarBody.Contains(
+                ApeFamiliarBody.GetLegalActions(FamiliarSituation.BlockedWaterGate),
+                FamiliarAction.CarryObject),
+            "Ape body must be able to carry a gate obstacle.");
+        Check(!ApeFamiliarBody.Contains(
+                ApeFamiliarBody.GetLegalActions(FamiliarSituation.BlockedWaterGate),
+                FamiliarAction.PourWater),
+            "Situation/body filtering must reject irrelevant actions before Q scoring.");
+    }
+
+    private static void FamiliarDemonstrationAndReward()
+    {
+        var learning = new FamiliarLearning(42);
+        learning.Demonstrate(FamiliarSituation.BlockedWaterGate, FamiliarAction.CarryObject, 0);
+        Check(learning.GetQ(FamiliarSituation.BlockedWaterGate, FamiliarAction.CarryObject) == 800,
+            "One demonstration should add the frozen +800 prior.");
+        Check(learning.TryChoose(
+                FamiliarSituation.BlockedWaterGate,
+                FamiliarActionMask.CarryObject,
+                0,
+                out FamiliarDecision decision) && decision.Action == FamiliarAction.CarryObject,
+            "The demonstrated legal action should be selected.");
+        Check(learning.Reward(
+                FamiliarRewardReason.GateOpened,
+                FamiliarSituation.IdleVillage,
+                FamiliarActionMask.Flee,
+                1),
+            "Gate result inside the credit window should update the last action.");
+        Check(learning.GetQ(FamiliarSituation.BlockedWaterGate, FamiliarAction.CarryObject) == 1150,
+            "Frozen integer Q formula should update 800 toward reward 1800 by exactly 350.");
+    }
+
+    private static void FamiliarHardFilters()
+    {
+        var learning = new FamiliarLearning(7);
+        for (int i = 0; i < 10; i++)
+            learning.Demonstrate(FamiliarSituation.BlockedWaterGate, FamiliarAction.PourWater, i);
+        Check(learning.GetQ(FamiliarSituation.BlockedWaterGate, FamiliarAction.PourWater) == 8000,
+            "Fixture should saturate an illegal action at maximum Q.");
+        Check(learning.TryChoose(
+                FamiliarSituation.BlockedWaterGate,
+                FamiliarActionMask.CarryObject,
+                20,
+                out FamiliarDecision decision) && decision.Action == FamiliarAction.CarryObject,
+            "An illegal action must never enter candidates even with maximum Q.");
+        learning.Reward(
+            FamiliarRewardReason.AffordanceFailed,
+            FamiliarSituation.BlockedWaterGate,
+            FamiliarActionMask.CarryObject | FamiliarActionMask.Flee,
+            21);
+        Check(learning.TryChoose(
+                FamiliarSituation.BlockedWaterGate,
+                FamiliarActionMask.CarryObject | FamiliarActionMask.Flee,
+                80,
+                out decision) && decision.Action == FamiliarAction.Flee,
+            "A failed action must be removed during its 180-tick cooldown.");
+    }
+
+    private static void FamiliarPraiseStopAndCorrection()
+    {
+        var learning = new FamiliarLearning(99);
+        learning.SetTrustPermille(1250);
+        learning.Demonstrate(FamiliarSituation.DryCropHoldingWater, FamiliarAction.PourWater, 0);
+        learning.TryChoose(
+            FamiliarSituation.DryCropHoldingWater,
+            FamiliarActionMask.PourWater,
+            0,
+            out _);
+        int beforePraise = learning.GetQ(FamiliarSituation.DryCropHoldingWater, FamiliarAction.PourWater);
+        Check(learning.Reward(
+            FamiliarRewardReason.PlayerPraise,
+            FamiliarSituation.IdleVillage,
+            FamiliarActionMask.Flee,
+            1), "Praise should reach the recent action.");
+        int afterPraise = learning.GetQ(FamiliarSituation.DryCropHoldingWater, FamiliarAction.PourWater);
+        Check(afterPraise > beforePraise, "High-trust praise should strengthen the contextual action.");
+
+        Check(learning.Reward(
+            FamiliarRewardReason.PlayerStop,
+            FamiliarSituation.IdleVillage,
+            FamiliarActionMask.Flee,
+            2), "Stop should reach the same still-creditable action.");
+        int afterStop = learning.GetQ(FamiliarSituation.DryCropHoldingWater, FamiliarAction.PourWater);
+        Check(afterStop < afterPraise,
+            "Stopping the same generalized 'dry plant' action should correct it gradually, not erase memory.");
+        Check(learning.TraceCount >= 4 &&
+              learning.GetTrace(learning.TraceCount - 1).Reason == FamiliarRewardReason.PlayerStop,
+            "Dream/debug trace must explain the correction using the actual reward reason.");
+    }
+
+    private static void FamiliarSnapshotRestoresNextDecision()
+    {
+        var original = new FamiliarLearning(1234);
+        original.Demonstrate(FamiliarSituation.BellGathering, FamiliarAction.RingBell, 0);
+        original.TryChoose(
+            FamiliarSituation.BellGathering,
+            ApeFamiliarBody.GetLegalActions(FamiliarSituation.BellGathering),
+            0,
+            out _);
+        FamiliarLearningSnapshot snapshot = original.CaptureSnapshot();
+        var restored = new FamiliarLearning(9999);
+        restored.RestoreSnapshot(snapshot);
+        Check(original.ComputeStateHash() == restored.ComputeStateHash(),
+            "Snapshot restore should reproduce Q, cooldown, trace and random state.");
+        bool first = original.TryChoose(
+            FamiliarSituation.IdleVillage,
+            ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
+            60,
+            out FamiliarDecision expected);
+        bool second = restored.TryChoose(
+            FamiliarSituation.IdleVillage,
+            ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
+            60,
+            out FamiliarDecision actual);
+        Check(first == second && expected == actual,
+            "The next controlled/exploratory choice must match after restore.");
+    }
+
+    private static void FamiliarTrainingDeterministicAndStable()
+    {
+        ulong first = SimulateFamiliarTraining();
+        ulong second = SimulateFamiliarTraining();
+        Check(first == second, "Fixed training and random seed must reproduce the same Q table and trace.");
+
+        var learning = new FamiliarLearning(77);
+        for (int tick = 0; tick < 64; tick++)
+        {
+            learning.TryChoose(
+                FamiliarSituation.IdleVillage,
+                ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
+                tick * 60L,
+                out _);
+            learning.Reward(
+                FamiliarRewardReason.NoEffect,
+                FamiliarSituation.IdleVillage,
+                ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
+                tick * 60L + 1);
+        }
+        Check(learning.TraceCount == FamiliarLearning.TraceCapacity,
+            "Decision explanation history must remain a 16-entry ring.");
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int tick = 64; tick < 320; tick++)
+        {
+            learning.TryChoose(
+                FamiliarSituation.IdleVillage,
+                ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
+                tick * 60L,
+                out _);
+            learning.Reward(
+                FamiliarRewardReason.NoEffect,
+                FamiliarSituation.IdleVillage,
+                ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
+                tick * 60L + 1);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated == 0, $"Stable familiar decisions should allocate 0 B, allocated {allocated} B.");
+    }
+
+    private static ulong SimulateFamiliarTraining()
+    {
+        var learning = new FamiliarLearning(0xCAFE);
+        for (int episode = 0; episode < 48; episode++)
+        {
+            FamiliarSituation situation = (FamiliarSituation)(episode % 7);
+            FamiliarActionMask legal = ApeFamiliarBody.GetLegalActions(situation);
+            long tick = episode * 240L;
+            if (episode % 6 == 0)
+                learning.Demonstrate(situation, FirstLegal(legal), tick);
+            if (!learning.TryChoose(situation, legal, tick, out _)) continue;
+            FamiliarRewardReason reward = (episode % 5) switch
+            {
+                0 => FamiliarRewardReason.PlayerPraise,
+                1 => FamiliarRewardReason.NoEffect,
+                2 => FamiliarRewardReason.AffordanceFailed,
+                3 => FamiliarRewardReason.SafeDiscovery,
+                _ => FamiliarRewardReason.PlayerStop
+            };
+            learning.Reward(reward, FamiliarSituation.IdleVillage,
+                ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage), tick + 1);
+        }
+        return learning.ComputeStateHash();
+    }
+
+    private static FamiliarAction FirstLegal(FamiliarActionMask mask)
+    {
+        for (int i = 0; i < 6; i++)
+        {
+            FamiliarAction action = (FamiliarAction)i;
+            if (ApeFamiliarBody.Contains(mask, action)) return action;
+        }
+        throw new InvalidOperationException("Expected at least one legal familiar action.");
+    }
 
     private static void Run(string name, Action test)
     {

@@ -62,7 +62,7 @@
 ## 游戏设计档案
 
 - [《驮春 / Bloomback》](../games/Bloomback/README.md)：尚未立项的迁徙巨兽与生态花园概念档案。
-- [《神意难测 / The God They Made》](../games/TheGodTheyMade/README.md)：已完成 Gate 2 信仰误解的上帝游戏；具备可观察水系统、个人因果假说、证言传播、公共教义和 Replay/Hash 回归，正在进入神兽学习。
+- [《神意难测 / The God They Made》](../games/TheGodTheyMade/README.md)：已完成 Gate 3 的上帝游戏；具备可观察世界、信仰误解与可恢复的表格型神兽学习，正在组合完整《鸣钟谷》章节。
 
 ## 更新约定
 

@@ -1,6 +1,6 @@
 # 《神意难测 / The God They Made》
 
-> 状态：Gate 2 信仰误解已完成，正在进入 Gate 3 神兽学习；尚未进入正式内容制作。
+> 状态：Gate 3 神兽学习已完成，正在进入 Gate 4 完整《鸣钟谷》；尚未进入正式内容制作。
 
 《神意难测》是一款俯视角 2D 上帝游戏：玩家扮演一位无法直接说话的小神，通过有限的神迹影响村落；村民会观察事件、推断因果并形成可能正确、也可能荒诞的信仰；一只守护神兽则会从玩家和村民的行为中学习。
 
@@ -23,9 +23,10 @@
 - 信仰不是只读数值：钟声召雨达到阈值后会改变第二轮敲钟、钟塔维护和教义集会任务。
 - 游戏侧确定性四方向 A*、稳定破局、复用 Path Buffer 和预热后零分配查询。
 - 12 名村民按 600 秒日程执行工作、集会和归家，并按脚底 Y 排序。
-- 一只猿形神兽占位体；尚未接入强化学习。
+- 猿形神兽使用七种按优先级分类的态势、六个候选动作和身体/Affordance 硬过滤；表格型整数 Q 学习支持示范、Q/E 嘉许与制止、环境奖励、失败冷却和固定种子受控探索。
+- 神兽最近 16 次选择/价值更新组成可解释梦境数据；Q 表、冷却、信赖、随机状态和解释环均可 Capture/Restore，恢复后的下一次选择严格一致。
 - `--smoke` 隐藏窗口入口，以及不依赖 GPU 的 Simulation 测试。
-- `--scripted-belief --record-replay <file>` 与 `--scripted-belief --replay <file>` 会通过真实 Replay Bundle 逐 Tick 复现固定信仰脚本和 Gameplay State Hash。
+- `--scripted-belief --record-replay <file>` 与 `--scripted-belief --replay <file>` 会通过真实 Replay Bundle 逐 Tick 复现固定信仰脚本、神兽示范/搬运/奖励和 Gameplay State Hash。
 
 ```powershell
 dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj
@@ -56,5 +57,4 @@ dotnet run --project games/TheGodTheyMade/tests/TheGodTheyMade.Simulation.Tests/
 
 ## 当前未实现
 
-- 神兽示范、奖励、Q 表与梦境解释。
 - 葬礼、湿遗迹、正式壁画、正式 UI、美术和音频。

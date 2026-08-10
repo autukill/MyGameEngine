@@ -6,4 +6,7 @@
     <RootNamespace>TheGodTheyMade.Simulation</RootNamespace>
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\Engine.Core\Engine.Core.csproj" />
+  </ItemGroup>
 </Project>

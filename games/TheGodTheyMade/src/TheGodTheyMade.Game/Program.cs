@@ -11,6 +11,7 @@ using GameEngine.Features.Replay.Domain;
 using TheGodTheyMade.Game.Content;
 using TheGodTheyMade.Simulation.Navigation;
 using TheGodTheyMade.Simulation.Beliefs;
+using TheGodTheyMade.Simulation.Familiar;
 using TheGodTheyMade.Simulation.Village;
 using TheGodTheyMade.Simulation.World;
 
@@ -24,7 +25,7 @@ internal static class Program
         string? playReplayPath = GetOptionValue(args, "--replay");
         if (recordReplayPath is not null && playReplayPath is not null)
             throw new ArgumentException("Use either --record-replay or --replay, not both.");
-        var replayIdentity = new ReplayIdentity("the-god-they-made.mingzhong", "gate-2");
+        var replayIdentity = new ReplayIdentity("the-god-they-made.mingzhong", "gate-3");
         ReplaySession? replay = recordReplayPath is not null
             ? ReplaySession.Record(replayIdentity)
             : playReplayPath is not null
@@ -43,7 +44,9 @@ internal static class Program
             .ConfigureInput(input => input
                 .BindAxis2D(GameInputs.CameraMove, InputKey.A, InputKey.D, InputKey.W, InputKey.S)
                 .BindAxis2D(GameInputs.CameraMove,
-                    InputKey.Left, InputKey.Right, InputKey.Up, InputKey.Down))
+                    InputKey.Left, InputKey.Right, InputKey.Up, InputKey.Down)
+                .BindAction(GameInputs.PraiseFamiliar, InputKey.Q)
+                .BindAction(GameInputs.StopFamiliar, InputKey.E))
             .UseDefault2DRenderer(renderer => renderer.UseContent(GameAssets.Packages.Root))
             .ConfigureScene("MingzhongValley", context =>
             {
@@ -59,6 +62,7 @@ internal static class Program
                     MingzhongVillage.Roster,
                     navigation.IsBlocked);
                 var beliefSimulation = new BeliefSimulation(MingzhongVillage.Roster);
+                var familiarLearning = new FamiliarLearning(0x4D494E475A484F4EUL);
                 var world = new MingzhongWorldInstance(
                     context.TileMaps.Get(GameAssets.TileMaps.MingzhongWorld),
                     context.TileMapRenderer,
@@ -88,7 +92,11 @@ internal static class Program
                         worldSimulation,
                         beliefSimulation));
                 }
-                context.Scene.Add(new FamiliarInstance());
+                context.Scene.Add(new FamiliarInstance(
+                    familiarLearning,
+                    worldSimulation,
+                    navigation,
+                    scriptedBelief));
             });
 
         if (replay is { Mode: ReplaySessionMode.Recording })
