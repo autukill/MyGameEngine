@@ -115,6 +115,7 @@
   <Folder Name="/Playgrounds/">
     <Project Path="playgrounds/AirplaneShooter/AirplaneShooter.csproj" />
     <Project Path="playgrounds/Asteroids/Asteroids.csproj" />
+    <Project Path="playgrounds/FlappyBird/FlappyBird.csproj" />
     <Project Path="playgrounds/TilemapWorld/TilemapWorld.csproj" />
   </Folder>
 </Solution>

@@ -89,8 +89,9 @@ src/
 
 playgrounds/
 ├── AirplaneShooter/                     # 方向键移动、空格发射、Transform 挂点与短音效示例
-├── TilemapWorld/                        # 声明式地图、可见 Chunk 与静态碰撞烘焙示例
-└── Asteroids/                           # 参数化 Prefab、Circle 碰撞和 Scene 重启示例
+├── Asteroids/                           # 参数化 Prefab、Circle 碰撞和 Scene 重启示例
+├── FlappyBird/                          # 完整开始/计分/失败/重开闭环与程序化音效示例
+└── TilemapWorld/                        # 声明式地图、可见 Chunk 与静态碰撞烘焙示例
 ```
 
 Feature 依赖保持单向：
@@ -119,7 +120,7 @@ Engine.Core
 Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 64 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 65 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -156,6 +157,14 @@ dotnet run --project playgrounds/TilemapWorld/TilemapWorld.csproj
 ```
 
 完整 TileSet、地图清单、强类型引用和碰撞边界见 [Tilemap / World Authoring](docs/TILEMAP_WORLD_AUTHORING.md)。
+
+完整 Gameplay 小游戏示例使用一个白色 Sprite 组合鸟、管道、背景与七段数字，并接通 Input Action、参数化 Prefab、确定性 Spawn、碰撞计分、GameOver Scene 参数和程序化短音效：
+
+```bash
+dotnet run --project playgrounds/FlappyBird/FlappyBird.csproj
+```
+
+按 `Space`、`W` 或 `↑` 拍动翅膀，Game Over 后按 `Enter` 或 `Space` 重开。实现拆解见 [Flappy Bird Playground](playgrounds/FlappyBird/README.md)。
 
 完整配方见 [Gameplay Cookbook](docs/GAMEPLAY_COOKBOOK.md)，输入装配见 [逻辑 Input Actions](docs/INPUT_ACTIONS.md)，跨类型身份与过滤见 [Gameplay Tags](docs/GAMEPLAY_TAGS.md)，局部能力复用见 [Gameplay Behavior 组合](docs/GAMEPLAY_BEHAVIORS.md)，空间查询的实测基线与 Spatial Hash 决策见 [Gameplay 空间查询基准](docs/GAMEPLAY_QUERY_PERFORMANCE.md)。
 

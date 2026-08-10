@@ -2,7 +2,7 @@
 
 更新日期：2026-08-10
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 64 个 .NET 项目、仓库共 65 个项目；19 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 65 个 .NET 项目、仓库共 66 个项目；19 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -61,6 +61,7 @@
 - GameInstance 支持可选 Box/Circle Collider、类型化首次/全部碰撞，以及 Scene 区域和半径查询；AirplaneShooter 已迁移为 Prefab 子弹、目标碰撞和 Main/Victory Scene 往返。
 - `PrefabRef<T, TArgs>` 通过类型化 `in TArgs` 路径传递方向、速度、半径等构造数据，不装箱且不引入属性字典。
 - `playgrounds/Asteroids` 验证旋转推进、参数化 Laser/Asteroid、声明式 Spawn/Wave 时间线、Circle 碰撞和 Main/GameOver 重启；Gameplay Cookbook 已提炼两套 Playground 的常见配方。
+- `playgrounds/FlappyBird` 提供一个最小但完整的游戏闭环：拍动/重力、确定性管道生成、Prefab 障碍与计分门、碰撞失败、七段数字 HUD、最佳分数、类型化 GameOver/重开和程序化短音效；全部画面只依赖一个逻辑白色 Sprite。
 - 可选 Release 空间查询基准覆盖 100/1,000/10,000 Collider；本机 1,000 Collider 约 0.0201 ms/查询，暂不引入 Spatial Hash。
 - `Easing` 提供 21 种归一化曲线；`Tween` 支持标量、位置、颜色和最短弧度角；`Motion` 提供限速追踪与帧率无关的半衰期平滑，全部为无状态零分配 API。
 - `GameplayTimeController` 提供 Gameplay/Unscaled 时间域、owner/key 暂停、`(0,8]` TimeScale 和帧快照；暂停冻结默认实例的 Step/Alarm/动画/输入但继续 Draw，Asteroids 以 `P` 键无 UI 验证。

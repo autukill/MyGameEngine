@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "playground.flappy-bird",
+  "dependencies": [],
+  "textures": [
+    {
+      "name": "flappy.pixel.texture",
+      "path": "white.webp",
+      "sampling": "pixelArt"
+    }
+  ],
+  "sprites": [
+    {
+      "name": "flappy.shape",
+      "layout": "single",
+      "texture": "flappy.pixel.texture",
+      "size": { "width": 1, "height": 1 },
+      "origin": { "x": 0.5, "y": 0.5 }
+    }
+  ]
+}

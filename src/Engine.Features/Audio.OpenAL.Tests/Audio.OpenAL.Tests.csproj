@@ -9,5 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Audio.OpenAL\Audio.OpenAL.csproj" />
+    <ProjectReference Include="..\ContentAssets\ContentAssets.csproj" />
   </ItemGroup>
 </Project>
