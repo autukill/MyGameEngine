@@ -6,13 +6,15 @@ using System.Text;
 using System.Text.Json;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
+using GameEngine.Features.Tilemaps.Domain;
+using GameEngine.Features.Tilemaps.Infrastructure;
 
 /// <summary>
 /// Builds a complete content dependency graph into an owned, fingerprinted runtime packages root.
 /// </summary>
 public sealed class ContentBuildPipeline
 {
-    public const string CompilerVersion = "3";
+    public const string CompilerVersion = "4";
     public const string MetadataFileName = ".mygame-assets.json";
     private const string OwnerName = "MyGameEngine.AssetCompiler";
     private const int MetadataSchemaVersion = 1;
@@ -349,6 +351,8 @@ public sealed class ContentBuildPipeline
         var spriteNames = new HashSet<string>(StringComparer.Ordinal);
         var animationNames = new HashSet<string>(StringComparer.Ordinal);
         var audioNames = new HashSet<string>(StringComparer.Ordinal);
+        var tileSetNames = new HashSet<string>(StringComparer.Ordinal);
+        var tileMapNames = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var node in graph)
         {
@@ -393,6 +397,23 @@ public sealed class ContentBuildPipeline
                 if (StringComparer.OrdinalIgnoreCase.Equals(outputPath, MetadataFileName))
                     throw new InvalidDataException($"Audio clip '{audio.Name}' uses reserved build metadata path.");
             }
+            foreach (TileSetAssetDefinition tileSet in node.Manifest.TileSets)
+            {
+                if (!tileSetNames.Add(tileSet.Name))
+                    throw new InvalidDataException($"TileSet '{tileSet.Name}' appears in multiple packages.");
+            }
+            foreach (TileMapAssetDefinition tileMap in node.Manifest.TileMaps)
+            {
+                if (!tileMapNames.Add(tileMap.Name))
+                    throw new InvalidDataException($"TileMap '{tileMap.Name}' appears in multiple packages.");
+                string path = ResolveUnderRoot(node.PackageDirectory, tileMap.Path, "TileMap");
+                if (!File.Exists(path))
+                    throw new FileNotFoundException($"TileMap asset '{tileMap.Path}' does not exist.", path);
+                string relativeDirectory = Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
+                string outputPath = NormalizeRelativePath(Path.Combine(relativeDirectory, tileMap.Path));
+                if (StringComparer.OrdinalIgnoreCase.Equals(outputPath, MetadataFileName))
+                    throw new InvalidDataException($"TileMap '{tileMap.Name}' uses reserved build metadata path.");
+            }
         }
 
         foreach (var consumer in graph)
@@ -423,7 +444,49 @@ public sealed class ContentBuildPipeline
                         "outside its package dependency closure.");
                 }
             }
+            foreach (TileSetAssetDefinition tileSet in consumer.Manifest.TileSets)
+            {
+                foreach (TileAssetDefinition tile in tileSet.Tiles)
+                {
+                    if (!HasVisibleSprite(consumer, tile.SpriteName, new HashSet<string>(PathComparer)))
+                    {
+                        throw new InvalidDataException(
+                            $"TileSet '{tileSet.Name}' references Sprite '{tile.SpriteName}' outside its package dependency closure.");
+                    }
+                }
+            }
+            foreach (TileMapAssetDefinition definition in consumer.Manifest.TileMaps)
+            {
+                string path = ResolveUnderRoot(consumer.PackageDirectory, definition.Path, "TileMap");
+                using var stream = File.OpenRead(path);
+                TileMap map = TileMapManifestParser.Parse(stream);
+                if (!StringComparer.Ordinal.Equals(map.Name, definition.Name))
+                    throw new InvalidDataException(
+                        $"TileMap declaration '{definition.Name}' does not match document name '{map.Name}'.");
+                foreach (TileLayer layer in map.Layers)
+                {
+                    if (!HasVisibleTileSet(consumer, layer.TileSet.Name, new HashSet<string>(PathComparer)))
+                    {
+                        throw new InvalidDataException(
+                            $"TileMap '{map.Name}' references TileSet '{layer.TileSet}' outside its package dependency closure.");
+                    }
+                }
+            }
         }
+    }
+
+    private static bool HasVisibleTileSet(
+        GraphNode node,
+        string tileSetName,
+        HashSet<string> visited)
+    {
+        if (!visited.Add(node.ManifestPath)) return false;
+        if (node.Manifest.TileSets.Any(tileSet =>
+                StringComparer.Ordinal.Equals(tileSet.Name, tileSetName)))
+            return true;
+        foreach (GraphNode dependency in node.Dependencies)
+            if (HasVisibleTileSet(dependency, tileSetName, visited)) return true;
+        return false;
     }
 
     private static bool HasVisibleSprite(
@@ -491,6 +554,16 @@ public sealed class ContentBuildPipeline
                 AppendFile(hash, source);
             }
 
+            foreach (TileMapAssetDefinition tileMap in node.Manifest.TileMaps
+                         .OrderBy(item => item.Name, StringComparer.Ordinal))
+            {
+                string source = ResolveUnderRoot(node.PackageDirectory, tileMap.Path, "TileMap");
+                string relative = NormalizeRelativePath(Path.GetRelativePath(packagesRoot, source));
+                AppendString(hash, tileMap.Name);
+                AppendString(hash, relative);
+                AppendFile(hash, source);
+            }
+
             foreach (var dependency in node.Dependencies)
             {
                 AppendString(hash, dependency.Manifest.Id);
@@ -540,6 +613,12 @@ public sealed class ContentBuildPipeline
         {
             string source = ResolveUnderRoot(node.PackageDirectory, audio.Path, "Audio clip");
             string target = ResolveOutputPath(staging, Path.Combine(relativeDirectory, audio.Path));
+            CopyFileExclusive(source, target);
+        }
+        foreach (TileMapAssetDefinition tileMap in node.Manifest.TileMaps)
+        {
+            string source = ResolveUnderRoot(node.PackageDirectory, tileMap.Path, "TileMap");
+            string target = ResolveOutputPath(staging, Path.Combine(relativeDirectory, tileMap.Path));
             CopyFileExclusive(source, target);
         }
     }

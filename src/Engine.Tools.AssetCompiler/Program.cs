@@ -100,6 +100,8 @@ internal static class Program
             Console.WriteLine($"Animations: {result.AnimationCount}");
             Console.WriteLine($"Audio clips: {result.AudioClipCount}");
             Console.WriteLine($"Animation events: {result.AnimationEventCount}");
+            Console.WriteLine($"TileSets: {result.TileSetCount}");
+            Console.WriteLine($"TileMaps: {result.TileMapCount}");
             return 0;
         }
         catch (Exception ex)

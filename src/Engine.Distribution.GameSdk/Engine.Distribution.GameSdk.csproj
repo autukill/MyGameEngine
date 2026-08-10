@@ -39,6 +39,7 @@
     <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\TextRendering\TextRendering.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\Engine.Features\Tilemaps\Tilemaps.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\TextureAtlas\TextureAtlas.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\ToneMapping\ToneMapping.csproj" PrivateAssets="all" />
@@ -66,6 +67,7 @@
       <TfmSpecificPackageFile Include="..\Engine.Features\Sprites\bin\$(Configuration)\net10.0\Sprites.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\StencilMasking\bin\$(Configuration)\net10.0\StencilMasking.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\TextRendering\bin\$(Configuration)\net10.0\TextRendering.dll" />
+      <TfmSpecificPackageFile Include="..\Engine.Features\Tilemaps\bin\$(Configuration)\net10.0\Tilemaps.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\TextureAssets\bin\$(Configuration)\net10.0\TextureAssets.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\TextureAtlas\bin\$(Configuration)\net10.0\TextureAtlas.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\ToneMapping\bin\$(Configuration)\net10.0\ToneMapping.dll" />

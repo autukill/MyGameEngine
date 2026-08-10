@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "playground.tilemap-world",
+  "dependencies": [],
+  "textures": [
+    { "name": "tilemap.white", "path": "white.webp", "sampling": "pixelArt" }
+  ],
+  "sprites": [{
+    "name": "tilemap.solid",
+    "layout": "single",
+    "texture": "tilemap.white",
+    "origin": { "x": 0, "y": 0 }
+  }],
+  "tileSets": [{
+    "name": "playground.tiles",
+    "tileSize": { "width": 32, "height": 32 },
+    "tiles": [{
+      "id": 1,
+      "sprite": "tilemap.solid",
+      "subImage": 0,
+      "collision": "solid"
+    }]
+  }],
+  "tileMaps": [
+    { "name": "playground.world", "path": "world.tilemap.json" }
+  ]
+}

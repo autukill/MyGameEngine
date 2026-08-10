@@ -71,6 +71,10 @@
     <Project Path="src/Engine.Features/TransformHierarchy.Tests/TransformHierarchy.Tests.csproj" />
     <Project Path="src/Engine.Features/TransformHierarchy/TransformHierarchy.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/Tilemaps/">
+    <Project Path="src/Engine.Features/Tilemaps.Tests/Tilemaps.Tests.csproj" />
+    <Project Path="src/Engine.Features/Tilemaps/Tilemaps.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/ToneMapping/">
     <Project Path="src/Engine.Features/ToneMapping.Tests/ToneMapping.Tests.csproj" />
     <Project Path="src/Engine.Features/ToneMapping/ToneMapping.csproj" />
@@ -111,5 +115,6 @@
   <Folder Name="/Playgrounds/">
     <Project Path="playgrounds/AirplaneShooter/AirplaneShooter.csproj" />
     <Project Path="playgrounds/Asteroids/Asteroids.csproj" />
+    <Project Path="playgrounds/TilemapWorld/TilemapWorld.csproj" />
   </Folder>
 </Solution>

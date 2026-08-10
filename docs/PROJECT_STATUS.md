@@ -2,7 +2,7 @@
 
 更新日期：2026-08-10
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 61 个 .NET 项目、仓库共 62 个项目与 319 个 C# 文件；18 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 64 个 .NET 项目、仓库共 65 个项目；19 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -108,13 +108,18 @@
 - Audio 已能真实播放预加载 PCM WAV；尚无 Streaming Music、OGG/Opus、异步解码、Audio Hot Reload、设备切换或 DSP。
 - Animation 尚无过渡状态图、交叉淡化、Blend Tree、骨骼动画、Root Motion 或 Timeline Editor；当前一个 Clip 绑定一个可跨多纹理/Atlas 页的 Sprite。
 
-## 下一里程碑：Tilemap / World Authoring
+## Tilemap / World Authoring 第一阶段（已完成）
 
-1. 建立逻辑 TileSet/TileLayer/TileMap、Chunk 存储和相机可见 Chunk 查询，不先引入编辑器 UI。
-2. 用声明式 Content 与强类型引用加载 TileSet，复用现有 Texture/Sprite/Atlas 生命周期。
-3. 提供批量渲染、静态碰撞烘焙和无窗口查询测试，并用 Playground 验证关卡创作路径。
-4. Audio 后续单独实现 Streaming Music 与 OGG/Opus；HarfBuzz shaping 保持独立 Spike。
-5. World 边界稳定后，再进入 Lighting 颜色空间与无阴影 Point Light 阶段。
+1. 已建立逻辑 TileSet/TileLayer/TileMap、稀疏 Chunk、负坐标和相机可见 Chunk 渲染，不依赖编辑器 UI。
+2. `assets.json`、ContentPackageManager、AssetCompiler 和强类型生成器已贯通 TileSet/TileMap，复用现有 Texture/Sprite/Atlas 生命周期。
+3. 已提供 Chunk 内静态碰撞贪心烘焙、复用 Buffer、多 Camera 显式可见边界和无窗口回归。
+4. 当前 TileMap 编译产物仍为严格 JSON；Tiled 导入、版本化二进制 Chunk、地图热重载和流式驻留留待后续真实规模驱动。
+
+## 下一里程碑：Streaming Music
+
+1. 在现有短音效 Voice/Bus/Backend 边界之外增加独立 Music Stream，不把长音频完整解码进内存。
+2. 优先完成 OGG/Vorbis、后台解码、环形 PCM Buffer、暂停/恢复/循环与确定性资源释放。
+3. 完成后进入 Lighting 0/1，并复用 Tilemap Chunk Revision 和静态碰撞几何作为未来遮挡数据边界。
 
 ## 已知限制
 

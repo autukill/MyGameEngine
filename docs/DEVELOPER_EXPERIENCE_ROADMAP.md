@@ -105,7 +105,7 @@ GameAssets.Packages.SharedPrimitives
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：Animation、TransformHierarchy、Text 多行 Layout 与 Audio 短音效黄金路径已经闭环。下一条主线进入 Tilemap/World Authoring；流式音乐作为 Audio 的下一增量，不与世界创作同时扩张。暂不展开完整 Skill/Buff、GUI 控件、协程或物理系统；逐帧异形碰撞继续保持需求记录。
+下一步优先级：Animation、TransformHierarchy、Text 多行 Layout、Audio 短音效和 Tilemap/World Authoring 第一条黄金路径已经闭环。下一条主线进入 Streaming Music；随后推进 Lighting 0/1，并直接复用 Tilemap 的 Chunk Revision 与静态碰撞几何边界。暂不展开完整 Skill/Buff、GUI 控件、协程或物理系统；逐帧异形碰撞继续保持需求记录。
 
 Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一版强类型组合 Authoring：`context.Transforms`、opt-in Binding、纯挂点、Local/World、`KeepLocal/KeepWorld`、`TransformPrefab<TParts>`、具名类型节点与帧边界同步均已落地；AirplaneShooter 使用 `root → weapon → muzzle` 真实样例。仍保留 Scene 扁平 Step、Layer/Depth、Collider 索引，不让空间父子关系接管生命周期、渲染排序或 UI 布局。下一步先由玩法验证是否需要原子多 GameInstance Composite Prefab。使用见 [Transform Hierarchy 创作指南](TRANSFORM_HIERARCHY_AUTHORING.md)。
 
@@ -152,7 +152,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | P3 | 彩色 Font Emoji、AnimatedImage、FairyGUI 高级组件 | 由真实产品需求和资产驱动 |
 | P3 | Lighting 软阴影/高级材质、完整物理/导航 | 由性能数据和真实玩法驱动 |
 
-Transform Scene/Prefab、Text 多行/Layout Buffer 与 Audio 短音效已完成。推荐后续按集成风险串行推进：`Tilemap/World Authoring → Streaming Music → Lighting 0/1`。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
+Transform Scene/Prefab、Text 多行/Layout Buffer、Audio 短音效与 Tilemap/World Authoring 第一阶段已完成。推荐后续按集成风险串行推进：`Streaming Music → Lighting 0/1 → Tilemap 导入/二进制 Chunk`。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
 
 ## 设计约束
 

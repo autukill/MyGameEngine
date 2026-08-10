@@ -3,6 +3,7 @@ namespace GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.Animation;
 using GameEngine.Features.Audio;
+using GameEngine.Features.Tilemaps.Domain;
 
 /// <summary>An external lease over a loaded package and its transitive dependencies.</summary>
 public sealed class LoadedContentPackage : IDisposable
@@ -32,6 +33,14 @@ public sealed class LoadedContentPackage : IDisposable
     public AudioClipRef GetAudioClip(string name) =>
         (_manager ?? throw new ObjectDisposedException(nameof(LoadedContentPackage)))
             .GetAudioClip(Id, name);
+
+    public TileSetRef GetTileSet(string name) =>
+        (_manager ?? throw new ObjectDisposedException(nameof(LoadedContentPackage)))
+            .GetTileSet(Id, name);
+
+    public TileMapRef GetTileMap(string name) =>
+        (_manager ?? throw new ObjectDisposedException(nameof(LoadedContentPackage)))
+            .GetTileMap(Id, name);
 
     public void Dispose()
     {

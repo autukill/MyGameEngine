@@ -71,6 +71,7 @@ src/
 │   ├── ToneMapping/                     # HDR 曝光、ACES/Reinhard 与 RGBA8 显示输出
 │   ├── TextRendering/                   # 真实字体、多行 Layout、复用 Buffer、Glyph Atlas 与 DrawText
 │   ├── TransformHierarchy/              # Local/World、GameInstance Binding、纯挂点与父子层级
+│   ├── Tilemaps/                        # TileSet、稀疏 Chunk、可见区域渲染与静态碰撞烘焙
 │   ├── *.Tests/                         # 18 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
@@ -88,6 +89,7 @@ src/
 
 playgrounds/
 ├── AirplaneShooter/                     # 方向键移动、空格发射、Transform 挂点与短音效示例
+├── TilemapWorld/                        # 声明式地图、可见 Chunk 与静态碰撞烘焙示例
 └── Asteroids/                           # 参数化 Prefab、Circle 碰撞和 Scene 重启示例
 ```
 
@@ -117,7 +119,7 @@ Engine.Core
 Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 61 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 64 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -147,6 +149,14 @@ dotnet run --project playgrounds/AirplaneShooter/AirplaneShooter.csproj
 dotnet run --project playgrounds/Asteroids/Asteroids.csproj
 ```
 
+声明式 Tilemap 世界示例使用 WASD/方向键移动 Camera，验证可见 Chunk 绘制和静态碰撞烘焙：
+
+```bash
+dotnet run --project playgrounds/TilemapWorld/TilemapWorld.csproj
+```
+
+完整 TileSet、地图清单、强类型引用和碰撞边界见 [Tilemap / World Authoring](docs/TILEMAP_WORLD_AUTHORING.md)。
+
 完整配方见 [Gameplay Cookbook](docs/GAMEPLAY_COOKBOOK.md)，输入装配见 [逻辑 Input Actions](docs/INPUT_ACTIONS.md)，跨类型身份与过滤见 [Gameplay Tags](docs/GAMEPLAY_TAGS.md)，局部能力复用见 [Gameplay Behavior 组合](docs/GAMEPLAY_BEHAVIORS.md)，空间查询的实测基线与 Spatial Hash 决策见 [Gameplay 空间查询基准](docs/GAMEPLAY_QUERY_PERFORMANCE.md)。
 
 Runner 内容：4 个彩色方块绕场景中心运动，鼠标控制圆形 Stencil 聚光灯；世界颜色先进入 RGBA16F Scene，随后经过 HDR Bloom 与 ACES Tone Mapping 输出到屏幕。
@@ -172,6 +182,7 @@ dotnet run --project src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csp
 dotnet run --project src/Engine.Features/Sprites.Tests/Sprites.Tests.csproj
 dotnet run --project src/Engine.Features/StencilMasking.Tests/StencilMasking.Tests.csproj
 dotnet run --project src/Engine.Features/TextureAssets.Tests/TextureAssets.Tests.csproj
+dotnet run --project src/Engine.Features/Tilemaps.Tests/Tilemaps.Tests.csproj
 dotnet run --project src/Engine.Features/ContentAssets.Tests/ContentAssets.Tests.csproj
 dotnet run --project src/Engine.Features/TextureAtlas.Tests/TextureAtlas.Tests.csproj
 dotnet run --project src/Engine.Features/ToneMapping.Tests/ToneMapping.Tests.csproj
@@ -310,7 +321,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
 2. Animation 与 Text Rendering 黄金路径已经闭环，多行中文/单词换行、对齐、Ellipsis 和动态 Layout Buffer 已落地；复杂脚本 Shaping 先做 HarfBuzz 兼容性验证，不提前夹带完整 GUI。
-3. Transform、Text 多行与 Audio 短音效已闭环；下一条跨层主线优先 Tilemap/World Authoring，其后分别推进 Streaming Music 与 Lighting 0/1。
+3. Transform、Text 多行、Audio 短音效与 Tilemap/World Authoring 第一阶段已闭环；下一条跨层主线优先 Streaming Music，其后推进 Lighting 0/1。
 4. GUI Compatibility Spike 已完成第一轮决策：Yoga 只作为布局内核继续 NativeAOT 实验，RmlUi 是开发者优先完整 Runtime 候选，FairyGUI 保留设计器优先可选路线。详见[调研记录](docs/HTML_CSS_YOGA_GUI_ROADMAP.md)。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。

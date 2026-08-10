@@ -4,6 +4,7 @@ using System.Numerics;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Features.Animation;
 using GameEngine.Features.Audio;
+using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.TextureAssets.Domain;
 
 public sealed record AssetPackageDependency(
@@ -58,6 +59,21 @@ public sealed record AudioAssetDefinition(
     string Path,
     bool Streaming);
 
+public sealed record TileAssetDefinition(
+    ushort Id,
+    string SpriteName,
+    int SubImage,
+    TileCollisionKind Collision);
+
+public sealed record TileSetAssetDefinition(
+    string Name,
+    Vector2 TileSize,
+    IReadOnlyList<TileAssetDefinition> Tiles);
+
+public sealed record TileMapAssetDefinition(
+    string Name,
+    string Path);
+
 public sealed class AssetPackageManifest
 {
     public const int CurrentSchemaVersion = 1;
@@ -70,7 +86,9 @@ public sealed class AssetPackageManifest
         IEnumerable<SpriteAssetDefinition> sprites,
         IEnumerable<AnimationAssetDefinition> animations,
         IEnumerable<AudioAssetDefinition> audioClips,
-        AtlasAssetBuildDefinition? atlas = null)
+        AtlasAssetBuildDefinition? atlas = null,
+        IEnumerable<TileSetAssetDefinition>? tileSets = null,
+        IEnumerable<TileMapAssetDefinition>? tileMaps = null)
     {
         SchemaVersion = schemaVersion;
         Id = id;
@@ -79,6 +97,8 @@ public sealed class AssetPackageManifest
         Sprites = sprites.ToArray();
         Animations = animations.ToArray();
         AudioClips = audioClips.ToArray();
+        TileSets = tileSets?.ToArray() ?? [];
+        TileMaps = tileMaps?.ToArray() ?? [];
         Atlas = atlas;
     }
 
@@ -89,5 +109,7 @@ public sealed class AssetPackageManifest
     public IReadOnlyList<SpriteAssetDefinition> Sprites { get; }
     public IReadOnlyList<AnimationAssetDefinition> Animations { get; }
     public IReadOnlyList<AudioAssetDefinition> AudioClips { get; }
+    public IReadOnlyList<TileSetAssetDefinition> TileSets { get; }
+    public IReadOnlyList<TileMapAssetDefinition> TileMaps { get; }
     public AtlasAssetBuildDefinition? Atlas { get; }
 }

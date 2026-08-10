@@ -9,6 +9,8 @@ using GameEngine.Features.Audio;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using GameEngine.Features.Tilemaps.Domain;
+using GameEngine.Features.Tilemaps.Infrastructure;
 using SkiaSharp;
 
 internal static class Program
@@ -21,6 +23,7 @@ internal static class Program
         VerifyManifestParsing();
         VerifyMultiImageIntegration();
         VerifyAudioPackageIntegration();
+        VerifyTilemapPackageIntegration();
         VerifySharedDependencyLifetime();
         VerifyGraphValidationAndRollback();
         VerifyCompiledRevisionReload();
@@ -177,6 +180,74 @@ internal static class Program
             }
             Check(audio.Count == 0,
                 "Final package lease removes its decoded Audio clip");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void VerifyTilemapPackageIntegration()
+    {
+        Console.WriteLine("4. Declarative TileSet and TileMap package integration");
+        string root = Directory.CreateTempSubdirectory("mygame-content-tilemap-").FullName;
+        try
+        {
+            WriteWebp(Path.Combine(root, "tiles.webp"), 16, 16, SKColors.ForestGreen);
+            File.WriteAllText(Path.Combine(root, "level.tilemap.json"), """
+                {
+                  "schemaVersion": 1,
+                  "name": "levels.one",
+                  "chunkSize": { "width": 2, "height": 2 },
+                  "layers": [{
+                    "name": "walls", "tileSet": "world.tiles", "depth": 0,
+                    "chunks": [{ "x": 0, "y": 0, "tiles": [1, 2, 0, 2] }]
+                  }]
+                }
+                """);
+            File.WriteAllText(Path.Combine(root, "assets.json"), """
+                {
+                  "schemaVersion": 1,
+                  "id": "world.assets",
+                  "dependencies": [],
+                  "textures": [{ "name": "world.texture", "path": "tiles.webp", "sampling": "pixelArt" }],
+                  "sprites": [{
+                    "name": "world.sprite", "layout": "single", "texture": "world.texture",
+                    "origin": { "x": 8, "y": 8 }
+                  }],
+                  "tileSets": [{
+                    "name": "world.tiles", "tileSize": { "width": 16, "height": 16 },
+                    "tiles": [
+                      { "id": 1, "sprite": "world.sprite" },
+                      { "id": 2, "sprite": "world.sprite", "collision": "solid" }
+                    ]
+                  }],
+                  "tileMaps": [{ "name": "levels.one", "path": "level.tilemap.json" }]
+                }
+                """);
+
+            var backend = new FakeTextureBackend();
+            using var textures = new TextureLibrary(backend);
+            var sprites = new SpriteLibrary(textures);
+            var animations = new AnimationLibrary();
+            var audio = new AudioLibrary();
+            var tileSets = new TileSetLibrary();
+            var tileMaps = new TileMapLibrary();
+            using var manager = new ContentPackageManager(
+                textures, sprites, animations, audio, tileSets, tileMaps, root);
+            using (LoadedContentPackage package = manager.Load("assets.json"))
+            {
+                TileSetRef tileSetRef = package.GetTileSet("world.tiles");
+                TileMapRef tileMapRef = package.GetTileMap("levels.one");
+                TileSet tileSet = tileSets.Get(tileSetRef);
+                TileMap tileMap = tileMaps.Get(tileMapRef);
+                Check(tileSet.TryGet(new TileId(2), out TileDefinition wall) &&
+                      wall.Collision == TileCollisionKind.Solid &&
+                      tileMap.GetLayer("walls").GetCell(1, 1).Tile == new TileId(2),
+                    "Package loads typed Tile definitions and external chunked map data");
+            }
+            Check(tileMaps.Count == 0 && tileSets.Count == 0 && sprites.Count == 0 && textures.Count == 0,
+                "Final lease unloads TileMap -> TileSet -> Sprite -> Texture");
         }
         finally
         {

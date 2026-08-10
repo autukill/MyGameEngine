@@ -10,6 +10,8 @@ var sprite = GameAssets.Sprites.RunnerOrbiting;
 var texture = GameAssets.Textures.RunnerWhite;
 var animation = GameAssets.Animations.PlayerRun;
 var footstep = GameAssets.AnimationEvents.PlayerRunFootstep;
+var tileSet = GameAssets.TileSets.WorldTiles;
+var tileMap = GameAssets.TileMaps.LevelOne;
 ```
 
 这些成员分别是 `ContentPackageRef`、`SpriteRef`、`TextureRef`、`AnimationClipRef` 和 `AnimationEventRef`，只保存稳定名称或包标识，不包含 GPU 句柄，也不拥有运行时资源。
@@ -39,6 +41,7 @@ var footstep = GameAssets.AnimationEvents.PlayerRunFootstep;
 - `__atlas.*` 内部页不生成成员。
 - 根包生成 `Packages.Root`；传递依赖包按 ID 生成具名成员。
 - Animation Clip 生成到 `Animations`，所有 Marker 事件名去重后生成到 `AnimationEvents`。
+- TileSet 与 TileMap 分别生成到 `TileSets` 和 `TileMaps`；引用不携带 Chunk 数据或 GPU 资源。
 
 Atlas 排布、跨页或未来重打包不会改变 Sprite 引用和绘制 API。
 

@@ -9,6 +9,8 @@ using GameEngine.Features.Audio;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using GameEngine.Features.Tilemaps.Domain;
+using GameEngine.Features.Tilemaps.Infrastructure;
 
 /// <summary>
 /// Synchronously loads versioned content packages and owns only the resources assembled by them.
@@ -31,6 +33,8 @@ public sealed partial class ContentPackageManager : IDisposable
         public required IReadOnlyList<SpriteRef> Sprites { get; set; }
         public required IReadOnlyList<AnimationClipRef> Animations { get; set; }
         public required IReadOnlyList<AudioClipRef> AudioClips { get; set; }
+        public required IReadOnlyList<TileSetRef> TileSets { get; set; }
+        public required IReadOnlyList<TileMapRef> TileMaps { get; set; }
         public required IReadOnlyList<PackageState> Dependencies { get; init; }
         public required long LoadOrder { get; init; }
         public int ReferenceCount { get; set; }
@@ -40,6 +44,8 @@ public sealed partial class ContentPackageManager : IDisposable
     private readonly SpriteLibrary _sprites;
     private readonly AnimationLibrary _animations;
     private readonly AudioLibrary _audio;
+    private readonly TileSetLibrary _tileSets;
+    private readonly TileMapLibrary _tileMaps;
     private readonly string _packagesRoot;
     private readonly Dictionary<string, PackageState> _packagesById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PackageState> _packagesByPath = new(PathComparer);
@@ -69,11 +75,32 @@ public sealed partial class ContentPackageManager : IDisposable
         AnimationLibrary animationLibrary,
         AudioLibrary audioLibrary,
         string packagesRoot)
+        : this(
+            textureLibrary,
+            spriteLibrary,
+            animationLibrary,
+            audioLibrary,
+            new TileSetLibrary(),
+            new TileMapLibrary(),
+            packagesRoot)
+    {
+    }
+
+    public ContentPackageManager(
+        TextureLibrary textureLibrary,
+        SpriteLibrary spriteLibrary,
+        AnimationLibrary animationLibrary,
+        AudioLibrary audioLibrary,
+        TileSetLibrary tileSetLibrary,
+        TileMapLibrary tileMapLibrary,
+        string packagesRoot)
     {
         _textures = textureLibrary ?? throw new ArgumentNullException(nameof(textureLibrary));
         _sprites = spriteLibrary ?? throw new ArgumentNullException(nameof(spriteLibrary));
         _animations = animationLibrary ?? throw new ArgumentNullException(nameof(animationLibrary));
         _audio = audioLibrary ?? throw new ArgumentNullException(nameof(audioLibrary));
+        _tileSets = tileSetLibrary ?? throw new ArgumentNullException(nameof(tileSetLibrary));
+        _tileMaps = tileMapLibrary ?? throw new ArgumentNullException(nameof(tileMapLibrary));
         ArgumentException.ThrowIfNullOrWhiteSpace(packagesRoot);
 
         _packagesRoot = Path.GetFullPath(packagesRoot);
@@ -85,6 +112,8 @@ public sealed partial class ContentPackageManager : IDisposable
     public string PackagesRoot => _packagesRoot;
     public AnimationLibrary Animations => _animations;
     public AudioLibrary Audio => _audio;
+    public TileSetLibrary TileSets => _tileSets;
+    public TileMapLibrary TileMaps => _tileMaps;
 
     public LoadedContentPackage Load(string rootRelativeManifestPath) =>
         LoadCore(rootRelativeManifestPath, expectedId: null);
@@ -164,6 +193,28 @@ public sealed partial class ContentPackageManager : IDisposable
                 $"Audio clip '{name}' is not visible from package '{packageId}'.");
     }
 
+    internal TileSetRef GetTileSet(string packageId, string name)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        PackageState state = GetLivePackage(packageId);
+        return TryFindTileSet(state, name, out TileSetRef tileSet)
+            ? tileSet
+            : throw new KeyNotFoundException(
+                $"TileSet '{name}' is not visible from package '{packageId}'.");
+    }
+
+    internal TileMapRef GetTileMap(string packageId, string name)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        PackageState state = GetLivePackage(packageId);
+        return TryFindTileMap(state, name, out TileMapRef tileMap)
+            ? tileMap
+            : throw new KeyNotFoundException(
+                $"TileMap '{name}' is not visible from package '{packageId}'.");
+    }
+
     internal void Release(string packageId)
     {
         if (_disposed || !_packagesById.TryGetValue(packageId, out var state))
@@ -180,6 +231,10 @@ public sealed partial class ContentPackageManager : IDisposable
             .ToArray();
         foreach (var state in states)
         {
+            for (int i = state.TileMaps.Count - 1; i >= 0; i--)
+                _tileMaps.Remove(state.TileMaps[i]);
+            for (int i = state.TileSets.Count - 1; i >= 0; i--)
+                _tileSets.Remove(state.TileSets[i]);
             for (int i = state.AudioClips.Count - 1; i >= 0; i--)
                 _audio.Remove(state.AudioClips[i]);
             for (int i = state.Animations.Count - 1; i >= 0; i--)
@@ -267,6 +322,8 @@ public sealed partial class ContentPackageManager : IDisposable
         var spriteNames = new HashSet<string>(StringComparer.Ordinal);
         var animationNames = new HashSet<string>(StringComparer.Ordinal);
         var audioNames = new HashSet<string>(StringComparer.Ordinal);
+        var tileSetNames = new HashSet<string>(StringComparer.Ordinal);
+        var tileMapNames = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var node in graph)
         {
@@ -326,13 +383,83 @@ public sealed partial class ContentPackageManager : IDisposable
                         $"Audio clip name '{definition.Name}' conflicts with an existing package or resource.");
                 }
             }
+
+
+            foreach (TileSetAssetDefinition definition in node.Manifest.TileSets)
+            {
+                if (!tileSetNames.Add(definition.Name) ||
+                    _tileSets.TryGet(new TileSetRef(definition.Name), out _))
+                {
+                    throw new InvalidDataException(
+                        $"TileSet name '{definition.Name}' conflicts with an existing package or resource.");
+                }
+            }
+
+            foreach (TileMapAssetDefinition definition in node.Manifest.TileMaps)
+            {
+                string path = ResolveUnderRoot(packageDirectory, definition.Path, "TileMap");
+                if (!File.Exists(path))
+                    throw new FileNotFoundException($"TileMap asset '{definition.Path}' does not exist.", path);
+                if (!tileMapNames.Add(definition.Name) ||
+                    _tileMaps.TryGet(new TileMapRef(definition.Name), out _))
+                {
+                    throw new InvalidDataException(
+                        $"TileMap name '{definition.Name}' conflicts with an existing package or resource.");
+                }
+            }
         }
 
         foreach (var node in graph)
         {
             ValidateSpriteTextureReferences(node);
             ValidateAnimationSpriteReferences(node);
+            ValidateTileAssetReferences(node);
         }
+    }
+
+    private static void ValidateTileAssetReferences(GraphNode node)
+    {
+        var visibleSprites = new HashSet<string>(StringComparer.Ordinal);
+        CollectVisibleSpriteNames(node, visibleSprites, new HashSet<string>(PathComparer));
+        foreach (TileSetAssetDefinition tileSet in node.Manifest.TileSets)
+        {
+            foreach (TileAssetDefinition tile in tileSet.Tiles)
+            {
+                if (!visibleSprites.Contains(tile.SpriteName))
+                    throw new InvalidDataException(
+                        $"TileSet '{tileSet.Name}' references Sprite '{tile.SpriteName}' outside its package dependency closure.");
+            }
+        }
+
+        var visibleTileSets = new HashSet<string>(StringComparer.Ordinal);
+        CollectVisibleTileSetNames(node, visibleTileSets, new HashSet<string>(PathComparer));
+        string directory = Path.GetDirectoryName(node.ManifestPath)!;
+        foreach (TileMapAssetDefinition definition in node.Manifest.TileMaps)
+        {
+            string path = ResolveUnderRoot(directory, definition.Path, "TileMap");
+            using var stream = File.OpenRead(path);
+            TileMap map = TileMapManifestParser.Parse(stream);
+            if (!StringComparer.Ordinal.Equals(map.Name, definition.Name))
+                throw new InvalidDataException(
+                    $"TileMap declaration '{definition.Name}' does not match document name '{map.Name}'.");
+            foreach (TileLayer layer in map.Layers)
+            {
+                if (!visibleTileSets.Contains(layer.TileSet.Name))
+                    throw new InvalidDataException(
+                        $"TileMap '{map.Name}' layer '{layer.Name}' references TileSet '{layer.TileSet}' outside its package dependency closure.");
+            }
+        }
+    }
+
+    private static void CollectVisibleTileSetNames(
+        GraphNode node,
+        HashSet<string> names,
+        HashSet<string> visited)
+    {
+        if (!visited.Add(node.ManifestPath)) return;
+        foreach (TileSetAssetDefinition tileSet in node.Manifest.TileSets) names.Add(tileSet.Name);
+        foreach (GraphNode dependency in node.Dependencies)
+            CollectVisibleTileSetNames(dependency, names, visited);
     }
 
     private static void ValidateAnimationSpriteReferences(GraphNode node)
@@ -420,6 +547,8 @@ public sealed partial class ContentPackageManager : IDisposable
         var sprites = new List<SpriteRef>();
         var animations = new List<AnimationClipRef>();
         var audioClips = new List<AudioClipRef>();
+        var tileSets = new List<TileSetRef>();
+        var tileMaps = new List<TileMapRef>();
         try
         {
             foreach (var dependency in node.Dependencies)
@@ -441,6 +570,16 @@ public sealed partial class ContentPackageManager : IDisposable
             foreach (AnimationAssetDefinition definition in node.Manifest.Animations)
                 animations.Add(RegisterAnimation(definition, sprites, dependencies));
 
+            foreach (TileSetAssetDefinition definition in node.Manifest.TileSets)
+                tileSets.Add(RegisterTileSet(definition, sprites, dependencies));
+
+            if (node.Manifest.TileMaps.Count > 0)
+            {
+                string packageDirectory = Path.GetDirectoryName(node.ManifestPath)!;
+                foreach (TileMapAssetDefinition definition in node.Manifest.TileMaps)
+                    tileMaps.Add(RegisterTileMap(definition, packageDirectory, tileSets, dependencies));
+            }
+
             if (node.Manifest.AudioClips.Count > 0)
             {
                 string packageDirectory = Path.GetDirectoryName(node.ManifestPath)!;
@@ -460,6 +599,8 @@ public sealed partial class ContentPackageManager : IDisposable
                 Sprites = sprites.ToArray(),
                 Animations = animations.ToArray(),
                 AudioClips = audioClips.ToArray(),
+                TileSets = tileSets.ToArray(),
+                TileMaps = tileMaps.ToArray(),
                 Dependencies = dependencies.ToArray(),
                 ReferenceCount = 1,
                 LoadOrder = ++_nextLoadOrder
@@ -471,6 +612,10 @@ public sealed partial class ContentPackageManager : IDisposable
         }
         catch
         {
+            for (int i = tileMaps.Count - 1; i >= 0; i--)
+                _tileMaps.Remove(tileMaps[i]);
+            for (int i = tileSets.Count - 1; i >= 0; i--)
+                _tileSets.Remove(tileSets[i]);
             for (int i = audioClips.Count - 1; i >= 0; i--)
                 _audio.Remove(audioClips[i]);
             for (int i = animations.Count - 1; i >= 0; i--)
@@ -483,6 +628,65 @@ public sealed partial class ContentPackageManager : IDisposable
                 Release(dependencies[i]);
             throw;
         }
+    }
+
+    private TileSetRef RegisterTileSet(
+        TileSetAssetDefinition definition,
+        IReadOnlyList<SpriteRef> ownSprites,
+        IReadOnlyList<PackageState> dependencies)
+    {
+        var tiles = new TileDefinition[definition.Tiles.Count];
+        for (int i = 0; i < tiles.Length; i++)
+        {
+            TileAssetDefinition source = definition.Tiles[i];
+            SpriteRef sprite = FindAllowedSprite(source.SpriteName, ownSprites, dependencies);
+            if (!_sprites.TryGetMetadata(sprite, out SpriteMetadata metadata) ||
+                source.SubImage >= metadata.FrameCount)
+            {
+                throw new InvalidDataException(
+                    $"TileSet '{definition.Name}' Tile {source.Id} references unavailable sub-image {source.SubImage} of Sprite '{sprite}'.");
+            }
+            tiles[i] = new TileDefinition(
+                new TileId(source.Id), sprite, source.SubImage, source.Collision);
+        }
+        try { return _tileSets.Register(new TileSet(definition.Name, definition.TileSize, tiles)); }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidDataException($"TileSet '{definition.Name}' is invalid.", exception);
+        }
+    }
+
+    private TileMapRef RegisterTileMap(
+        TileMapAssetDefinition definition,
+        string packageDirectory,
+        IReadOnlyList<TileSetRef> ownTileSets,
+        IReadOnlyList<PackageState> dependencies)
+    {
+        string path = ResolveUnderRoot(packageDirectory, definition.Path, "TileMap");
+        using var stream = File.OpenRead(path);
+        TileMap map = TileMapManifestParser.Parse(stream);
+        if (!StringComparer.Ordinal.Equals(map.Name, definition.Name))
+            throw new InvalidDataException(
+                $"TileMap declaration '{definition.Name}' does not match document name '{map.Name}'.");
+        foreach (TileLayer layer in map.Layers)
+        {
+            if (!IsAllowedTileSet(layer.TileSet, ownTileSets, dependencies))
+                throw new InvalidDataException(
+                    $"TileMap '{map.Name}' references unavailable TileSet '{layer.TileSet}'.");
+        }
+        return _tileMaps.Register(map);
+    }
+
+    private static bool IsAllowedTileSet(
+        TileSetRef reference,
+        IReadOnlyList<TileSetRef> ownTileSets,
+        IReadOnlyList<PackageState> dependencies)
+    {
+        foreach (TileSetRef candidate in ownTileSets)
+            if (candidate == reference) return true;
+        foreach (PackageState dependency in dependencies)
+            if (TryFindTileSet(dependency, reference.Name, out _)) return true;
+        return false;
     }
 
     private AnimationClipRef RegisterAnimation(
@@ -751,6 +955,38 @@ public sealed partial class ContentPackageManager : IDisposable
         return false;
     }
 
+    private static bool TryFindTileSet(PackageState state, string name, out TileSetRef tileSet)
+    {
+        foreach (TileSetRef candidate in state.TileSets)
+        {
+            if (StringComparer.Ordinal.Equals(candidate.Name, name))
+            {
+                tileSet = candidate;
+                return true;
+            }
+        }
+        foreach (PackageState dependency in state.Dependencies)
+            if (TryFindTileSet(dependency, name, out tileSet)) return true;
+        tileSet = default;
+        return false;
+    }
+
+    private static bool TryFindTileMap(PackageState state, string name, out TileMapRef tileMap)
+    {
+        foreach (TileMapRef candidate in state.TileMaps)
+        {
+            if (StringComparer.Ordinal.Equals(candidate.Name, name))
+            {
+                tileMap = candidate;
+                return true;
+            }
+        }
+        foreach (PackageState dependency in state.Dependencies)
+            if (TryFindTileMap(dependency, name, out tileMap)) return true;
+        tileMap = default;
+        return false;
+    }
+
     private void Release(PackageState state)
     {
         if (state.ReferenceCount <= 0)
@@ -758,6 +994,11 @@ public sealed partial class ContentPackageManager : IDisposable
         state.ReferenceCount--;
         if (state.ReferenceCount != 0)
             return;
+
+        for (int i = state.TileMaps.Count - 1; i >= 0; i--)
+            _tileMaps.Remove(state.TileMaps[i]);
+        for (int i = state.TileSets.Count - 1; i >= 0; i--)
+            _tileSets.Remove(state.TileSets[i]);
 
         for (int i = state.AudioClips.Count - 1; i >= 0; i--)
             _audio.Remove(state.AudioClips[i]);

@@ -25,6 +25,7 @@ internal static class Program
         "StencilMasking.dll",
         "TextureAssets.dll",
         "TextureAtlas.dll",
+        "Tilemaps.dll",
         "ToneMapping.dll"
     ];
 

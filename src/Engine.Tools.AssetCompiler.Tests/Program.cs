@@ -6,6 +6,7 @@ using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Tools.AssetCompiler;
 using SkiaSharp;
 
@@ -39,6 +40,7 @@ internal static class Program
             WriteSheet(Path.Combine(source, "sheet.png"));
             WriteSolid(Path.Combine(source, "large.png"), 7, 7, SKColors.Blue);
             File.WriteAllBytes(Path.Combine(source, "shot.wav"), CreatePcm16Wave());
+            File.WriteAllText(Path.Combine(source, "level.tilemap.json"), TileMapManifest);
             Directory.CreateDirectory(Path.Combine(source, "shared"));
             WriteSolid(Path.Combine(source, "shared", "white.png"), 1, 1, SKColors.White);
             File.WriteAllText(Path.Combine(source, "shared", "assets.json"), SharedManifest);
@@ -66,6 +68,8 @@ internal static class Program
                 "Dependency packages are copied into the compiled packages root");
             Check(File.Exists(Path.Combine(firstOutput, "shot.wav")),
                 "Audio assets are copied through the Atlas compiler boundary");
+            Check(File.Exists(Path.Combine(firstOutput, "level.tilemap.json")),
+                "TileMap documents are copied through the Atlas compiler boundary");
 
             VerifyStronglyTypedReferences(firstOutput, workspace);
 
@@ -95,6 +99,10 @@ internal static class Program
             AudioClipDescriptor audio = manager.Audio.Get(package.GetAudioClip("compiler.shot"));
             Check(audio.Decoded is { Channels: 1, SampleRate: 48_000 },
                 "Compiled package retains a runtime-decodable Audio clip");
+            Check(package.GetTileSet("compiler.tiles") == new TileSetRef("compiler.tiles") &&
+                  manager.TileMaps.Get(package.GetTileMap("compiler.level"))
+                      .GetLayer("ground").GetCell(0, 0).Tile == new TileId(1),
+                "Compiled package retains TileSet and external TileMap assets");
 
             VerifyIncrementalPipeline(source, workspace);
         }
@@ -123,6 +131,7 @@ internal static class Program
             "Unchanged generated references preserve the file timestamp");
         Check(first.PackageCount == 2 && first.TextureCount == 2 && first.SpriteCount == 2 &&
               first.AnimationCount == 1 && first.AudioClipCount == 1 && first.AnimationEventCount == 1 &&
+              first.TileSetCount == 1 && first.TileMapCount == 1 &&
               source.Contains("ContentPackageRef Root = new(\"compiler.assets\", \"assets.json\")", StringComparison.Ordinal) &&
               source.Contains("ContentPackageRef CompilerShared", StringComparison.Ordinal),
             "Root and dependency package references are generated from the compiled graph");
@@ -139,6 +148,9 @@ internal static class Program
             "Animation clips and marker events become strongly typed references");
         Check(source.Contains("AudioClipRef CompilerShot", StringComparison.Ordinal),
             "Audio clips become strongly typed logical references");
+        Check(source.Contains("TileSetRef CompilerTiles", StringComparison.Ordinal) &&
+              source.Contains("TileMapRef CompilerLevel", StringComparison.Ordinal),
+            "TileSet and TileMap assets become strongly typed logical references");
         CheckThrows<InvalidDataException>(() => generator.Generate(request with
             {
                 OutputFile = Path.Combine(compiledRoot, "GameEngine.Content.g.cs")
@@ -191,6 +203,16 @@ internal static class Program
               rebuilt.InputFingerprint != first.InputFingerprint &&
               rebuilt.BuiltPackageCount == 1 && rebuilt.ReusedPackageCount == 1,
             "Changed root source rebuilds only that package and reuses its dependency");
+
+        string tileMapPath = Path.Combine(source, "level.tilemap.json");
+        File.WriteAllText(tileMapPath, TileMapManifest.Replace("[1, 0, 0, 0]", "[1, 1, 0, 0]"));
+        ContentBuildResult tileMapStale = pipeline.Build(request with { Mode = ContentBuildMode.Check });
+        ContentBuildResult tileMapRebuilt = pipeline.Build(request);
+        Check(tileMapStale.Status == ContentBuildStatus.Stale &&
+              tileMapRebuilt.BuiltPackageCount == 1 &&
+              File.ReadAllText(Path.Combine(output, "level.tilemap.json"))
+                  .Contains("[1, 1, 0, 0]", StringComparison.Ordinal),
+            "TileMap edits participate in the incremental fingerprint and copied output");
 
         WriteSolid(Path.Combine(source, "shared", "white.png"), 1, 1, SKColors.Gray);
         ContentBuildResult dependencyRebuilt = pipeline.Build(request);
@@ -437,7 +459,28 @@ internal static class Program
           ],
           "audioClips": [
             { "name": "compiler.shot", "path": "shot.wav", "streaming": false }
+          ],
+          "tileSets": [{
+            "name": "compiler.tiles",
+            "tileSize": { "width": 2, "height": 2 },
+            "tiles": [{ "id": 1, "sprite": "compiler.grid", "subImage": 0, "collision": "solid" }]
+          }],
+          "tileMaps": [
+            { "name": "compiler.level", "path": "level.tilemap.json" }
           ]
+        }
+        """;
+
+    private const string TileMapManifest = """
+        {
+          "schemaVersion": 1,
+          "name": "compiler.level",
+          "chunkSize": { "width": 2, "height": 2 },
+          "layers": [{
+            "name": "ground",
+            "tileSet": "compiler.tiles",
+            "chunks": [{ "x": 0, "y": 0, "tiles": [1, 0, 0, 0] }]
+          }]
         }
         """;
 

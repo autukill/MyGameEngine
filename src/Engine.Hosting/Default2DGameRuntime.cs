@@ -24,6 +24,7 @@ using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.StencilMasking.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using GameEngine.Features.Tilemaps.Infrastructure;
 using GameEngine.Features.TextRendering.Infrastructure;
 using GameEngine.Features.ToneMapping.Domain;
 using GameEngine.Features.ToneMapping.Infrastructure;
@@ -49,6 +50,9 @@ internal sealed class Default2DGameRuntime : IDisposable
     private ShaderLibrary _shaders = null!;
     private SceneAggregate? _scene;
     private Camera2D _camera = null!;
+    private readonly TileSetLibrary _tileSets = new();
+    private readonly TileMapLibrary _tileMaps = new();
+    private readonly TileMapRenderer _tileMapRenderer;
     private RenderTarget2D _sceneTarget = null!;
     private RenderTarget2D? _guiTarget;
     private RenderTargetPool _targetPool = null!;
@@ -75,6 +79,7 @@ internal sealed class Default2DGameRuntime : IDisposable
         _window = window;
         _plan = plan;
         _close = close;
+        _tileMapRenderer = new TileMapRenderer(_tileSets);
     }
 
     public static Default2DGameRuntime Create(
@@ -265,6 +270,8 @@ internal sealed class Default2DGameRuntime : IDisposable
                 _sprites,
                 _animations,
                 _audioClips,
+                _tileSets,
+                _tileMaps,
                 packagesRoot));
             content = _resources.Add(renderer.ContentPackage is { } package
                 ? contentManager.Load(package)
@@ -421,6 +428,9 @@ internal sealed class Default2DGameRuntime : IDisposable
             _animations,
             _audioClips,
             _audio,
+            _tileSets,
+            _tileMaps,
+            _tileMapRenderer,
             _transforms,
             _text,
             _shaders,

@@ -200,9 +200,14 @@ public sealed class ContentAssetCompiler
         Directory.CreateDirectory(temporary);
         try
         {
-            ValidateOutputPaths(temporary, retainedTextures, package.Manifest.AudioClips);
+            ValidateOutputPaths(
+                temporary,
+                retainedTextures,
+                package.Manifest.AudioClips,
+                package.Manifest.TileMaps);
             CopyRetainedTextures(package, retainedTextures, generatedTextures, temporary);
             CopyAudioClips(package, temporary);
+            CopyTileMaps(package, temporary);
             if (copyDependencies)
                 CopyDependencyPackages(root, contexts.Values, package, temporary);
             foreach (var generated in generatedPages)
@@ -418,7 +423,8 @@ public sealed class ContentAssetCompiler
     private static void ValidateOutputPaths(
         string output,
         IEnumerable<TextureAssetDefinition> textures,
-        IEnumerable<AudioAssetDefinition> audioClips)
+        IEnumerable<AudioAssetDefinition> audioClips,
+        IEnumerable<TileMapAssetDefinition> tileMaps)
     {
         var paths = new HashSet<string>(
             OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
@@ -437,6 +443,12 @@ public sealed class ContentAssetCompiler
             if (!paths.Add(path))
                 throw new InvalidDataException($"Asset output path '{audio.Path}' is used more than once.");
         }
+        foreach (TileMapAssetDefinition tileMap in tileMaps)
+        {
+            string path = ResolveOutputPath(output, tileMap.Path);
+            if (!paths.Add(path))
+                throw new InvalidDataException($"Asset output path '{tileMap.Path}' is used more than once.");
+        }
     }
 
     private static void CopyAudioClips(ManifestContext package, string output)
@@ -444,6 +456,17 @@ public sealed class ContentAssetCompiler
         foreach (AudioAssetDefinition definition in package.Manifest.AudioClips)
         {
             string source = ResolveUnderRoot(package.Directory, definition.Path, "Audio clip");
+            string destination = ResolveOutputPath(output, definition.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(source, destination, overwrite: false);
+        }
+    }
+
+    private static void CopyTileMaps(ManifestContext package, string output)
+    {
+        foreach (TileMapAssetDefinition definition in package.Manifest.TileMaps)
+        {
+            string source = ResolveUnderRoot(package.Directory, definition.Path, "TileMap");
             string destination = ResolveOutputPath(output, definition.Path);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(source, destination, overwrite: false);
@@ -479,6 +502,15 @@ public sealed class ContentAssetCompiler
             {
                 string source = ResolveUnderRoot(context.Directory, audio.Path, "Dependency Audio clip");
                 string relativeTarget = Path.Combine(relativePackageDirectory, audio.Path);
+                string target = ResolveOutputPath(output, relativeTarget);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                if (!File.Exists(target))
+                    File.Copy(source, target, overwrite: false);
+            }
+            foreach (TileMapAssetDefinition tileMap in context.Manifest.TileMaps)
+            {
+                string source = ResolveUnderRoot(context.Directory, tileMap.Path, "Dependency TileMap");
+                string relativeTarget = Path.Combine(relativePackageDirectory, tileMap.Path);
                 string target = ResolveOutputPath(output, relativeTarget);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 if (!File.Exists(target))
@@ -593,6 +625,42 @@ public sealed class ContentAssetCompiler
             writer.WriteString("name", audio.Name);
             writer.WriteString("path", audio.Path.Replace('\\', '/'));
             writer.WriteBoolean("streaming", audio.Streaming);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+
+        writer.WritePropertyName("tileSets");
+        writer.WriteStartArray();
+        foreach (TileSetAssetDefinition tileSet in source.TileSets)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("name", tileSet.Name);
+            WriteSize(writer, "tileSize", tileSet.TileSize.X, tileSet.TileSize.Y);
+            writer.WritePropertyName("tiles");
+            writer.WriteStartArray();
+            foreach (TileAssetDefinition tile in tileSet.Tiles)
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("id", tile.Id);
+                writer.WriteString("sprite", tile.SpriteName);
+                writer.WriteNumber("subImage", tile.SubImage);
+                writer.WriteString("collision", tile.Collision == GameEngine.Features.Tilemaps.Domain.TileCollisionKind.Solid
+                    ? "solid"
+                    : "none");
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+
+        writer.WritePropertyName("tileMaps");
+        writer.WriteStartArray();
+        foreach (TileMapAssetDefinition tileMap in source.TileMaps)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("name", tileMap.Name);
+            writer.WriteString("path", tileMap.Path.Replace('\\', '/'));
             writer.WriteEndObject();
         }
         writer.WriteEndArray();

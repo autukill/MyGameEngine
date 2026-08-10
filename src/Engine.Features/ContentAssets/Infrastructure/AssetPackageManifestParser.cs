@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.Animation;
+using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.TextureAssets.Domain;
 
 public static class AssetPackageManifestParser
@@ -40,9 +41,13 @@ public static class AssetPackageManifestParser
         var sprites = ParseSprites(document.Sprites);
         var animations = ParseAnimations(document.Animations);
         var audioClips = ParseAudioClips(document.AudioClips);
+        var tileSets = ParseTileSets(document.TileSets);
+        var tileMaps = ParseTileMaps(document.TileMaps);
         var atlas = ParseAtlas(document.Atlas, textures);
-        if (textures.Count == 0 && sprites.Count == 0 && animations.Count == 0 && audioClips.Count == 0)
-            throw new InvalidDataException("An asset package must contain at least one Texture, Sprite, Animation or Audio clip.");
+        if (textures.Count == 0 && sprites.Count == 0 && animations.Count == 0 &&
+            audioClips.Count == 0 && tileSets.Count == 0 && tileMaps.Count == 0)
+            throw new InvalidDataException(
+                "An asset package must contain at least one Texture, Sprite, Animation, Audio clip, TileSet or TileMap.");
 
         return new AssetPackageManifest(
             document.SchemaVersion,
@@ -52,7 +57,83 @@ public static class AssetPackageManifestParser
             sprites,
             animations,
             audioClips,
-            atlas);
+            atlas,
+            tileSets,
+            tileMaps);
+    }
+
+    private static IReadOnlyList<TileSetAssetDefinition> ParseTileSets(List<TileSetDto?>? source)
+    {
+        if (source is null) return Array.Empty<TileSetAssetDefinition>();
+        var result = new TileSetAssetDefinition[source.Count];
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < source.Count; i++)
+        {
+            TileSetDto item = source[i]
+                ?? throw new InvalidDataException($"TileSet entry {i} is null.");
+            if (string.IsNullOrWhiteSpace(item.Name))
+                throw new InvalidDataException($"TileSet entry {i} has no name.");
+            if (!names.Add(item.Name))
+                throw new InvalidDataException($"TileSet '{item.Name}' appears more than once.");
+            if (item.TileSize is null || !float.IsFinite(item.TileSize.Width) ||
+                !float.IsFinite(item.TileSize.Height) || item.TileSize.Width <= 0f ||
+                item.TileSize.Height <= 0f)
+                throw new InvalidDataException($"TileSet '{item.Name}' has an invalid tileSize.");
+            if (item.Tiles is not { Count: > 0 })
+                throw new InvalidDataException($"TileSet '{item.Name}' requires at least one Tile.");
+
+            var tiles = new TileAssetDefinition[item.Tiles.Count];
+            var ids = new HashSet<ushort>();
+            for (int tileIndex = 0; tileIndex < item.Tiles.Count; tileIndex++)
+            {
+                TileDto tile = item.Tiles[tileIndex]
+                    ?? throw new InvalidDataException($"Tile {tileIndex} of TileSet '{item.Name}' is null.");
+                if (tile.Id is <= 0 or > ushort.MaxValue)
+                    throw new InvalidDataException(
+                        $"Tile {tileIndex} of TileSet '{item.Name}' has an id outside 1..65535.");
+                ushort id = (ushort)tile.Id;
+                if (!ids.Add(id))
+                    throw new InvalidDataException($"TileSet '{item.Name}' repeats Tile id {id}.");
+                if (string.IsNullOrWhiteSpace(tile.Sprite))
+                    throw new InvalidDataException($"Tile {id} of TileSet '{item.Name}' has no Sprite.");
+                int subImage = tile.SubImage ?? 0;
+                if (subImage < 0)
+                    throw new InvalidDataException($"Tile {id} of TileSet '{item.Name}' has a negative subImage.");
+                TileCollisionKind collision = tile.Collision?.Trim().ToLowerInvariant() switch
+                {
+                    null or "" or "none" => TileCollisionKind.None,
+                    "solid" => TileCollisionKind.Solid,
+                    _ => throw new InvalidDataException(
+                        $"Tile {id} of TileSet '{item.Name}' has unknown collision '{tile.Collision}'.")
+                };
+                tiles[tileIndex] = new TileAssetDefinition(id, tile.Sprite, subImage, collision);
+            }
+            result[i] = new TileSetAssetDefinition(
+                item.Name,
+                new Vector2(item.TileSize.Width, item.TileSize.Height),
+                tiles);
+        }
+        return result;
+    }
+
+    private static IReadOnlyList<TileMapAssetDefinition> ParseTileMaps(List<TileMapDto?>? source)
+    {
+        if (source is null) return Array.Empty<TileMapAssetDefinition>();
+        var result = new TileMapAssetDefinition[source.Count];
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < source.Count; i++)
+        {
+            TileMapDto item = source[i]
+                ?? throw new InvalidDataException($"TileMap entry {i} is null.");
+            if (string.IsNullOrWhiteSpace(item.Name))
+                throw new InvalidDataException($"TileMap entry {i} has no name.");
+            if (!names.Add(item.Name))
+                throw new InvalidDataException($"TileMap '{item.Name}' appears more than once.");
+            if (string.IsNullOrWhiteSpace(item.Path))
+                throw new InvalidDataException($"TileMap '{item.Name}' has no path.");
+            result[i] = new TileMapAssetDefinition(item.Name, item.Path);
+        }
+        return result;
     }
 
     private static IReadOnlyList<AudioAssetDefinition> ParseAudioClips(List<AudioClipDto?>? source)
@@ -372,6 +453,8 @@ public static class AssetPackageManifestParser
         public List<SpriteDto?>? Sprites { get; init; }
         public List<AnimationDto?>? Animations { get; init; }
         public List<AudioClipDto?>? AudioClips { get; init; }
+        public List<TileSetDto?>? TileSets { get; init; }
+        public List<TileMapDto?>? TileMaps { get; init; }
         public AtlasDto? Atlas { get; init; }
     }
 
@@ -429,6 +512,27 @@ public static class AssetPackageManifestParser
         public string? Name { get; init; }
         public string? Path { get; init; }
         public bool? Streaming { get; init; }
+    }
+
+    internal sealed class TileSetDto
+    {
+        public string? Name { get; init; }
+        public SizeFloatDto? TileSize { get; init; }
+        public List<TileDto?>? Tiles { get; init; }
+    }
+
+    internal sealed class TileDto
+    {
+        public int Id { get; init; }
+        public string? Sprite { get; init; }
+        public int? SubImage { get; init; }
+        public string? Collision { get; init; }
+    }
+
+    internal sealed class TileMapDto
+    {
+        public string? Name { get; init; }
+        public string? Path { get; init; }
     }
 
     internal sealed class RectDto

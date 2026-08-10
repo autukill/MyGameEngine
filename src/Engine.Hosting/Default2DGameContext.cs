@@ -20,6 +20,7 @@ using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.TextRendering.Infrastructure;
 using GameEngine.Features.TransformHierarchy.Gameplay;
+using GameEngine.Features.Tilemaps.Infrastructure;
 
 /// <summary>Scene 装配期的强类型上下文；不是全局服务容器。</summary>
 public sealed class Default2DGameContext
@@ -34,6 +35,9 @@ public sealed class Default2DGameContext
     public SpriteLibrary Sprites { get; }
     public AnimationLibrary Animations { get; }
     public AudioLibrary AudioClips { get; }
+    public TileSetLibrary TileSets { get; }
+    public TileMapLibrary TileMaps { get; }
+    public TileMapRenderer TileMapRenderer { get; }
     public bool AudioEnabled => _audio is not null;
     public AudioRuntime Audio => _audio ?? throw new InvalidOperationException(
         "Audio is not enabled. Call GameApplicationBuilder.UseAudio before Build.");
@@ -62,6 +66,9 @@ public sealed class Default2DGameContext
         AnimationLibrary animations,
         AudioLibrary audioClips,
         AudioRuntime? audio,
+        TileSetLibrary tileSets,
+        TileMapLibrary tileMaps,
+        TileMapRenderer tilemapRenderer,
         SceneTransformRuntime transforms,
         TextRuntime text,
         ShaderLibrary shaders,
@@ -85,6 +92,9 @@ public sealed class Default2DGameContext
         Sprites = sprites;
         Animations = animations ?? throw new ArgumentNullException(nameof(animations));
         AudioClips = audioClips ?? throw new ArgumentNullException(nameof(audioClips));
+        TileSets = tileSets ?? throw new ArgumentNullException(nameof(tileSets));
+        TileMaps = tileMaps ?? throw new ArgumentNullException(nameof(tileMaps));
+        TileMapRenderer = tilemapRenderer ?? throw new ArgumentNullException(nameof(tilemapRenderer));
         _audio = audio;
         Transforms = transforms ?? throw new ArgumentNullException(nameof(transforms));
         Text = text ?? throw new ArgumentNullException(nameof(text));
