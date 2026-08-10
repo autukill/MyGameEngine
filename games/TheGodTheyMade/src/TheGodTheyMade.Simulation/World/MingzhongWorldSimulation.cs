@@ -114,6 +114,9 @@ public sealed class MingzhongWorldSimulation
     public int ObservationCount => _globalCount;
     public ReadOnlySpan<WorldObservation> Observations => _globalLog.AsSpan(0, _globalCount);
 
+    public bool IsCellCoveredByRain(GridCell cell) =>
+        IsRaining && DistanceSquared(_rainCenter, cell) <= _rainRadius * _rainRadius;
+
     public MingzhongWorldSimulation(
         IReadOnlyList<VillagerDefinition> villagers,
         Func<GridCell, bool>? blocksSight = null)

@@ -14,6 +14,8 @@ using TheGodTheyMade.Simulation.Navigation;
 using TheGodTheyMade.Simulation.Beliefs;
 using TheGodTheyMade.Simulation.World;
 using TheGodTheyMade.Simulation.Village;
+using TheGodTheyMade.Simulation.Familiar;
+using TheGodTheyMade.Simulation.Scenario;
 
 internal sealed class MingzhongWorldInstance : GameInstance
 {
@@ -39,6 +41,8 @@ internal sealed class MingzhongWorldInstance : GameInstance
     private readonly Action _close;
     private readonly MingzhongWorldSimulation _world;
     private readonly BeliefSimulation _beliefs;
+    private readonly FamiliarLearning _familiar;
+    private readonly MingzhongIslandScenario _scenario;
     private readonly bool _smoke;
     private readonly bool _scriptedBelief;
     private readonly bool _suppressRawInput;
@@ -58,6 +62,8 @@ internal sealed class MingzhongWorldInstance : GameInstance
         NavigationGrid navigation,
         MingzhongWorldSimulation world,
         BeliefSimulation beliefs,
+        FamiliarLearning familiar,
+        MingzhongIslandScenario scenario,
         Action close,
         bool smoke,
         bool scriptedBelief,
@@ -71,6 +77,8 @@ internal sealed class MingzhongWorldInstance : GameInstance
         _navigation = navigation;
         _world = world;
         _beliefs = beliefs;
+        _familiar = familiar;
+        _scenario = scenario;
         _close = close;
         _smoke = smoke;
         _scriptedBelief = scriptedBelief;
@@ -114,6 +122,9 @@ internal sealed class MingzhongWorldInstance : GameInstance
 
         _world.AdvanceTick();
         _beliefs.Update(_world);
+        _scenario.Advance(_world, _beliefs, _familiar);
+        if (_world.Gate == GateState.Open)
+            _navigation.SetBlocked(MingzhongNavigation.GateBoulder, false);
 
         if (!_suppressRawInput && KeyPressed(InputKey.Escape)) _close();
         _steps++;
@@ -153,6 +164,33 @@ internal sealed class MingzhongWorldInstance : GameInstance
                 new Vector4(0.22f, 0.56f, 0.94f, 0.18f));
         }
 
+        Vector4 ruinColor = _scenario.Ruin switch
+        {
+            RuinPuzzleState.Decoded => new Vector4(0.25f, 0.88f, 0.72f, 1f),
+            RuinPuzzleState.Revealed => new Vector4(0.34f, 0.68f, 0.84f, 1f),
+            _ => new Vector4(0.32f, 0.34f, 0.38f, 1f)
+        };
+        DrawCellRect(batch, MingzhongIslandScenario.RuinTablet.X,
+            MingzhongIslandScenario.RuinTablet.Y, 1, 1, ruinColor);
+        if (_scenario.Funeral is FuneralOutcome.Active or FuneralOutcome.LanternsPreserved)
+            DrawCircle(batch,
+                new Vector2D((MingzhongVillage.Cemetery.X + 0.5f) * MingzhongNavigation.TileSize,
+                    (MingzhongVillage.Cemetery.Y + 0.5f) * MingzhongNavigation.TileSize),
+                52f,
+                _scenario.Funeral == FuneralOutcome.Active
+                    ? new Vector4(1f, 0.58f, 0.18f, 0.30f)
+                    : new Vector4(0.95f, 0.78f, 0.32f, 0.18f));
+        if (_scenario.Mural is not null)
+        {
+            DrawCellRect(batch, 18, 14, 2, 4, new Vector4(0.42f, 0.62f, 0.92f, 1f));
+            DrawCellRect(batch, 20, 14, 2, 4, _scenario.GateResolution == GateResolution.Familiar
+                ? new Vector4(0.82f, 0.76f, 0.52f, 1f)
+                : new Vector4(0.52f, 0.76f, 0.58f, 1f));
+            DrawCellRect(batch, 22, 14, 2, 4, _scenario.Funeral == FuneralOutcome.LanternsLostToRain
+                ? new Vector4(0.28f, 0.38f, 0.56f, 1f)
+                : new Vector4(0.92f, 0.56f, 0.28f, 1f));
+        }
+
         if (_pointerWorld is not { } pointer) return;
         GridCell hover = WorldToCell(pointer);
         if (_navigation.Contains(hover))
@@ -179,6 +217,9 @@ internal sealed class MingzhongWorldInstance : GameInstance
         writer.Write("mingzhong.worldHash", _world.ComputeStateHash());
         writer.Write("mingzhong.beliefHash", _beliefs.ComputeStateHash());
         writer.Write("mingzhong.hasDoctrine", _beliefs.Doctrine is not null);
+        writer.Write("mingzhong.scenarioHash", _scenario.ComputeStateHash());
+        writer.Write("mingzhong.chapterPhase", (int)_scenario.Phase);
+        writer.Write("mingzhong.chapterComplete", _scenario.IsComplete);
     }
 
     private void HandleRelease(Vector2D world)

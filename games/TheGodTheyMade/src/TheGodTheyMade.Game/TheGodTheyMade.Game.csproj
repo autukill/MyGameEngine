@@ -15,6 +15,7 @@
     <ProjectReference Include="..\..\..\..\src\Engine.Hosting\Engine.Hosting.csproj" />
     <ProjectReference Include="..\..\..\..\src\Engine.Features\Tilemaps\Tilemaps.csproj" />
     <ProjectReference Include="..\..\..\..\src\Engine.Features\Replay\Replay.csproj" />
+    <ProjectReference Include="..\..\..\..\src\Engine.Features\Audio\Audio.csproj" />
     <ProjectReference Include="..\..\..\..\src\Engine.Tools.AssetCompiler\Engine.Tools.AssetCompiler.csproj"
                       ReferenceOutputAssembly="false"
                       GlobalPropertiesToRemove="PublishAot;PublishTrimmed;PublishSingleFile;SelfContained;RuntimeIdentifier;RuntimeIdentifiers" />

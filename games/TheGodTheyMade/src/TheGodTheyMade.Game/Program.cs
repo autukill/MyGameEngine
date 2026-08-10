@@ -12,6 +12,8 @@ using TheGodTheyMade.Game.Content;
 using TheGodTheyMade.Simulation.Navigation;
 using TheGodTheyMade.Simulation.Beliefs;
 using TheGodTheyMade.Simulation.Familiar;
+using TheGodTheyMade.Simulation.Scenario;
+using GameEngine.Features.Audio;
 using TheGodTheyMade.Simulation.Village;
 using TheGodTheyMade.Simulation.World;
 
@@ -20,12 +22,17 @@ internal static class Program
     private static void Main(string[] args)
     {
         bool smoke = args.Contains("--smoke", StringComparer.Ordinal);
-        bool scriptedBelief = args.Contains("--scripted-belief", StringComparer.Ordinal);
+        bool scriptedBelief = args.Contains("--scripted-belief", StringComparer.Ordinal) ||
+                              args.Contains("--scripted-regression", StringComparer.Ordinal);
         string? recordReplayPath = GetOptionValue(args, "--record-replay");
         string? playReplayPath = GetOptionValue(args, "--replay");
         if (recordReplayPath is not null && playReplayPath is not null)
             throw new ArgumentException("Use either --record-replay or --replay, not both.");
-        var replayIdentity = new ReplayIdentity("the-god-they-made.mingzhong", "gate-3");
+        if ((recordReplayPath is not null || playReplayPath is not null) && !scriptedBelief)
+            throw new ArgumentException(
+                "Replay v1 cannot encode dynamic pointer world positions. " +
+                "Use --scripted-regression with --record-replay/--replay.");
+        var replayIdentity = new ReplayIdentity("the-god-they-made.mingzhong", "gate-4");
         ReplaySession? replay = recordReplayPath is not null
             ? ReplaySession.Record(replayIdentity)
             : playReplayPath is not null
@@ -47,6 +54,7 @@ internal static class Program
                     InputKey.Left, InputKey.Right, InputKey.Up, InputKey.Down)
                 .BindAction(GameInputs.PraiseFamiliar, InputKey.Q)
                 .BindAction(GameInputs.StopFamiliar, InputKey.E))
+            .UseAudio()
             .UseDefault2DRenderer(renderer => renderer.UseContent(GameAssets.Packages.Root))
             .ConfigureScene("MingzhongValley", context =>
             {
@@ -63,6 +71,7 @@ internal static class Program
                     navigation.IsBlocked);
                 var beliefSimulation = new BeliefSimulation(MingzhongVillage.Roster);
                 var familiarLearning = new FamiliarLearning(0x4D494E475A484F4EUL);
+                var islandScenario = new MingzhongIslandScenario();
                 var world = new MingzhongWorldInstance(
                     context.TileMaps.Get(GameAssets.TileMaps.MingzhongWorld),
                     context.TileMapRenderer,
@@ -73,6 +82,8 @@ internal static class Program
                     navigation,
                     worldSimulation,
                     beliefSimulation,
+                    familiarLearning,
+                    islandScenario,
                     context.Close,
                     smoke,
                     scriptedBelief,
@@ -97,6 +108,13 @@ internal static class Program
                     worldSimulation,
                     navigation,
                     scriptedBelief));
+                context.Scene.Add(new ScenarioAudioFeedback(
+                    worldSimulation,
+                    context.Audio,
+                    RegisterTone(context.AudioClips, "mingzhong.bell", 330f, 0.22f),
+                    RegisterTone(context.AudioClips, "mingzhong.rain", 620f, 0.16f),
+                    RegisterTone(context.AudioClips, "mingzhong.gate", 120f, 0.28f),
+                    RegisterTone(context.AudioClips, "mingzhong.funeral", 220f, 0.34f)));
             });
 
         if (replay is { Mode: ReplaySessionMode.Recording })
@@ -121,5 +139,27 @@ internal static class Program
         if (index == args.Length - 1 || string.IsNullOrWhiteSpace(args[index + 1]))
             throw new ArgumentException($"{option} requires a file path.");
         return args[index + 1];
+    }
+
+    private static AudioClipRef RegisterTone(
+        AudioLibrary library,
+        string name,
+        float frequency,
+        float durationSeconds)
+    {
+        const int sampleRate = 22_050;
+        int sampleCount = (int)(sampleRate * durationSeconds);
+        var pcm = new byte[sampleCount * sizeof(short)];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float envelope = 1f - i / (float)sampleCount;
+            short sample = (short)(MathF.Sin(MathF.Tau * frequency * i / sampleRate) * envelope * 8_000f);
+            pcm[i * 2] = (byte)sample;
+            pcm[i * 2 + 1] = (byte)(sample >> 8);
+        }
+        return library.RegisterDecoded(
+            name,
+            $"memory://{name}.pcm",
+            new DecodedAudioClip(pcm, AudioSampleFormat.Signed16, 1, sampleRate));
     }
 }

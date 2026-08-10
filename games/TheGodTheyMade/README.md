@@ -1,6 +1,6 @@
 # 《神意难测 / The God They Made》
 
-> 状态：Gate 3 神兽学习已完成，正在进入 Gate 4 完整《鸣钟谷》；尚未进入正式内容制作。
+> 状态：Gate 4 工程切片已完成，等待 5 人外部盲测后正式关闭；尚未进入扩产或正式内容制作。
 
 《神意难测》是一款俯视角 2D 上帝游戏：玩家扮演一位无法直接说话的小神，通过有限的神迹影响村落；村民会观察事件、推断因果并形成可能正确、也可能荒诞的信仰；一只守护神兽则会从玩家和村民的行为中学习。
 
@@ -10,7 +10,7 @@
 
 这张概念稿用于确定俯视角游戏尺度、钟塔与农田的空间关系、局部神迹范围、村民观察、猿形神兽和克制 HUD 的画面方向。它不是引擎截图或正式美术资产；图中的四个神迹按钮属于未来视觉探索，首个可玩原型仍只实现局部降雨。
 
-当前目录已经建立无窗口 Simulation、可运行 Game 与 Simulation Tests 三个项目，并进入首个 10 分钟验证的工程阶段。当前画面仍使用单色占位资源，不代表正式美术、完整神迹、信仰或神兽学习已经实现。
+当前目录包含无窗口 Simulation、可运行 Game 与 Simulation Tests 三个项目。前三个系统 Gate 和 30 分钟章节的工程切片已经贯通；当前画面仍以单色灰盒为主，不代表正式美术或完整产品内容。
 
 ## 当前可运行能力
 
@@ -25,8 +25,10 @@
 - 12 名村民按 600 秒日程执行工作、集会和归家，并按脚底 Y 排序。
 - 猿形神兽使用七种按优先级分类的态势、六个候选动作和身体/Affordance 硬过滤；表格型整数 Q 学习支持示范、Q/E 嘉许与制止、环境奖励、失败冷却和固定种子受控探索。
 - 神兽最近 16 次选择/价值更新组成可解释梦境数据；Q 表、冷却、信赖、随机状态和解释环均可 Capture/Restore，恢复后的下一次选择严格一致。
+- 30 分钟 `MingzhongIslandScenario` 已组合水闸搬运、湿遗迹、钟与葬礼三个谜题；无操作路线会由村民清障并进入明确结局，不存在技术性 Game Over。
+- 章节结束按真实信仰、清障者、遗迹和葬礼代价选择有限三联壁画；关键钟、雨、水闸与葬礼事件使用程序生成短音作为最低因果反馈。
 - `--smoke` 隐藏窗口入口，以及不依赖 GPU 的 Simulation 测试。
-- `--scripted-belief --record-replay <file>` 与 `--scripted-belief --replay <file>` 会通过真实 Replay Bundle 逐 Tick 复现固定信仰脚本、神兽示范/搬运/奖励和 Gameplay State Hash。
+- `--scripted-regression --record-replay <file>` 与 `--scripted-regression --replay <file>` 会通过真实 Replay Bundle 逐 Tick 复现固定信仰脚本、神兽示范/搬运/奖励和 Gameplay State Hash。
 
 ```powershell
 dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj
@@ -46,6 +48,7 @@ dotnet run --project games/TheGodTheyMade/tests/TheGodTheyMade.Simulation.Tests/
 - [首个 10 分钟可玩流程](docs/FIRST_PLAYABLE_SCRIPT.md)：逐事件脚本、玩家分支、防锁死路径与 Go/No-Go 指标。
 - [首版实际游戏画面概念稿](docs/concepts/exec-938ea1b8-2ca7-47e6-a623-c7a249eb9be3.webp)：俯视角村庄、钟塔、降雨神迹、神兽与 HUD 的视觉目标参考。
 - [MyGameEngine 集成计划](docs/ENGINE_INTEGRATION_PLAN.md)：可复用能力、游戏专属模块、引擎缺口和渐进实现顺序。
+- [Gate 4 外部盲测协议](docs/GATE4_PLAYTEST_PROTOCOL.md)：启动方式、观察记录、Replay 留档与正式关闭 Gate 的 5 人判据。
 
 ## 当前设计边界
 
@@ -57,4 +60,4 @@ dotnet run --project games/TheGodTheyMade/tests/TheGodTheyMade.Simulation.Tests/
 
 ## 当前未实现
 
-- 葬礼、湿遗迹、正式壁画、正式 UI、美术和音频。
+- 正式 UI、正式角色/环境美术、环境长音频和外部玩家盲测结果；当前只提供可验收的灰盒视觉与关键程序短音。

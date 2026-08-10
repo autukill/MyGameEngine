@@ -5,6 +5,7 @@ using TheGodTheyMade.Simulation.Village;
 using TheGodTheyMade.Simulation.World;
 using TheGodTheyMade.Simulation.Beliefs;
 using TheGodTheyMade.Simulation.Familiar;
+using TheGodTheyMade.Simulation.Scenario;
 
 internal static class Program
 {
@@ -55,6 +56,9 @@ internal static class Program
         Run("Familiar praise stop and explainable correction", FamiliarPraiseStopAndCorrection);
         Run("Familiar snapshot restores next decision", FamiliarSnapshotRestoresNextDecision);
         Run("Familiar training deterministic and allocation stable", FamiliarTrainingDeterministicAndStable);
+        Run("Island no-input route remains completable", IslandNoInputRouteCompletes);
+        Run("Wet ruin and funeral choice produce distinct mural", IslandChoicesProduceDistinctMural);
+        Run("Island chapter deterministic and stable after completion", IslandChapterDeterministicAndStable);
         Console.WriteLine($"TheGodTheyMade Simulation: {_passed} checks passed.");
     }
 
@@ -771,6 +775,98 @@ internal static class Program
         }
         throw new InvalidOperationException("Expected at least one legal familiar action.");
     }
+
+    private static void IslandNoInputRouteCompletes()
+    {
+        ScenarioResult result = SimulateIsland(ScenarioScript.NoInput);
+        Check(result.Scenario.IsComplete, "The island must complete after exactly thirty minutes.");
+        Check(result.Scenario.GateResolution == GateResolution.Villagers,
+            "Villagers must clear an unresolved gate through the authored recovery route.");
+        Check(result.Scenario.Ruin == RuinPuzzleState.Dry,
+            "No rain on the tablet should leave the optional old route undiscovered.");
+        Check(result.Scenario.Funeral == FuneralOutcome.LanternsPreserved,
+            "Waiting through the funeral should preserve the paper lanterns.");
+        Check(result.Scenario.Ending is IslandEnding.Endured or IslandEnding.Scarred,
+            "Non-intervention must produce a stated outcome, never a technical game over.");
+        Check(result.Scenario.Mural is { } mural && mural.Cost.Contains("灯", StringComparison.Ordinal),
+            "The final triptych must state the cost of the chosen route.");
+    }
+
+    private static void IslandChoicesProduceDistinctMural()
+    {
+        ScenarioResult careful = SimulateIsland(ScenarioScript.RecoverAndReveal);
+        ScenarioResult funeralRain = SimulateIsland(ScenarioScript.RainOnFuneral);
+        Check(careful.Scenario.Ruin == RuinPuzzleState.Decoded,
+            "Rain on the ruin should reveal and later decode the old canal grooves.");
+        Check(careful.Scenario.Ending == IslandEnding.Flourished,
+            "Recovered fields, an open gate and decoded ruin should support the flourishing ending.");
+        Check(careful.Scenario.Funeral == FuneralOutcome.LanternsPreserved,
+            "A restrained player should preserve the funeral lanterns.");
+        Check(funeralRain.Scenario.Funeral == FuneralOutcome.LanternsLostToRain,
+            "Rain covering the cemetery during the funeral must extinguish the lanterns.");
+        Check(funeralRain.World.Observations.ToArray().Any(o => o.Kind == ObservationKind.FireExtinguished),
+            "The funeral cost must be a visible causal event, not only an ending label.");
+        Check(careful.Scenario.Mural != funeralRain.Scenario.Mural,
+            "Different real histories must select different finite mural facts.");
+    }
+
+    private static void IslandChapterDeterministicAndStable()
+    {
+        ScenarioResult first = SimulateIsland(ScenarioScript.RecoverAndReveal);
+        ScenarioResult second = SimulateIsland(ScenarioScript.RecoverAndReveal);
+        Check(first.Hash == second.Hash && first.Scenario.Mural == second.Scenario.Mural,
+            "The complete thirty-minute chapter must reproduce its state and triptych.");
+        ulong beforeHash = first.Scenario.ComputeStateHash();
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+            first.Scenario.Advance(first.World, first.Beliefs, first.Familiar);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated == 0 && first.Scenario.ComputeStateHash() == beforeHash,
+            $"Completed chapter should be a 0 B stable terminal state, allocated {allocated} B.");
+    }
+
+    private static ScenarioResult SimulateIsland(ScenarioScript script)
+    {
+        var world = NewWorld();
+        var beliefs = new BeliefSimulation(MingzhongVillage.Roster);
+        var familiar = new FamiliarLearning(0xBEEFUL);
+        var scenario = new MingzhongIslandScenario();
+        for (int i = 0; i < MingzhongIslandScenario.ChapterDurationTicks; i++)
+        {
+            if (script != ScenarioScript.NoInput &&
+                world.Tick == 43L * MingzhongVillage.TicksPerSecond)
+                world.TryApply(MingzhongCommand.Rain(world.Tick, new GridCell(41, 24), 5));
+            if (script != ScenarioScript.NoInput &&
+                world.Tick == 12L * 60 * MingzhongVillage.TicksPerSecond)
+                world.TryApply(MingzhongCommand.Rain(world.Tick, MingzhongIslandScenario.RuinTablet, 4));
+            if (script == ScenarioScript.RainOnFuneral &&
+                world.Tick == 18L * 60 * MingzhongVillage.TicksPerSecond + 1)
+                world.TryApply(MingzhongCommand.Rain(world.Tick, MingzhongIslandScenario.FuneralGround, 4));
+            world.AdvanceTick();
+            beliefs.Update(world);
+            scenario.Advance(world, beliefs, familiar);
+        }
+        scenario.Advance(world, beliefs, familiar);
+        ulong hash = world.ComputeStateHash() ^
+                     RotateLeft(beliefs.ComputeStateHash(), 11) ^
+                     RotateLeft(familiar.ComputeStateHash(), 23) ^
+                     RotateLeft(scenario.ComputeStateHash(), 37);
+        return new ScenarioResult(world, beliefs, familiar, scenario, hash);
+    }
+
+    private enum ScenarioScript
+    {
+        NoInput,
+        RecoverAndReveal,
+        RainOnFuneral
+    }
+
+    private readonly record struct ScenarioResult(
+        MingzhongWorldSimulation World,
+        BeliefSimulation Beliefs,
+        FamiliarLearning Familiar,
+        MingzhongIslandScenario Scenario,
+        ulong Hash);
 
     private static void Run(string name, Action test)
     {
