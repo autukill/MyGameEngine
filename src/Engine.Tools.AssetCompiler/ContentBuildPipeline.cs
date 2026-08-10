@@ -12,7 +12,7 @@ using GameEngine.Features.ContentAssets.Infrastructure;
 /// </summary>
 public sealed class ContentBuildPipeline
 {
-    public const string CompilerVersion = "2";
+    public const string CompilerVersion = "3";
     public const string MetadataFileName = ".mygame-assets.json";
     private const string OwnerName = "MyGameEngine.AssetCompiler";
     private const int MetadataSchemaVersion = 1;
@@ -348,6 +348,7 @@ public sealed class ContentBuildPipeline
         var textureOwners = new Dictionary<string, GraphNode>(StringComparer.Ordinal);
         var spriteNames = new HashSet<string>(StringComparer.Ordinal);
         var animationNames = new HashSet<string>(StringComparer.Ordinal);
+        var audioNames = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var node in graph)
         {
@@ -379,6 +380,18 @@ public sealed class ContentBuildPipeline
                 if (!animationNames.Add(animation.Name))
                     throw new InvalidDataException(
                         $"Animation '{animation.Name}' appears in multiple packages.");
+            }
+            foreach (AudioAssetDefinition audio in node.Manifest.AudioClips)
+            {
+                if (!audioNames.Add(audio.Name))
+                    throw new InvalidDataException($"Audio clip '{audio.Name}' appears in multiple packages.");
+                string path = ResolveUnderRoot(node.PackageDirectory, audio.Path, "Audio clip");
+                if (!File.Exists(path))
+                    throw new FileNotFoundException($"Audio asset '{audio.Path}' does not exist.", path);
+                string relativeDirectory = Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
+                string outputPath = NormalizeRelativePath(Path.Combine(relativeDirectory, audio.Path));
+                if (StringComparer.OrdinalIgnoreCase.Equals(outputPath, MetadataFileName))
+                    throw new InvalidDataException($"Audio clip '{audio.Name}' uses reserved build metadata path.");
             }
         }
 
@@ -468,6 +481,16 @@ public sealed class ContentBuildPipeline
                 AppendFile(hash, source);
             }
 
+            foreach (AudioAssetDefinition audio in node.Manifest.AudioClips
+                         .OrderBy(item => item.Name, StringComparer.Ordinal))
+            {
+                string source = ResolveUnderRoot(node.PackageDirectory, audio.Path, "Audio clip");
+                string relative = NormalizeRelativePath(Path.GetRelativePath(packagesRoot, source));
+                AppendString(hash, audio.Name);
+                AppendString(hash, relative);
+                AppendFile(hash, source);
+            }
+
             foreach (var dependency in node.Dependencies)
             {
                 AppendString(hash, dependency.Manifest.Id);
@@ -511,6 +534,12 @@ public sealed class ContentBuildPipeline
         {
             string source = ResolveUnderRoot(node.PackageDirectory, texture.Path, "Texture");
             string target = ResolveOutputPath(staging, Path.Combine(relativeDirectory, texture.Path));
+            CopyFileExclusive(source, target);
+        }
+        foreach (AudioAssetDefinition audio in node.Manifest.AudioClips)
+        {
+            string source = ResolveUnderRoot(node.PackageDirectory, audio.Path, "Audio clip");
+            string target = ResolveOutputPath(staging, Path.Combine(relativeDirectory, audio.Path));
             CopyFileExclusive(source, target);
         }
     }

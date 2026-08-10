@@ -5,6 +5,7 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Animation;
+using GameEngine.Features.Audio;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
@@ -19,6 +20,7 @@ internal static class Program
         Console.WriteLine("=== Content Assets Feature Smoke Test ===\n");
         VerifyManifestParsing();
         VerifyMultiImageIntegration();
+        VerifyAudioPackageIntegration();
         VerifySharedDependencyLifetime();
         VerifyGraphValidationAndRollback();
         VerifyCompiledRevisionReload();
@@ -73,7 +75,10 @@ internal static class Program
                 "name": "player.run", "sprite": "grid", "frames": [0, 1, 2, 1],
                 "framesPerSecond": 12, "loop": "pingPong",
                 "markers": [{ "frame": 1, "event": "player.footstep" }]
-              }]
+              }],
+              "audioClips": [
+                { "name": "player.shot", "path": "shot.wav", "streaming": false }
+              ]
             }
             """;
 
@@ -95,6 +100,9 @@ internal static class Program
               manifest.Animations[0].LoopMode == AnimationLoopMode.PingPong &&
               manifest.Animations[0].Markers[0].Event == "player.footstep",
             "Animation Sprite binding, frame list, loop mode and markers parse");
+        Check(manifest.AudioClips.Count == 1 &&
+              manifest.AudioClips[0] == new AudioAssetDefinition("player.shot", "shot.wav", false),
+            "Short audio clip declarations parse without playback state");
 
         CheckThrows<InvalidDataException>(() => Parse(json.Replace(
             "\"schemaVersion\": 1", "\"schemaVersion\": 2")),
@@ -133,6 +141,47 @@ internal static class Program
             }] }
             """),
             "Animations reject empty frame lists");
+    }
+
+    private static void VerifyAudioPackageIntegration()
+    {
+        Console.WriteLine("3. Real WAV content package integration");
+        string root = Directory.CreateTempSubdirectory("mygame-content-audio-").FullName;
+        try
+        {
+            File.WriteAllBytes(Path.Combine(root, "shot.wav"), CreatePcm16Wave(1, 48_000, 480));
+            File.WriteAllText(Path.Combine(root, "assets.json"), """
+                {
+                  "schemaVersion": 1,
+                  "id": "audio.assets",
+                  "dependencies": [],
+                  "audioClips": [
+                    { "name": "player.shot", "path": "shot.wav", "streaming": false }
+                  ]
+                }
+                """);
+
+            var backend = new FakeTextureBackend();
+            using var textures = new TextureLibrary(backend);
+            var sprites = new SpriteLibrary(textures);
+            var animations = new AnimationLibrary();
+            var audio = new AudioLibrary();
+            using var manager = new ContentPackageManager(textures, sprites, animations, audio, root);
+            using (LoadedContentPackage package = manager.Load("assets.json"))
+            {
+                AudioClipRef clip = package.GetAudioClip("player.shot");
+                AudioClipDescriptor descriptor = audio.Get(clip);
+                Check(descriptor.Decoded is { FrameCount: 480 } &&
+                      descriptor.Metadata.Duration == TimeSpan.FromMilliseconds(10),
+                    "Package WAV is synchronously decoded into a logical short clip");
+            }
+            Check(audio.Count == 0,
+                "Final package lease removes its decoded Audio clip");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static void VerifyMultiImageIntegration()
@@ -465,6 +514,31 @@ internal static class Program
         using var data = image.Encode(SKEncodedImageFormat.Webp, 100)
             ?? throw new InvalidOperationException("Could not encode WebP fixture.");
         return data.ToArray();
+    }
+
+    private static byte[] CreatePcm16Wave(short channels, int sampleRate, int frames)
+    {
+        int blockAlign = channels * sizeof(short);
+        int dataLength = frames * blockAlign;
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write("RIFF"u8);
+            writer.Write(36 + dataLength);
+            writer.Write("WAVE"u8);
+            writer.Write("fmt "u8);
+            writer.Write(16);
+            writer.Write((short)1);
+            writer.Write(channels);
+            writer.Write(sampleRate);
+            writer.Write(sampleRate * blockAlign);
+            writer.Write((short)blockAlign);
+            writer.Write((short)16);
+            writer.Write("data"u8);
+            writer.Write(dataLength);
+            writer.Write(new byte[dataLength]);
+        }
+        return stream.ToArray();
     }
 
     private static bool Near(float left, float right) => MathF.Abs(left - right) < .0001f;

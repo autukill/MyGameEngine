@@ -141,6 +141,11 @@ public sealed partial class ContentPackageManager
         ValidateReloadTopology(snapshot, nodesById);
 
         GraphNode[] ordered = TopologicalOrder(root);
+        if (ordered.Any(node => node.Manifest.AudioClips.Count > 0))
+        {
+            throw new NotSupportedException(
+                "Audio clip hot reload is not part of the short-SFX slice. Reload the application to replace audio assets.");
+        }
         var decoder = new SkiaImageDecoder();
         var textures = new List<TextureReplacementSource>();
         var textureMetadata = new Dictionary<string, TextureMetadata>(StringComparer.Ordinal);

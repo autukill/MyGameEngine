@@ -21,6 +21,7 @@ public sealed class GameApplicationBuilder
     private GameplayStateRecorder? _stateRecorder;
     private GameplayStateVerifier? _stateVerifier;
     private bool _closeOnReplayCompletion;
+    private AudioHostingOptions? _audio;
 
     internal GameApplicationBuilder(EngineWindowOptions windowOptions)
     {
@@ -34,6 +35,16 @@ public sealed class GameApplicationBuilder
             throw new InvalidOperationException("The default 2D renderer is already configured.");
         _renderer = new Default2DRendererOptions();
         configure?.Invoke(_renderer);
+        return this;
+    }
+
+    /// <summary>Enables logical audio playback and a real OpenAL device with silent fallback.</summary>
+    public GameApplicationBuilder UseAudio(AudioHostingOptions? options = null)
+    {
+        if (_audio is not null)
+            throw new InvalidOperationException("Audio is already configured.");
+        _audio = options ?? new AudioHostingOptions();
+        _audio.Validate();
         return this;
     }
 
@@ -295,7 +306,8 @@ public sealed class GameApplicationBuilder
             _inputPlayback,
             _stateRecorder,
             _stateVerifier,
-            _closeOnReplayCompletion);
+            _closeOnReplayCompletion,
+            _audio);
     }
 
     private void RequireInputReplayNotConfigured()
@@ -324,7 +336,8 @@ internal sealed record GameApplicationPlan(
     LogicalInputRecording? InputPlayback,
     GameplayStateRecorder? StateRecorder,
     GameplayStateVerifier? StateVerifier,
-    bool CloseOnReplayCompletion)
+    bool CloseOnReplayCompletion,
+    AudioHostingOptions? Audio)
 {
     public SceneRef InitialScene => InitialSceneActivation.Scene;
     public string SceneName => InitialScene.Name;

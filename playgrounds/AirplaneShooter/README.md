@@ -14,6 +14,7 @@
 - Target 持有三点 `GameplayHealth`；每颗子弹造成一点伤害，只在 `BecameDepleted` 时销毁目标并切换 Victory，避免重复死亡副作用。
 - Victory Scene 中按 `Enter` 返回 Main Scene。
 - Sprite 使用声明式 `assets.json` 和构建时生成的强类型 `GameAssets` 引用。
+- `.UseAudio()` 装配真实 OpenAL 后端；射击时播放程序生成的短激光 PCM，`--smoke` 强制使用 Silent backend，避免无窗口测试探测物理设备。
 
 在仓库根目录运行：
 

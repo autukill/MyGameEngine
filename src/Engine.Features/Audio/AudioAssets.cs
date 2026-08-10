@@ -31,14 +31,57 @@ public readonly record struct AudioClipMetadata(
     int SampleRate,
     bool Streaming = false);
 
+public enum AudioSampleFormat
+{
+    Unsigned8,
+    Signed16
+}
+
+/// <summary>Immutable interleaved PCM data owned by the logical AudioLibrary.</summary>
+public sealed class DecodedAudioClip
+{
+    public DecodedAudioClip(
+        byte[] pcmData,
+        AudioSampleFormat format,
+        int channels,
+        int sampleRate)
+    {
+        ArgumentNullException.ThrowIfNull(pcmData);
+        if (channels is < 1 or > 2)
+            throw new ArgumentOutOfRangeException(nameof(channels), "Static PCM clips support mono or stereo data.");
+        if (sampleRate is < 8_000 or > 384_000)
+            throw new ArgumentOutOfRangeException(nameof(sampleRate));
+        int bytesPerSample = format == AudioSampleFormat.Unsigned8 ? 1 : 2;
+        int blockAlign = checked(channels * bytesPerSample);
+        if (pcmData.Length == 0 || pcmData.Length % blockAlign != 0)
+            throw new ArgumentException("PCM data must contain complete interleaved sample frames.", nameof(pcmData));
+
+        PcmData = pcmData;
+        Format = format;
+        Channels = channels;
+        SampleRate = sampleRate;
+        FrameCount = pcmData.Length / blockAlign;
+        Duration = TimeSpan.FromSeconds((double)FrameCount / sampleRate);
+    }
+
+    public ReadOnlyMemory<byte> PcmData { get; }
+    public AudioSampleFormat Format { get; }
+    public int Channels { get; }
+    public int SampleRate { get; }
+    public int FrameCount { get; }
+    public TimeSpan Duration { get; }
+}
+
 public readonly record struct AudioClipDescriptor(
     AudioClipRef Clip,
     AudioSourceRef Source,
-    AudioClipMetadata Metadata);
+    AudioClipMetadata Metadata,
+    DecodedAudioClip? Decoded = null);
 
 public sealed class AudioLibrary
 {
     private readonly Dictionary<AudioClipRef, AudioClipDescriptor> _clips = [];
+    internal event Action<AudioClipDescriptor>? ClipRemoved;
 
     public int Count => _clips.Count;
 
@@ -56,6 +99,28 @@ public sealed class AudioLibrary
         return clip;
     }
 
+    public AudioClipRef RegisterDecoded(string name, string source, DecodedAudioClip decoded)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(source);
+        ArgumentNullException.ThrowIfNull(decoded);
+
+        var clip = new AudioClipRef(name);
+        var metadata = new AudioClipMetadata(
+            decoded.Duration,
+            decoded.Channels,
+            decoded.SampleRate,
+            Streaming: false);
+        var descriptor = new AudioClipDescriptor(
+            clip,
+            new AudioSourceRef(source),
+            metadata,
+            decoded);
+        if (!_clips.TryAdd(clip, descriptor))
+            throw new ArgumentException($"Audio clip '{name}' is already registered.", nameof(name));
+        return clip;
+    }
+
     public AudioClipDescriptor Get(AudioClipRef clip)
     {
         if (clip.IsEmpty)
@@ -68,6 +133,14 @@ public sealed class AudioLibrary
 
     public bool TryGet(AudioClipRef clip, out AudioClipDescriptor descriptor) =>
         _clips.TryGetValue(clip, out descriptor);
+
+    public bool Remove(AudioClipRef clip)
+    {
+        if (clip.IsEmpty || !_clips.Remove(clip, out AudioClipDescriptor descriptor))
+            return false;
+        ClipRemoved?.Invoke(descriptor);
+        return true;
+    }
 
     private static void ValidateMetadata(in AudioClipMetadata metadata)
     {

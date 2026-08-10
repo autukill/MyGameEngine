@@ -5,6 +5,8 @@
     <Project Path="src/Engine.Features/Animation/Animation.csproj" />
   </Folder>
   <Folder Name="/Engine.Features/Audio/">
+    <Project Path="src/Engine.Features/Audio.OpenAL.Tests/Audio.OpenAL.Tests.csproj" />
+    <Project Path="src/Engine.Features/Audio.OpenAL/Audio.OpenAL.csproj" />
     <Project Path="src/Engine.Features/Audio.Tests/Audio.Tests.csproj" />
     <Project Path="src/Engine.Features/Audio/Audio.csproj" />
   </Folder>

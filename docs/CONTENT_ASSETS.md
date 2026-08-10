@@ -1,6 +1,6 @@
 # Content Assets 使用指南
 
-`Engine.Features.ContentAssets` 使用单一、版本化的 `assets.json` 声明 Texture、Sprite、Animation 和包依赖。它负责把图片同步加载到 GPU，把 Texture 装配为逻辑 Sprite，再把 Sprite 装配为命名 Animation Clip。
+`Engine.Features.ContentAssets` 使用单一、版本化的 `assets.json` 声明 Texture、Sprite、Animation、Audio Clip 和包依赖。它负责把图片同步加载到 GPU，把 Texture 装配为逻辑 Sprite，把 Sprite 装配为命名 Animation Clip，并把短 WAV 解码为逻辑 Audio Clip。
 
 当前清单版本为 `schemaVersion: 1`。
 
@@ -22,13 +22,15 @@ Assets/
 using var textures = new TextureLibrary(gl);
 var sprites = new SpriteLibrary(textures);
 var animations = new AnimationLibrary();
-using var packages = new ContentPackageManager(textures, sprites, animations, assetsRoot);
+var audio = new AudioLibrary();
+using var packages = new ContentPackageManager(textures, sprites, animations, audio, assetsRoot);
 using var gameAssets = packages.Load("assets.json");
 
 SpriteRef idle = gameAssets.GetSprite("player.idle");
 SpriteRef attack = gameAssets.GetSprite("player.attack");
 TextureRef white = gameAssets.GetTexture("common.white");
 AnimationClipRef run = gameAssets.GetAnimation("player.run");
+AudioClipRef shot = gameAssets.GetAudioClip("player.shot");
 ```
 
 将同一个 `SpriteLibrary` 注入绘制和场景：
@@ -59,7 +61,8 @@ var player = scene.Add(new PlayerInstance
   "dependencies": [],
   "textures": [],
   "sprites": [],
-  "animations": []
+  "animations": [],
+  "audioClips": []
 }
 ```
 
@@ -69,8 +72,9 @@ var player = scene.Add(new PlayerInstance
 - `textures`：本包拥有的 Texture 定义，可为空。
 - `sprites`：本包拥有的 Sprite 定义，可为空。
 - `animations`：本包拥有的 Animation Clip 定义，可为空。
+- `audioClips`：本包拥有的预加载短 WAV 定义，可为空。
 - `atlas`：可选的离线构建配置；运行时加载源包时不会自动执行打包。
-- 一个包至少需要声明一个 Texture、Sprite 或 Animation。
+- 一个包至少需要声明一个 Texture、Sprite、Animation 或 Audio Clip。
 - 未知 JSON 字段会被拒绝，以便尽早发现拼写错误。
 
 资源名称采用区分大小写的全局名称。建议使用包前缀，例如 `player.idle`、`boss.attack.0`。
@@ -90,6 +94,23 @@ var player = scene.Add(new PlayerInstance
 - 像素风可使用 `pixelArt`、`pixel-art` 或 `nearest`。
 - 当前默认解码器支持 PNG 和静态 WebP。
 - 图片路径相对当前清单所在目录解析，不能使用绝对路径，也不能通过 `..` 离开该目录。
+
+## Audio Clip 定义
+
+```json
+{
+  "name": "player.shot",
+  "path": "audio/player-shot.wav",
+  "streaming": false
+}
+```
+
+- `name`、`path` 必填，名称与其他包中的 Audio Clip 全局区分大小写且不能冲突。
+- 当前只支持预加载的 PCM8/PCM16、Mono/Stereo WAV；`streaming: true` 会被明确拒绝。
+- Audio 路径与图片一样相对所属包目录解析，不能逃逸安全根。
+- `LoadedContentPackage.GetAudioClip` 返回不含设备句柄的 `AudioClipRef`；播放由 Hosting 的 `AudioRuntime` 完成。
+- 构建管线会复制音频文件、纳入增量指纹并生成 `GameAssets.AudioClips` 强类型引用。
+- 当前 Content Hot Reload 不替换 Audio Clip；修改音频文件后需要重启应用。
 
 ## 单图片 Sprite
 

@@ -6,6 +6,7 @@ using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.TransformHierarchy.Domain;
 using GameEngine.Features.TransformHierarchy.Gameplay;
+using GameEngine.Features.Audio;
 
 public sealed class PlayerPlane : GameInstance
 {
@@ -31,10 +32,14 @@ public sealed class PlayerPlane : GameInstance
     private readonly float _worldHeight;
     private readonly GameplayCooldown _fireCooldown = new(FireInterval);
     private readonly PlaneRig _rig;
+    private readonly AudioRuntime _audio;
+    private readonly AudioClipRef _laser;
 
     public PlayerPlane(
         SpriteRef sprite,
         SceneTransformRuntime transforms,
+        AudioRuntime audio,
+        AudioClipRef laser,
         Vector2D position,
         float worldWidth,
         float worldHeight)
@@ -44,6 +49,8 @@ public sealed class PlayerPlane : GameInstance
         Collider = CollisionShape2D.Box(52f, 64f);
         _worldWidth = worldWidth;
         _worldHeight = worldHeight;
+        _audio = audio;
+        _laser = laser;
         _rig = s_transformPrefab.Instantiate(this, transforms).Parts;
     }
 
@@ -64,6 +71,7 @@ public sealed class PlayerPlane : GameInstance
         {
             Vector2 muzzle = _rig.Muzzle.WorldPosition;
             Spawn(BulletPrefab, new Vector2D(muzzle.X, muzzle.Y));
+            _audio.Play(_laser, AudioPlayOptions.Sfx);
         }
     }
 

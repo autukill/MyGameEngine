@@ -2,7 +2,7 @@
 
 更新日期：2026-08-10
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 59 个 .NET 项目、仓库共 60 个项目与 306 个 C# 文件；17 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 61 个 .NET 项目、仓库共 62 个项目与 319 个 C# 文件；18 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -28,7 +28,7 @@
 - `StencilMaskGroupRef` 支持多 owner 共享组；`RequestStencilMasks` 允许单 owner 批量提交几何，同时保持一套 Pass/RenderTarget。
 - `GameApplicationBuilder`、默认 2D 渲染预设与强类型 `Default2DGameContext` 已统一接管窗口事件、内容、Scene 帧循环、resize 和逆序资源清理。
 - Runner 已迁移到 Hosting API，不再手工持有 Shader、Batch、Library、RenderTarget、Pipeline 或窗口回调。
-- 22 个无窗口冒烟/集成项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、Shader/Material 清单、编译产物、动态 owner、Hosting、Bloom/Tone Mapping/Presentation 设置、池所有权、CLI 诊断、外部分发以及 Animation/Audio/Text/Transform 基础。
+- 23 个无窗口冒烟/集成项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、Shader/Material 清单、编译产物、动态 owner、Hosting、Bloom/Tone Mapping/Presentation 设置、池所有权、CLI 诊断、外部分发以及 Animation/Audio/Text/Transform 基础。
 - `Engine.Testing.Visual` 提供隐藏固定步长窗口、RGBA8 framebuffer 捕获、PNG 编解码和像素容差比较。
 - 自动 GPU 回归覆盖 Sprite、Shader Program 成功/失败替换、真实圆形/Sprite Alpha Stencil、动态 resize、Bloom、双 Bloom Surface 串联，以及 HDR、LDR GUI、ACES/Reinhard、曝光、resize 和释放，共 17 个 checkpoint。
 - AssetCompiler 可打包为 `gameengine-assets` .NET Tool；ContentPipeline NuGet 包通过 `buildTransitive` 为外部项目提供内置编译器、增量 Build 与 Publish 接入。
@@ -79,7 +79,7 @@
 - `SpawnSequenceBuilder/SpawnSequencePlayer` 提供 Delay、有限 Wave、Once/Loop、并发门控、状态快照和大步长确定性推进；Asteroids 生成器已迁移并保持随机 Prefab 参数由游戏掌握。
 - Animation 已贯通 `assets.json`、依赖闭包验证、强类型 Clip/Event 引用、Hosting Catalog、GameInstance Behavior、状态快照和原子 Content Hot Reload；Once/Loop/PingPong、正反向播放和帧事件热身后 Update 为 0 B。
 - TextRendering 已贯通真实 Skia TTF/OTF、逻辑 Font/Fallback、Unicode Rune + Grapheme 单行 Layout、TextureLibrary 局部 RGBA 上传、确定性动态 Glyph Atlas、Hosting `TextRuntime` 与 World/SceneGui DrawText；真实字体、Fake GPU 与隐藏 OpenGL smoke 均有覆盖。
-- 独立 Audio 基础提供逻辑 Clip/Bus、代际 Voice、确定性 Priority 抢占、即时 Bus Mix、可替换 Backend 和幂等资源所有权。
+- Audio 短音效黄金路径提供声明式 PCM WAV、OpenAL Soft/Silent 后端、Hosting、逻辑 Clip/Bus、代际 Voice、确定性 Priority 抢占、Buffer 共享释放和运行时诊断。
 - 独立 TransformHierarchy 阶段 0 提供 generation Handle、Local/World 矩阵、KeepLocal/KeepWorld、循环/Shear/不可逆拒绝、2048 深树迭代传播和 0 B 稳态。
 - HTML/CSS/Yoga GUI Compatibility Spike 已比较 Yoga、RmlUi、FairyGUI 与浏览器内核，并固定 NativeAOT、中文、输入、渲染和维护成本的 Go/No-Go 条件。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
@@ -103,18 +103,18 @@
 - Hosting v1 仅支持单窗口；已有声明式及强类型参数 Scene 切换和无 UI 暂停策略，但尚无 Scene 栈或后台加载。
 - 多 Render View 可选择不同 Scene Layer 与 HDR/Bloom/Tone Mapping Profile；Layer 索引与 Camera 粗剔除已减少每 View 工作量，但仍独立检查、排序与重绘可见实例，Stencil 暂只属于主 View。
 - 2D Lighting 当前只有规划，没有运行时代码。路线明确先解决颜色空间，再渐进实现每 View Point Light、几何硬阴影、投射阴影和 Normal/Emission 材质；当前不能把 Spotlight Stencil 或现有 ShaderMaterial 描述成完整光照系统。
-- Text 当前仍是单行 LTR 基础布局，尚无 HarfBuzz shaping、多行中文换行/对齐、动态 Layout Buffer、Font Content/Hot Reload、RichText、IME 或控件树。FairyGUI MonoGame Runtime 仍不能直接视为 Silk.NET/OpenGL 后端；Yoga/RmlUi/FairyGUI 只完成第一轮兼容性决策。
-- GameInstance 当前 Transform 仍是根实例世界空间值；独立 TransformHierarchy 数学核心尚未接入 Scene、纯挂点、Draw/Collider、嵌套 Prefab 或 Replay State。
-- Audio 只有 Backend-neutral 逻辑运行时，尚无真实 Decoder、设备 Backend、Streaming、Hosting 或 GameSdk 集成，不能从扬声器播放声音。
+- Text 已支持中文/单词多行、对齐、Ellipsis 与动态 Layout Buffer；仍无 HarfBuzz shaping、Font Content/Hot Reload、RichText、IME 或控件树。FairyGUI MonoGame Runtime 仍不能直接视为 Silk.NET/OpenGL 后端；Yoga/RmlUi/FairyGUI 只完成第一轮兼容性决策。
+- TransformHierarchy 已接入 Scene/GameInstance、纯挂点与强类型 Transform Prefab；仍不接管扁平实例生命周期、Layer/Depth、Collider 索引或 UI 布局。
+- Audio 已能真实播放预加载 PCM WAV；尚无 Streaming Music、OGG/Opus、异步解码、Audio Hot Reload、设备切换或 DSP。
 - Animation 尚无过渡状态图、交叉淡化、Blend Tree、骨骼动画、Root Motion 或 Timeline Editor；当前一个 Clip 绑定一个可跨多纹理/Atlas 页的 Sprite。
 
-## 下一里程碑：Transform Scene / Prefab 接入
+## 下一里程碑：Tilemap / World Authoring
 
-1. 将 TransformHierarchy 接入 Scene 安全帧边界、GameInstance Local/World 与强类型挂点，保持扁平 Step/Layer/Collision 索引。
-2. Text 后续补多行中文换行、对齐与可复用动态 Layout Buffer；HarfBuzz shaping 单独验证。
-3. 选择跨平台 NativeAOT Audio Backend，完成短 SFX、Streaming Music、设备关闭和无声 CI Fake Backend。
-4. 再以真实游戏需求决定 Tilemap/World Authoring 与 Lighting 0/1 的切入顺序。
-5. 完成上述真实适配后，再决定 Yoga C ABI 或 RmlUi Render Spike；不并行产品化两套完整 GUI Runtime。
+1. 建立逻辑 TileSet/TileLayer/TileMap、Chunk 存储和相机可见 Chunk 查询，不先引入编辑器 UI。
+2. 用声明式 Content 与强类型引用加载 TileSet，复用现有 Texture/Sprite/Atlas 生命周期。
+3. 提供批量渲染、静态碰撞烘焙和无窗口查询测试，并用 Playground 验证关卡创作路径。
+4. Audio 后续单独实现 Streaming Music 与 OGG/Opus；HarfBuzz shaping 保持独立 Spike。
+5. World 边界稳定后，再进入 Lighting 颜色空间与无阴影 Point Light 阶段。
 
 ## 已知限制
 

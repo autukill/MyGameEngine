@@ -52,3 +52,12 @@ public readonly record struct AudioVoiceSnapshot(
     bool Loop,
     int Priority,
     long StartSequence);
+
+public readonly record struct AudioRuntimeDiagnostics(
+    int ActiveVoices,
+    int Capacity,
+    long PlayRequests,
+    long StartedVoices,
+    long RejectedVoices,
+    long StolenVoices,
+    long BackendStops);

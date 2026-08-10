@@ -8,6 +8,7 @@ using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Hosting;
+using GameEngine.Features.Audio;
 
 internal static class Program
 {
@@ -38,6 +39,7 @@ internal static class Program
                     InputKey.Down)
                 .BindAction(GameInputs.Fire, InputKey.Space)
                 .BindAction(GameInputs.Restart, InputKey.Enter))
+            .UseAudio(new AudioHostingOptions(ForceSilentBackend: smoke))
             .UseDefault2DRenderer(renderer => renderer
                 .UseContent(GameAssets.Packages.Root))
             .ConfigureInstances(instances => instances.Register(
@@ -47,11 +49,14 @@ internal static class Program
                     spawn.Position)))
             .AddScene(GameScenes.Main, context =>
             {
+                AudioClipRef laser = EnsureLaserClip(context.AudioClips);
                 context.Scene.Background = BackgroundConfig.FromColor(
                     new Vector4(0.015f, 0.025f, 0.075f, 1f));
                 context.Scene.Add(new PlayerPlane(
                     GameAssets.Sprites.PlayerPlane,
                     context.Transforms,
+                    context.Audio,
+                    laser,
                     new Vector2D(
                         context.Window.Width * 0.5f,
                         context.Window.Height - 90f),
@@ -78,6 +83,30 @@ internal static class Program
             .Build();
 
         game.Run();
+    }
+
+    private static AudioClipRef EnsureLaserClip(AudioLibrary library)
+    {
+        var clip = new AudioClipRef("airplane.laser");
+        if (library.TryGet(clip, out _)) return clip;
+
+        const int sampleRate = 48_000;
+        const double durationSeconds = 0.07;
+        int frames = (int)(sampleRate * durationSeconds);
+        var pcm = new byte[frames * sizeof(short)];
+        for (int i = 0; i < frames; i++)
+        {
+            double t = (double)i / sampleRate;
+            double frequency = 1_250d - 750d * (i / (double)frames);
+            double envelope = 1d - i / (double)frames;
+            short sample = (short)(Math.Sin(2d * Math.PI * frequency * t) * envelope * 12_000d);
+            pcm[i * 2] = (byte)sample;
+            pcm[i * 2 + 1] = (byte)(sample >> 8);
+        }
+        return library.RegisterDecoded(
+            clip.Name,
+            "procedural://airplane-laser",
+            new DecodedAudioClip(pcm, AudioSampleFormat.Signed16, 1, sampleRate));
     }
 
     private sealed class SmokeJourney : GameInstance

@@ -98,6 +98,7 @@ internal static class Program
             Console.WriteLine($"Textures: {result.TextureCount}");
             Console.WriteLine($"Sprites: {result.SpriteCount}");
             Console.WriteLine($"Animations: {result.AnimationCount}");
+            Console.WriteLine($"Audio clips: {result.AudioClipCount}");
             Console.WriteLine($"Animation events: {result.AnimationEventCount}");
             return 0;
         }

@@ -5,6 +5,7 @@ using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.Animation;
+using GameEngine.Features.Audio;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
@@ -29,6 +30,7 @@ public sealed partial class ContentPackageManager : IDisposable
         public required IReadOnlyList<TextureRef> Textures { get; set; }
         public required IReadOnlyList<SpriteRef> Sprites { get; set; }
         public required IReadOnlyList<AnimationClipRef> Animations { get; set; }
+        public required IReadOnlyList<AudioClipRef> AudioClips { get; set; }
         public required IReadOnlyList<PackageState> Dependencies { get; init; }
         public required long LoadOrder { get; init; }
         public int ReferenceCount { get; set; }
@@ -37,6 +39,7 @@ public sealed partial class ContentPackageManager : IDisposable
     private readonly TextureLibrary _textures;
     private readonly SpriteLibrary _sprites;
     private readonly AnimationLibrary _animations;
+    private readonly AudioLibrary _audio;
     private readonly string _packagesRoot;
     private readonly Dictionary<string, PackageState> _packagesById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PackageState> _packagesByPath = new(PathComparer);
@@ -47,7 +50,7 @@ public sealed partial class ContentPackageManager : IDisposable
         TextureLibrary textureLibrary,
         SpriteLibrary spriteLibrary,
         string packagesRoot)
-        : this(textureLibrary, spriteLibrary, new AnimationLibrary(), packagesRoot)
+        : this(textureLibrary, spriteLibrary, new AnimationLibrary(), new AudioLibrary(), packagesRoot)
     {
     }
 
@@ -56,10 +59,21 @@ public sealed partial class ContentPackageManager : IDisposable
         SpriteLibrary spriteLibrary,
         AnimationLibrary animationLibrary,
         string packagesRoot)
+        : this(textureLibrary, spriteLibrary, animationLibrary, new AudioLibrary(), packagesRoot)
+    {
+    }
+
+    public ContentPackageManager(
+        TextureLibrary textureLibrary,
+        SpriteLibrary spriteLibrary,
+        AnimationLibrary animationLibrary,
+        AudioLibrary audioLibrary,
+        string packagesRoot)
     {
         _textures = textureLibrary ?? throw new ArgumentNullException(nameof(textureLibrary));
         _sprites = spriteLibrary ?? throw new ArgumentNullException(nameof(spriteLibrary));
         _animations = animationLibrary ?? throw new ArgumentNullException(nameof(animationLibrary));
+        _audio = audioLibrary ?? throw new ArgumentNullException(nameof(audioLibrary));
         ArgumentException.ThrowIfNullOrWhiteSpace(packagesRoot);
 
         _packagesRoot = Path.GetFullPath(packagesRoot);
@@ -70,6 +84,7 @@ public sealed partial class ContentPackageManager : IDisposable
     public int LoadedPackageCount => _packagesById.Count;
     public string PackagesRoot => _packagesRoot;
     public AnimationLibrary Animations => _animations;
+    public AudioLibrary Audio => _audio;
 
     public LoadedContentPackage Load(string rootRelativeManifestPath) =>
         LoadCore(rootRelativeManifestPath, expectedId: null);
@@ -138,6 +153,17 @@ public sealed partial class ContentPackageManager : IDisposable
                 $"Animation '{name}' is not visible from package '{packageId}'.");
     }
 
+    internal AudioClipRef GetAudioClip(string packageId, string name)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        PackageState state = GetLivePackage(packageId);
+        return TryFindAudioClip(state, name, out AudioClipRef clip)
+            ? clip
+            : throw new KeyNotFoundException(
+                $"Audio clip '{name}' is not visible from package '{packageId}'.");
+    }
+
     internal void Release(string packageId)
     {
         if (_disposed || !_packagesById.TryGetValue(packageId, out var state))
@@ -154,6 +180,8 @@ public sealed partial class ContentPackageManager : IDisposable
             .ToArray();
         foreach (var state in states)
         {
+            for (int i = state.AudioClips.Count - 1; i >= 0; i--)
+                _audio.Remove(state.AudioClips[i]);
             for (int i = state.Animations.Count - 1; i >= 0; i--)
                 _animations.Remove(state.Animations[i]);
             for (int i = state.Sprites.Count - 1; i >= 0; i--)
@@ -238,6 +266,7 @@ public sealed partial class ContentPackageManager : IDisposable
         var textureNames = new HashSet<string>(StringComparer.Ordinal);
         var spriteNames = new HashSet<string>(StringComparer.Ordinal);
         var animationNames = new HashSet<string>(StringComparer.Ordinal);
+        var audioNames = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var node in graph)
         {
@@ -277,6 +306,24 @@ public sealed partial class ContentPackageManager : IDisposable
                 {
                     throw new InvalidDataException(
                         $"Animation name '{definition.Name}' conflicts with an existing package or resource.");
+                }
+            }
+
+            foreach (AudioAssetDefinition definition in node.Manifest.AudioClips)
+            {
+                if (definition.Streaming)
+                    throw new InvalidDataException(
+                        $"Audio clip '{definition.Name}' requests streaming, which is not supported by the short-SFX slice.");
+                string path = ResolveUnderRoot(packageDirectory, definition.Path, "Audio clip");
+                if (!File.Exists(path))
+                    throw new FileNotFoundException($"Audio asset '{definition.Path}' does not exist.", path);
+                if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetExtension(path), ".wav"))
+                    throw new InvalidDataException($"Audio clip '{definition.Name}' must use a .wav asset in v1.");
+                if (!audioNames.Add(definition.Name) ||
+                    _audio.TryGet(new AudioClipRef(definition.Name), out _))
+                {
+                    throw new InvalidDataException(
+                        $"Audio clip name '{definition.Name}' conflicts with an existing package or resource.");
                 }
             }
         }
@@ -372,6 +419,7 @@ public sealed partial class ContentPackageManager : IDisposable
         var textures = new List<TextureRef>();
         var sprites = new List<SpriteRef>();
         var animations = new List<AnimationClipRef>();
+        var audioClips = new List<AudioClipRef>();
         try
         {
             foreach (var dependency in node.Dependencies)
@@ -393,6 +441,17 @@ public sealed partial class ContentPackageManager : IDisposable
             foreach (AnimationAssetDefinition definition in node.Manifest.Animations)
                 animations.Add(RegisterAnimation(definition, sprites, dependencies));
 
+            if (node.Manifest.AudioClips.Count > 0)
+            {
+                string packageDirectory = Path.GetDirectoryName(node.ManifestPath)!;
+                foreach (AudioAssetDefinition definition in node.Manifest.AudioClips)
+                {
+                    string path = ResolveUnderRoot(packageDirectory, definition.Path, "Audio clip");
+                    DecodedAudioClip decoded = WaveAudioDecoder.DecodeFile(path);
+                    audioClips.Add(_audio.RegisterDecoded(definition.Name, path, decoded));
+                }
+            }
+
             var state = new PackageState
             {
                 Id = node.Manifest.Id,
@@ -400,6 +459,7 @@ public sealed partial class ContentPackageManager : IDisposable
                 Textures = textures.ToArray(),
                 Sprites = sprites.ToArray(),
                 Animations = animations.ToArray(),
+                AudioClips = audioClips.ToArray(),
                 Dependencies = dependencies.ToArray(),
                 ReferenceCount = 1,
                 LoadOrder = ++_nextLoadOrder
@@ -411,6 +471,8 @@ public sealed partial class ContentPackageManager : IDisposable
         }
         catch
         {
+            for (int i = audioClips.Count - 1; i >= 0; i--)
+                _audio.Remove(audioClips[i]);
             for (int i = animations.Count - 1; i >= 0; i--)
                 _animations.Remove(animations[i]);
             for (int i = sprites.Count - 1; i >= 0; i--)
@@ -667,6 +729,28 @@ public sealed partial class ContentPackageManager : IDisposable
         return false;
     }
 
+    private static bool TryFindAudioClip(
+        PackageState state,
+        string name,
+        out AudioClipRef clip)
+    {
+        foreach (AudioClipRef candidate in state.AudioClips)
+        {
+            if (StringComparer.Ordinal.Equals(candidate.Name, name))
+            {
+                clip = candidate;
+                return true;
+            }
+        }
+        foreach (PackageState dependency in state.Dependencies)
+        {
+            if (TryFindAudioClip(dependency, name, out clip))
+                return true;
+        }
+        clip = default;
+        return false;
+    }
+
     private void Release(PackageState state)
     {
         if (state.ReferenceCount <= 0)
@@ -675,6 +759,8 @@ public sealed partial class ContentPackageManager : IDisposable
         if (state.ReferenceCount != 0)
             return;
 
+        for (int i = state.AudioClips.Count - 1; i >= 0; i--)
+            _audio.Remove(state.AudioClips[i]);
         for (int i = state.Animations.Count - 1; i >= 0; i--)
             _animations.Remove(state.Animations[i]);
         for (int i = state.Sprites.Count - 1; i >= 0; i--)

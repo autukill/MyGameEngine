@@ -10,15 +10,37 @@ internal static class Program
     {
         Console.WriteLine("=== Audio Feature Smoke Test ===\n");
         VerifyLibrary();
+        VerifyWaveDecoder();
         VerifyPlaybackAndBuses();
         VerifyVoiceStealing();
         VerifyLifecycle();
+        VerifySilentBackend();
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0
             ? "=== All Audio smoke tests passed ==="
             : $"=== {_failures} Audio test(s) FAILED ===");
         Environment.ExitCode = _failures == 0 ? 0 : 1;
+    }
+
+    private static void VerifyWaveDecoder()
+    {
+        Console.WriteLine("2. Real PCM WAV decoding");
+        byte[] wav = CreatePcm16Wave(channels: 2, sampleRate: 48_000, frames: 480);
+        using var stream = new MemoryStream(wav);
+        DecodedAudioClip decoded = WaveAudioDecoder.Decode(stream);
+        Check(decoded.Format == AudioSampleFormat.Signed16 &&
+              decoded.Channels == 2 && decoded.SampleRate == 48_000 &&
+              decoded.FrameCount == 480 && decoded.PcmData.Length == 1_920,
+            "PCM16 WAV metadata and interleaved frames decode deterministically");
+
+        var library = new AudioLibrary();
+        AudioClipRef clip = library.RegisterDecoded("decoded", "memory://decoded.wav", decoded);
+        Check(library.Get(clip).Decoded == decoded && library.Remove(clip) && !library.TryGet(clip, out _),
+            "Decoded payload lifetime follows AudioLibrary registration/removal");
+        CheckThrows<InvalidDataException>(
+            () => WaveAudioDecoder.Decode(new MemoryStream("not-wave"u8.ToArray())),
+            "Malformed WAV input is rejected");
     }
 
     private static void VerifyLibrary()
@@ -43,7 +65,7 @@ internal static class Program
 
     private static void VerifyPlaybackAndBuses()
     {
-        Console.WriteLine("2. Voice playback and bus mixing");
+        Console.WriteLine("3. Voice playback and bus mixing");
         AudioLibrary library = CreateLibrary(out AudioClipRef shot, out _);
         using var backend = new FakeAudioBackend();
         using var audio = new AudioRuntime(library, backend, maxVoices: 4);
@@ -70,7 +92,7 @@ internal static class Program
 
     private static void VerifyVoiceStealing()
     {
-        Console.WriteLine("3. Deterministic voice limits and stealing");
+        Console.WriteLine("4. Deterministic voice limits and stealing");
         AudioLibrary library = CreateLibrary(out AudioClipRef shot, out AudioClipRef music);
         using var backend = new FakeAudioBackend();
         using var audio = new AudioRuntime(library, backend, maxVoices: 2);
@@ -87,13 +109,18 @@ internal static class Program
         Check(!audio.TryPlay(shot, in tooLow, out AudioVoiceRef rejected) && rejected.IsEmpty,
             "A lower-priority request is rejected when every active voice is protected");
 
+        AudioRuntimeDiagnostics diagnostics = audio.CaptureDiagnostics();
+        Check(diagnostics.PlayRequests == 4 && diagnostics.StartedVoices == 3 &&
+              diagnostics.StolenVoices == 1 && diagnostics.RejectedVoices == 1,
+            "Voice start, steal and rejection diagnostics are value snapshots");
+
         Check(audio.Stop(replacement) && !audio.Stop(replacement),
             "Stop is safe for stale generation handles");
     }
 
     private static void VerifyLifecycle()
     {
-        Console.WriteLine("4. Runtime ownership and idempotent disposal");
+        Console.WriteLine("5. Runtime ownership and idempotent disposal");
         AudioLibrary library = CreateLibrary(out AudioClipRef shot, out _);
         var backend = new FakeAudioBackend();
         var audio = new AudioRuntime(library, backend, ownsBackend: true);
@@ -104,6 +131,48 @@ internal static class Program
         Check(backend.StopCount == 1 && backend.DisposeCount == 1,
             "Dispose stops live voices once and disposes an owned backend once");
         CheckThrows<ObjectDisposedException>(() => audio.Update(), "Disposed runtimes reject further use");
+    }
+
+    private static void VerifySilentBackend()
+    {
+        Console.WriteLine("6. Device-free silent fallback");
+        var library = new AudioLibrary();
+        AudioClipRef shortClip = library.Register(
+            "short",
+            "silent://short",
+            new AudioClipMetadata(TimeSpan.FromTicks(1), 1, 48_000));
+        using var backend = new SilentAudioBackend();
+        using var runtime = new AudioRuntime(library, backend);
+        AudioPlayOptions options = AudioPlayOptions.Sfx;
+        AudioVoiceRef voice = runtime.Play(shortClip, in options);
+        runtime.Update();
+        Check(!runtime.IsPlaying(voice) && runtime.ActiveVoiceCount == 0,
+            "Silent fallback completes one-shot voices without an audio device");
+    }
+
+    private static byte[] CreatePcm16Wave(short channels, int sampleRate, int frames)
+    {
+        int blockAlign = channels * sizeof(short);
+        int dataLength = frames * blockAlign;
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write("RIFF"u8);
+            writer.Write(36 + dataLength);
+            writer.Write("WAVE"u8);
+            writer.Write("fmt "u8);
+            writer.Write(16);
+            writer.Write((short)1);
+            writer.Write(channels);
+            writer.Write(sampleRate);
+            writer.Write(sampleRate * blockAlign);
+            writer.Write((short)blockAlign);
+            writer.Write((short)16);
+            writer.Write("data"u8);
+            writer.Write(dataLength);
+            writer.Write(new byte[dataLength]);
+        }
+        return stream.ToArray();
     }
 
     private static AudioLibrary CreateLibrary(out AudioClipRef shot, out AudioClipRef music)

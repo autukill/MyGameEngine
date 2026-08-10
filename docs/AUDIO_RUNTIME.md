@@ -1,28 +1,74 @@
-# Audio 基础垂直切片
+# Audio 短音效黄金路径
 
-`Engine.Features.Audio` 建立逻辑 Clip、Bus、代际 Voice、确定性 Voice 抢占与可替换 Backend 的边界。当前没有平台音频 Backend 或 OGG/WAV 解码器，因此它是可测试的运行时基础，不应描述成已经能从扬声器播放声音。
+Audio 已从纯逻辑运行时推进到可真实播放的短音效闭环：
 
-## Clip Library
+- `Engine.Features.Audio`：逻辑 Clip、Bus、代际 Voice、WAV 解码、抢占与诊断。
+- `Engine.Features.Audio.OpenAL`：Silk.NET OpenAL/OpenAL Soft 设备后端。
+- `ContentAssets`：声明式 WAV 加载、包依赖、引用计数与回滚。
+- `Engine.Hosting`：可选设备装配、每步回收和关闭顺序。
+
+## Hosting 快速开始
 
 ```csharp
-var clips = new AudioLibrary();
-
-AudioClipRef shot = clips.Register(
-    "player.shot",
-    "audio/player-shot.ogg",
-    new AudioClipMetadata(
-        Duration: TimeSpan.FromMilliseconds(150),
-        Channels: 1,
-        SampleRate: 48_000));
+using var game = GameApplication
+    .Create(options)
+    .UseAudio()
+    .UseDefault2DRenderer(renderer => renderer.UseContent(GameAssets.Packages.Root))
+    .ConfigureScene("main", context =>
+    {
+        AudioClipRef shot = context.GetAudioClip("player.shot");
+        context.Audio.Play(shot, AudioPlayOptions.Sfx);
+    })
+    .Build();
 ```
 
-`AudioSourceRef` 是逻辑来源，不是文件流、Native Buffer 或 GPU/Audio Handle。后续 ContentAssets/Audio Decoder 负责将它解析为 Backend 可播放资源。
+`.UseAudio()` 默认最多提供 32 个逻辑 Voice。OpenAL 设备不可用时默认回退到 `SilentAudioBackend`：游戏继续运行，循环、完成、停止和抢占语义仍然有效，但不产生声音。
 
-## Runtime 与 Voice
+需要在开发机严格发现设备问题时：
 
 ```csharp
-using var audio = new AudioRuntime(clips, backend, maxVoices: 32);
+.UseAudio(new AudioHostingOptions(
+    MaxVoices: 64,
+    FailureMode: AudioInitializationFailureMode.Throw))
+```
 
+无窗口 smoke 应显式使用 `ForceSilentBackend: true`，不探测物理设备。
+
+## 声明式短音效
+
+`assets.json` 可以声明静态 WAV：
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "game.audio",
+  "dependencies": [],
+  "audioClips": [
+    {
+      "name": "player.shot",
+      "path": "audio/player-shot.wav",
+      "streaming": false
+    }
+  ]
+}
+```
+
+构建管线会复制 WAV 并生成 `GameAssets.AudioClips.PlayerShot`。运行时在包装配阶段同步解码；路径不能逃逸包目录，重名、缺失文件、非 WAV、非法 PCM 和 `streaming: true` 都会在包可见前失败并回滚。
+
+当前 WAV 解码器支持：
+
+- RIFF/WAVE；
+- 未压缩整数 PCM；
+- PCM8 或 PCM16；
+- Mono 或 Stereo；
+- 8 kHz 到 384 kHz；
+- 完整帧对齐的静态数据。
+
+游戏音效优先使用 Mono，既便于 Pan，也减少解码内存。
+
+## Runtime、Bus 与 Voice
+
+```csharp
 AudioPlayOptions options = new(
     AudioBusRef.Sfx,
     Volume: 0.8f,
@@ -30,62 +76,35 @@ AudioPlayOptions options = new(
     Pitch: 1.0f,
     Priority: 5);
 
-AudioVoiceRef voice = audio.Play(shot, options);
-
-audio.SetVoiceVolume(voice, 0.5f);
-audio.Stop(voice);
+AudioVoiceRef voice = context.Audio.Play(GameAssets.AudioClips.PlayerShot, options);
+context.Audio.SetVoiceVolume(voice, 0.5f);
+context.Audio.Stop(voice);
 ```
 
-Voice 使用 Slot + Generation。停止、自然完成或抢占后，旧引用不能误操作复用 Slot 中的新声音。
+内置 Bus 为 `Master`、`Music`、`Sfx`。最终增益是 `Voice × Bus × Master`；Mute 和音量变化会立即应用到活动 Voice。
 
-Runtime 每帧调用 `Update()` 回收 Backend 已完成的非循环 Voice。
+Voice 使用 Slot + Generation。容量耗尽时先选择 Priority 不高于新请求的 Voice，再按最低 Priority、最早启动顺序抢占。没有合法候选时 `TryPlay` 返回 `false`，`Play` 抛出异常。
 
-## Bus
+`CaptureDiagnostics()` 返回值快照：活动数、容量、请求、启动、拒绝、抢占和后端 Stop 总数。Audio 不进入确定性 Gameplay State；需要影响玩法时，由游戏保存自己的命令或 Signal。
 
-内置稳定逻辑 Bus：
+## 资源与关闭顺序
 
-- `AudioBusRef.Master`
-- `AudioBusRef.Music`
-- `AudioBusRef.Sfx`
+OpenAL 为首次播放的已解码 Clip 创建并缓存 Buffer，同一短音效的并发 Voice 共享 Buffer。`AudioLibrary.Remove` 会通知后端：没有活动 Voice 时立即删除 Buffer；仍在播放时延迟到最后一个 Voice 结束。
 
-也可以在启动阶段 `RegisterBus`。最终音量为：
+Hosting 的顺序是：
 
-```text
-Voice Volume × Bus Volume × Master Volume
-```
+1. Content Package 删除逻辑 Clip；
+2. `AudioRuntime` 停止活动 Voice；
+3. OpenAL 删除 Source/Buffer、释放 Context 和 Device。
 
-Bus Mute 和 Volume 修改会立即重放到活动 Voice。第一版只有 Master + 单层 Bus，不提供任意 Bus DAG、Effect Send 或 Ducking。
-
-## Voice 上限与抢占
-
-容量耗尽时：
-
-1. 只考虑 Priority 小于或等于新请求的 Voice。
-2. 优先抢占最低 Priority。
-3. Priority 相同时抢占最早启动的 Voice。
-4. 如果所有 Voice 都受更高 Priority 保护，`TryPlay` 返回 `false`；`Play` 抛出明确异常。
-
-这允许 Music 使用较高 Priority，短促 SFX 在预算内确定性抢占。
-
-## Backend 所有权
-
-`IAudioBackend` 负责：
-
-- `Play`
-- `SetMix`
-- `IsPlaying`
-- `Stop`
-- `Dispose`
-
-Runtime 默认借用 Backend；`ownsBackend: true` 时幂等 Dispose 会先停止所有活动 Voice，再释放 Backend。Backend Handle 只存在于适配接口，不暴露给 Gameplay。
+`LoadedContentPackage.Dispose()`、Runtime 和 Backend Dispose 都是幂等的。
 
 ## 当前边界
 
-- 无真实 OpenAL/SDL/miniaudio Backend。
-- 无 WAV/OGG/MP3 解码和 Content Manifest。
-- 无 Streaming Ring Buffer；`Streaming` 目前只是 Metadata。
-- 无 Fade、Crossfade、3D Spatial Audio、HRTF、DSP Graph 或录音。
-- 尚未接入 Hosting、GameSdk、模板或性能诊断。
-- Audio 默认不进入确定性 Gameplay State；需要玩法影响时由游戏发布明确命令/Signal。
+- 本阶段只做预加载短音效，不做 Streaming Music。
+- 不支持 OGG/Opus/MP3/FLAC、异步解码或 Ring Buffer。
+- Audio Clip 暂不参与 Content Hot Reload；修改音频后需重启应用。
+- 不支持 Fade、Crossfade、Ducking、3D/HRTF、DSP Graph、录音或设备切换。
+- `SilentAudioBackend` 是确定的运行时回退，不把“没有声音”伪装成设备成功。
 
-下一切片应先选择跨平台、NativeAOT 可分发的 Backend，并用真实短 SFX 与 Streaming Music 验证设备丢失、关闭顺序和无声 CI Fake Backend。
+下一切片应实现流式音乐数据源与 OGG/Opus 解码，同时保留现有 `AudioClipRef`、Bus 和 Gameplay 调用方式。

@@ -64,6 +64,7 @@ internal static class Program
         var tone = new ToneMappingSettings(ToneMappingOperator.Aces, 0.5f, 2.2f);
         var package = new ContentPackageRef("game.assets", "game/assets.json");
         var plan = GameApplication.Create(new EngineWindowOptions(Title: "Hosting Test"))
+            .UseAudio(new AudioHostingOptions(MaxVoices: 48, ForceSilentBackend: true))
             .UseDefault2DRenderer(renderer => renderer
                 .UseContent(package)
                 .UseHdr(tone, bloom)
@@ -81,8 +82,9 @@ internal static class Program
               plan.Renderer.ToneMapping == tone &&
               plan.Renderer.StencilMaskingEnabled &&
               plan.Renderer.SceneGuiEnabled &&
+              plan.Audio is { MaxVoices: 48, ForceSilentBackend: true } &&
               plan.Renderer.ResolvedViewports.Single().Slot == ViewportSlotRef.Main,
-            "Builder freezes window, content, HDR, Bloom, Stencil, and Scene configuration");
+            "Builder freezes window, audio, content, HDR, Bloom, Stencil, and Scene configuration");
 
         var ldr = GameApplication.Create()
             .UseDefault2DRenderer(renderer => renderer.DisableSceneGui())

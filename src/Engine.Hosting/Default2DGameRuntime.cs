@@ -10,6 +10,8 @@ using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Bloom.Infrastructure;
 using GameEngine.Features.Animation;
+using GameEngine.Features.Audio;
+using GameEngine.Features.Audio.OpenAL;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
@@ -41,6 +43,8 @@ internal sealed class Default2DGameRuntime : IDisposable
     private TextRuntime _text = null!;
     private SpriteLibrary _sprites = null!;
     private AnimationLibrary _animations = null!;
+    private AudioLibrary _audioClips = null!;
+    private AudioRuntime? _audio;
     private SceneTransformRuntime _transforms = null!;
     private ShaderLibrary _shaders = null!;
     private SceneAggregate? _scene;
@@ -105,6 +109,7 @@ internal sealed class Default2DGameRuntime : IDisposable
         else
             _scene.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
         _scene.PerformStep(deltaTime);
+        _audio?.Update();
         for (int i = 0; i < _renderViews.Count; i++)
             _renderViews[i].Camera.Update(deltaTime);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
@@ -190,6 +195,30 @@ internal sealed class Default2DGameRuntime : IDisposable
         _text = _resources.Add(new TextRuntime(_textures));
         _sprites = new SpriteLibrary(_textures);
         _animations = new AnimationLibrary();
+        _audioClips = new AudioLibrary();
+        if (_plan.Audio is { } audioOptions)
+        {
+            IAudioBackend backend;
+            if (audioOptions.ForceSilentBackend)
+            {
+                backend = new SilentAudioBackend();
+            }
+            else
+            {
+                backend = OpenAlAudioBackend.CreateOrSilent(out string? failure, _audioClips);
+                if (failure is not null &&
+                    audioOptions.FailureMode == AudioInitializationFailureMode.Throw)
+                {
+                    backend.Dispose();
+                    throw new InvalidOperationException("Audio device initialization failed.", new InvalidOperationException(failure));
+                }
+            }
+            _audio = _resources.Add(new AudioRuntime(
+                _audioClips,
+                backend,
+                audioOptions.MaxVoices,
+                ownsBackend: true));
+        }
         _transforms = _resources.Add(new SceneTransformRuntime());
         _shaders = _resources.Add(new ShaderLibrary(gl));
         _batch.SpriteResolver = _sprites;
@@ -235,6 +264,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                 _textures,
                 _sprites,
                 _animations,
+                _audioClips,
                 packagesRoot));
             content = _resources.Add(renderer.ContentPackage is { } package
                 ? contentManager.Load(package)
@@ -389,6 +419,8 @@ internal sealed class Default2DGameRuntime : IDisposable
             _textures,
             _sprites,
             _animations,
+            _audioClips,
+            _audio,
             _transforms,
             _text,
             _shaders,

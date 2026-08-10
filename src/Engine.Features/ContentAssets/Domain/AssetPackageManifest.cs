@@ -3,6 +3,7 @@ namespace GameEngine.Features.ContentAssets.Domain;
 using System.Numerics;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Features.Animation;
+using GameEngine.Features.Audio;
 using GameEngine.Features.TextureAssets.Domain;
 
 public sealed record AssetPackageDependency(
@@ -52,6 +53,11 @@ public sealed record AnimationAssetDefinition(
     AnimationLoopMode LoopMode,
     IReadOnlyList<AnimationAssetMarkerDefinition> Markers);
 
+public sealed record AudioAssetDefinition(
+    string Name,
+    string Path,
+    bool Streaming);
+
 public sealed class AssetPackageManifest
 {
     public const int CurrentSchemaVersion = 1;
@@ -63,6 +69,7 @@ public sealed class AssetPackageManifest
         IEnumerable<TextureAssetDefinition> textures,
         IEnumerable<SpriteAssetDefinition> sprites,
         IEnumerable<AnimationAssetDefinition> animations,
+        IEnumerable<AudioAssetDefinition> audioClips,
         AtlasAssetBuildDefinition? atlas = null)
     {
         SchemaVersion = schemaVersion;
@@ -71,6 +78,7 @@ public sealed class AssetPackageManifest
         Textures = textures.ToArray();
         Sprites = sprites.ToArray();
         Animations = animations.ToArray();
+        AudioClips = audioClips.ToArray();
         Atlas = atlas;
     }
 
@@ -80,5 +88,6 @@ public sealed class AssetPackageManifest
     public IReadOnlyList<TextureAssetDefinition> Textures { get; }
     public IReadOnlyList<SpriteAssetDefinition> Sprites { get; }
     public IReadOnlyList<AnimationAssetDefinition> Animations { get; }
+    public IReadOnlyList<AudioAssetDefinition> AudioClips { get; }
     public AtlasAssetBuildDefinition? Atlas { get; }
 }

@@ -11,6 +11,7 @@ using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.Animation;
+using GameEngine.Features.Audio;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
@@ -32,6 +33,10 @@ public sealed class Default2DGameContext
     public TextureLibrary Textures { get; }
     public SpriteLibrary Sprites { get; }
     public AnimationLibrary Animations { get; }
+    public AudioLibrary AudioClips { get; }
+    public bool AudioEnabled => _audio is not null;
+    public AudioRuntime Audio => _audio ?? throw new InvalidOperationException(
+        "Audio is not enabled. Call GameApplicationBuilder.UseAudio before Build.");
     /// <summary>Scene-scoped parent/child transforms and lightweight gameplay attachments.</summary>
     public SceneTransformRuntime Transforms { get; }
     public TextRuntime Text { get; }
@@ -47,6 +52,7 @@ public sealed class Default2DGameContext
     public GameplayTimeController Time => Scene.Time;
     public IReadOnlyList<SingleCameraViewportDefinition> Viewports { get; }
     public IReadOnlyList<RenderView> RenderViews { get; }
+    private readonly AudioRuntime? _audio;
 
     internal Default2DGameContext(
         EngineWindow window,
@@ -54,6 +60,8 @@ public sealed class Default2DGameContext
         TextureLibrary textures,
         SpriteLibrary sprites,
         AnimationLibrary animations,
+        AudioLibrary audioClips,
+        AudioRuntime? audio,
         SceneTransformRuntime transforms,
         TextRuntime text,
         ShaderLibrary shaders,
@@ -76,6 +84,8 @@ public sealed class Default2DGameContext
         Textures = textures;
         Sprites = sprites;
         Animations = animations ?? throw new ArgumentNullException(nameof(animations));
+        AudioClips = audioClips ?? throw new ArgumentNullException(nameof(audioClips));
+        _audio = audio;
         Transforms = transforms ?? throw new ArgumentNullException(nameof(transforms));
         Text = text ?? throw new ArgumentNullException(nameof(text));
         Shaders = shaders;
@@ -128,6 +138,8 @@ public sealed class Default2DGameContext
     public SpriteRef GetSprite(string name) => RequireContent().GetSprite(name);
 
     public AnimationClipRef GetAnimation(string name) => RequireContent().GetAnimation(name);
+
+    public AudioClipRef GetAudioClip(string name) => RequireContent().GetAudioClip(name);
 
     public TextureRef GetTexture(string name) => RequireContent().GetTexture(name);
 

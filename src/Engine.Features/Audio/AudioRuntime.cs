@@ -29,6 +29,11 @@ public sealed class AudioRuntime : IDisposable
     private readonly VoiceSlot[] _voices;
     private readonly Dictionary<AudioBusRef, BusState> _buses = [];
     private long _startSequence;
+    private long _playRequests;
+    private long _startedVoices;
+    private long _rejectedVoices;
+    private long _stolenVoices;
+    private long _backendStops;
     private bool _disposed;
 
     public AudioRuntime(AudioLibrary library, IAudioBackend backend, int maxVoices = 32, bool ownsBackend = false)
@@ -84,6 +89,7 @@ public sealed class AudioRuntime : IDisposable
     public bool TryPlay(AudioClipRef clip, in AudioPlayOptions options, out AudioVoiceRef voice)
     {
         ThrowIfDisposed();
+        _playRequests++;
         ValidateOptions(options);
         AudioClipDescriptor descriptor = _library.Get(clip);
         _ = GetBus(options.Bus);
@@ -94,10 +100,12 @@ public sealed class AudioRuntime : IDisposable
             slot = FindVoiceToSteal(options.Priority);
             if (slot < 0)
             {
+                _rejectedVoices++;
                 voice = default;
                 return false;
             }
 
+            _stolenVoices++;
             StopSlot(slot);
         }
 
@@ -119,6 +127,7 @@ public sealed class AudioRuntime : IDisposable
 
         entry.Active = true;
         ActiveVoiceCount++;
+        _startedVoices++;
         voice = new AudioVoiceRef(slot, entry.Generation);
         return true;
     }
@@ -201,6 +210,15 @@ public sealed class AudioRuntime : IDisposable
         }
     }
 
+    public AudioRuntimeDiagnostics CaptureDiagnostics() => new(
+        ActiveVoiceCount,
+        Capacity,
+        _playRequests,
+        _startedVoices,
+        _rejectedVoices,
+        _stolenVoices,
+        _backendStops);
+
     public void Dispose()
     {
         if (_disposed)
@@ -252,6 +270,7 @@ public sealed class AudioRuntime : IDisposable
     private void StopSlot(int slot)
     {
         _backend.Stop(_voices[slot].BackendVoice);
+        _backendStops++;
         ReleaseSlot(slot);
     }
 

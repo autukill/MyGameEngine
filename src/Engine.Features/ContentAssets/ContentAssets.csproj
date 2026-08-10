@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\Animation\Animation.csproj" />
+    <ProjectReference Include="..\Audio\Audio.csproj" />
     <ProjectReference Include="..\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\TextureAssets\TextureAssets.csproj" />
   </ItemGroup>

@@ -12,6 +12,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\Engine.Features\Animation\Animation.csproj" />
+    <ProjectReference Include="..\Engine.Features\Audio\Audio.csproj" />
+    <ProjectReference Include="..\Engine.Features\Audio.OpenAL\Audio.OpenAL.csproj" />
     <ProjectReference Include="..\Engine.Features\Bloom\Bloom.csproj" />
     <ProjectReference Include="..\Engine.Features\Camera\Camera.csproj" />
     <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" />

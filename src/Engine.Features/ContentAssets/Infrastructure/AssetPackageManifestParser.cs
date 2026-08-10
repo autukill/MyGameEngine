@@ -39,9 +39,10 @@ public static class AssetPackageManifestParser
         var textures = ParseTextures(document.Textures);
         var sprites = ParseSprites(document.Sprites);
         var animations = ParseAnimations(document.Animations);
+        var audioClips = ParseAudioClips(document.AudioClips);
         var atlas = ParseAtlas(document.Atlas, textures);
-        if (textures.Count == 0 && sprites.Count == 0 && animations.Count == 0)
-            throw new InvalidDataException("An asset package must contain at least one Texture, Sprite or Animation.");
+        if (textures.Count == 0 && sprites.Count == 0 && animations.Count == 0 && audioClips.Count == 0)
+            throw new InvalidDataException("An asset package must contain at least one Texture, Sprite, Animation or Audio clip.");
 
         return new AssetPackageManifest(
             document.SchemaVersion,
@@ -50,7 +51,28 @@ public static class AssetPackageManifestParser
             textures,
             sprites,
             animations,
+            audioClips,
             atlas);
+    }
+
+    private static IReadOnlyList<AudioAssetDefinition> ParseAudioClips(List<AudioClipDto?>? source)
+    {
+        if (source is null) return Array.Empty<AudioAssetDefinition>();
+        var result = new AudioAssetDefinition[source.Count];
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < source.Count; i++)
+        {
+            AudioClipDto item = source[i]
+                ?? throw new InvalidDataException($"Audio clip entry {i} is null.");
+            if (string.IsNullOrWhiteSpace(item.Name))
+                throw new InvalidDataException($"Audio clip entry {i} has no name.");
+            if (!names.Add(item.Name))
+                throw new InvalidDataException($"Audio clip '{item.Name}' appears more than once.");
+            if (string.IsNullOrWhiteSpace(item.Path))
+                throw new InvalidDataException($"Audio clip '{item.Name}' has no path.");
+            result[i] = new AudioAssetDefinition(item.Name, item.Path, item.Streaming ?? false);
+        }
+        return result;
     }
 
     private static IReadOnlyList<AnimationAssetDefinition> ParseAnimations(
@@ -349,6 +371,7 @@ public static class AssetPackageManifestParser
         public List<TextureDto?>? Textures { get; init; }
         public List<SpriteDto?>? Sprites { get; init; }
         public List<AnimationDto?>? Animations { get; init; }
+        public List<AudioClipDto?>? AudioClips { get; init; }
         public AtlasDto? Atlas { get; init; }
     }
 
@@ -399,6 +422,13 @@ public static class AssetPackageManifestParser
     {
         public int Frame { get; init; }
         public string? Event { get; init; }
+    }
+
+    internal sealed class AudioClipDto
+    {
+        public string? Name { get; init; }
+        public string? Path { get; init; }
+        public bool? Streaming { get; init; }
     }
 
     internal sealed class RectDto

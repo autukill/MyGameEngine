@@ -200,8 +200,9 @@ public sealed class ContentAssetCompiler
         Directory.CreateDirectory(temporary);
         try
         {
-            ValidateOutputPaths(temporary, retainedTextures);
+            ValidateOutputPaths(temporary, retainedTextures, package.Manifest.AudioClips);
             CopyRetainedTextures(package, retainedTextures, generatedTextures, temporary);
+            CopyAudioClips(package, temporary);
             if (copyDependencies)
                 CopyDependencyPackages(root, contexts.Values, package, temporary);
             foreach (var generated in generatedPages)
@@ -416,7 +417,8 @@ public sealed class ContentAssetCompiler
 
     private static void ValidateOutputPaths(
         string output,
-        IEnumerable<TextureAssetDefinition> textures)
+        IEnumerable<TextureAssetDefinition> textures,
+        IEnumerable<AudioAssetDefinition> audioClips)
     {
         var paths = new HashSet<string>(
             OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
@@ -428,6 +430,23 @@ public sealed class ContentAssetCompiler
                 throw new InvalidDataException(
                     $"Texture output path '{texture.Path}' is used more than once.");
             }
+        }
+        foreach (AudioAssetDefinition audio in audioClips)
+        {
+            string path = ResolveOutputPath(output, audio.Path);
+            if (!paths.Add(path))
+                throw new InvalidDataException($"Asset output path '{audio.Path}' is used more than once.");
+        }
+    }
+
+    private static void CopyAudioClips(ManifestContext package, string output)
+    {
+        foreach (AudioAssetDefinition definition in package.Manifest.AudioClips)
+        {
+            string source = ResolveUnderRoot(package.Directory, definition.Path, "Audio clip");
+            string destination = ResolveOutputPath(output, definition.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(source, destination, overwrite: false);
         }
     }
 
@@ -451,6 +470,15 @@ public sealed class ContentAssetCompiler
             {
                 string source = ResolveUnderRoot(context.Directory, texture.Path, "Dependency Texture");
                 string relativeTarget = Path.Combine(relativePackageDirectory, texture.Path);
+                string target = ResolveOutputPath(output, relativeTarget);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                if (!File.Exists(target))
+                    File.Copy(source, target, overwrite: false);
+            }
+            foreach (AudioAssetDefinition audio in context.Manifest.AudioClips)
+            {
+                string source = ResolveUnderRoot(context.Directory, audio.Path, "Dependency Audio clip");
+                string relativeTarget = Path.Combine(relativePackageDirectory, audio.Path);
                 string target = ResolveOutputPath(output, relativeTarget);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 if (!File.Exists(target))
@@ -553,6 +581,18 @@ public sealed class ContentAssetCompiler
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+
+        writer.WritePropertyName("audioClips");
+        writer.WriteStartArray();
+        foreach (AudioAssetDefinition audio in source.AudioClips)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("name", audio.Name);
+            writer.WriteString("path", audio.Path.Replace('\\', '/'));
+            writer.WriteBoolean("streaming", audio.Streaming);
             writer.WriteEndObject();
         }
         writer.WriteEndArray();

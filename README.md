@@ -15,8 +15,9 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Gameplay Query：保留便利结果数组，同时提供可复用 Buffer、强类型 Gameplay Tag 过滤、无集合计数和按真实 Step 聚合的可选查询统计。
 - Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
 - Spawn/Wave Authoring：确定性 Delay/Wave/Loop 时间线、并发门控和状态快照；Asteroids 已移除手写生成 Alarm。
-- Animation Authoring：`assets.json` 命名 Clip、强类型引用、GameInstance 播放/帧事件、状态快照与原子 Content Hot Reload；Text、Audio 与 Transform 仍按各自黄金路径渐进接入。
+- Animation Authoring：`assets.json` 命名 Clip、强类型引用、GameInstance 播放/帧事件、状态快照与原子 Content Hot Reload。
 - Text Rendering：真实 TTF/OTF、中文 Font Fallback、Grapheme-safe 多行换行、对齐/Ellipsis、可复用 Buffer、动态 Glyph Atlas，以及共用 SpriteBatch 的 World/SceneGui DrawText。
+- Audio 短音效：声明式 PCM WAV、OpenAL Soft/Silent 后端、Hosting、逻辑 Clip/Bus/Voice、确定性抢占、Buffer 共享释放和运行时诊断。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件；不可变逻辑 Action/Axis 把玩法意图与物理绑定分离，并支持固定 Tick 内存录制与无设备回放。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
@@ -25,7 +26,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 声明式 Shader Assets：版本化 `shaders.json`、Material 默认参数、Hosting 自动装配，以及 MSBuild 生成强类型 Shader/Material/Uniform 参数引用。
 - 动画就绪 Sprite：逻辑资源名、原点、多帧 UV、自动帧推进、旋转/缩放/颜色以及 `batch.DrawSprite*` 便利 API。
 - Texture Assets：逻辑 `TextureRef`、PNG/静态 WebP 解码、采样预设、资产清单与 GPU 句柄统一回收。
-- 声明式 Content Assets：单一版本化 `assets.json`、包依赖、单图/Grid/多图片 Sprite、事务回滚与引用计数卸载。
+- 声明式 Content Assets：单一版本化 `assets.json`、包依赖、Texture/Sprite/Animation/Audio、事务回滚与引用计数卸载。
 - 离线 Texture Atlas：确定性多页打包、padding/extrude、采样分组、大帧旁路与标准运行时包输出。
 - 正交 `Camera2D`：平移、缩放、旋转、震屏和 Viewport resize。
 - RenderPass DAG：场景渲染、Stencil 遮罩、后处理和 Viewport 合成。
@@ -36,7 +37,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 自动 GPU 像素回归：固定时间步、PNG 基线、容差比较以及 expected/actual/diff 诊断产物。
 - 可分发内容工具链：`gameengine-assets` .NET Tool 与内置编译器的 `buildTransitive` NuGet 包。
 - Engine Hosting：声明式启动、默认 2D 渲染预设、强类型 Scene Context、帧循环与资源清理。
-- 强类型 Content：Build 自动生成 Package、Texture、Sprite、Animation 与帧事件逻辑引用，并在编译期诊断重名。
+- 强类型 Content：Build 自动生成 Package、Texture、Sprite、Animation、Audio Clip 与帧事件逻辑引用，并在编译期诊断重名。
 - 可分发 Game SDK 与模板：`MyGameEngine.GameSdk` 聚合运行时程序集，`dotnet new mygameengine-game` 可在仓库外创建完整项目。
 - 开发环境诊断：`gameengine doctor` 检查 SDK、包版本、内容产物，并可显式探测隐藏 OpenGL 3.3 Context。
 - 运行时渲染快照：显式读取 Pass 顺序、逻辑 Surface、Effect owner 与 RenderTarget 活动租约，不暴露 GPU 句柄。
@@ -55,8 +56,9 @@ src/
 │   ├── Camera/                          # Camera2D
 │   ├── Animation/                       # 命名 Clip、循环模式与帧事件
 │   ├── Audio/                           # 逻辑 Clip/Bus/Voice 与 Backend 边界
+│   ├── Audio.OpenAL/                    # OpenAL Soft 真实短音效设备后端
 │   ├── Bloom/                           # 独立阈值提取与水平/垂直 ping-pong 效果链
-│   ├── ContentAssets/                   # 声明式包、依赖图、Texture/Sprite/Animation 装配与租约
+│   ├── ContentAssets/                   # 声明式包、Texture/Sprite/Animation/Audio 装配与租约
 │   ├── Presentation/                    # 显式 RGBA8/Display 屏幕终端与稳定合成层级
 │   ├── RenderPipeline/                  # RenderTarget、RenderPass DAG、后处理与合成
 │   ├── Replay/                          # 版本化输入 + 状态轨迹 Bundle 与会话 API
@@ -69,7 +71,7 @@ src/
 │   ├── ToneMapping/                     # HDR 曝光、ACES/Reinhard 与 RGBA8 显示输出
 │   ├── TextRendering/                   # 真实字体、多行 Layout、复用 Buffer、Glyph Atlas 与 DrawText
 │   ├── TransformHierarchy/              # Local/World、GameInstance Binding、纯挂点与父子层级
-│   ├── *.Tests/                         # 17 个 Feature 无窗口控制台冒烟项目
+│   ├── *.Tests/                         # 18 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
@@ -85,7 +87,7 @@ src/
 └── MyGame.Runner/                       # Stencil + Bloom 综合 Demo
 
 playgrounds/
-├── AirplaneShooter/                     # 方向键移动、空格发射与 Alarm 回收示例
+├── AirplaneShooter/                     # 方向键移动、空格发射、Transform 挂点与短音效示例
 └── Asteroids/                           # 参数化 Prefab、Circle 碰撞和 Scene 重启示例
 ```
 
@@ -95,12 +97,13 @@ Feature 依赖保持单向：
 Engine.Core
   ├─ Animation
   ├─ Audio
+  │    └─ Audio.OpenAL
   ├─ Sprites
   ├─ ShaderAssets
   ├─ TextRendering（同时依赖 TextureAssets 的逻辑引用）
   ├─ TransformHierarchy
   ├─ TextureAssets
-  │    └─ ContentAssets（同时依赖 Sprites）
+  │    └─ ContentAssets（同时依赖 Sprites、Animation 与 Audio）
   ├─ TextureAtlas
   ├─ Replay
 └─ Camera
@@ -111,10 +114,10 @@ Engine.Core
             ├─ StencilMasking
             └─ ToneMapping
 
-Engine.Hosting -> Core + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
+Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 59 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 61 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -307,7 +310,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
 2. Animation 与 Text Rendering 黄金路径已经闭环，多行中文/单词换行、对齐、Ellipsis 和动态 Layout Buffer 已落地；复杂脚本 Shaping 先做 HarfBuzz 兼容性验证，不提前夹带完整 GUI。
-3. 下一条跨层适配优先 Transform Scene/Prefab 挂点，其后是跨平台 Audio Backend；不把尚未完成的适配描述成可用平台能力。
+3. Transform、Text 多行与 Audio 短音效已闭环；下一条跨层主线优先 Tilemap/World Authoring，其后分别推进 Streaming Music 与 Lighting 0/1。
 4. GUI Compatibility Spike 已完成第一轮决策：Yoga 只作为布局内核继续 NativeAOT 实验，RmlUi 是开发者优先完整 Runtime 候选，FairyGUI 保留设计器优先可选路线。详见[调研记录](docs/HTML_CSS_YOGA_GUI_ROADMAP.md)。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。

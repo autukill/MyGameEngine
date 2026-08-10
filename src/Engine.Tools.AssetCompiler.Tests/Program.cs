@@ -1,6 +1,7 @@
 namespace AssetCompiler.Tests;
 
 using GameEngine.Features.Animation;
+using GameEngine.Features.Audio;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
@@ -37,6 +38,7 @@ internal static class Program
         {
             WriteSheet(Path.Combine(source, "sheet.png"));
             WriteSolid(Path.Combine(source, "large.png"), 7, 7, SKColors.Blue);
+            File.WriteAllBytes(Path.Combine(source, "shot.wav"), CreatePcm16Wave());
             Directory.CreateDirectory(Path.Combine(source, "shared"));
             WriteSolid(Path.Combine(source, "shared", "white.png"), 1, 1, SKColors.White);
             File.WriteAllText(Path.Combine(source, "shared", "assets.json"), SharedManifest);
@@ -55,12 +57,15 @@ internal static class Program
             string compiledJson = File.ReadAllText(Path.Combine(firstOutput, "assets.json"));
             Check(!compiledJson.Contains("sheet.png", StringComparison.Ordinal) &&
                   compiledJson.Contains("large.png", StringComparison.Ordinal) &&
+                  compiledJson.Contains("shot.wav", StringComparison.Ordinal) &&
                   compiledJson.Contains("atlas/pixel-art-0.png", StringComparison.Ordinal) &&
                   compiledJson.Contains("compiler.grid.run", StringComparison.Ordinal),
                 "Atlas remap preserves declarative Animation assets");
             Check(File.Exists(Path.Combine(firstOutput, "shared", "assets.json")) &&
                   File.Exists(Path.Combine(firstOutput, "shared", "white.png")),
                 "Dependency packages are copied into the compiled packages root");
+            Check(File.Exists(Path.Combine(firstOutput, "shot.wav")),
+                "Audio assets are copied through the Atlas compiler boundary");
 
             VerifyStronglyTypedReferences(firstOutput, workspace);
 
@@ -87,6 +92,9 @@ internal static class Program
             Check(animation.Sprite == grid && animation.SubImages.SequenceEqual([0, 1]) &&
                   animation.Markers[0].Event == new AnimationEventRef("compiler.step"),
                 "Compiled package loads Animation against the remapped Sprite");
+            AudioClipDescriptor audio = manager.Audio.Get(package.GetAudioClip("compiler.shot"));
+            Check(audio.Decoded is { Channels: 1, SampleRate: 48_000 },
+                "Compiled package retains a runtime-decodable Audio clip");
 
             VerifyIncrementalPipeline(source, workspace);
         }
@@ -114,7 +122,7 @@ internal static class Program
         Check(first.Changed && !cached.Changed && File.GetLastWriteTimeUtc(output) == firstWrite,
             "Unchanged generated references preserve the file timestamp");
         Check(first.PackageCount == 2 && first.TextureCount == 2 && first.SpriteCount == 2 &&
-              first.AnimationCount == 1 && first.AnimationEventCount == 1 &&
+              first.AnimationCount == 1 && first.AudioClipCount == 1 && first.AnimationEventCount == 1 &&
               source.Contains("ContentPackageRef Root = new(\"compiler.assets\", \"assets.json\")", StringComparison.Ordinal) &&
               source.Contains("ContentPackageRef CompilerShared", StringComparison.Ordinal),
             "Root and dependency package references are generated from the compiled graph");
@@ -129,6 +137,8 @@ internal static class Program
         Check(source.Contains("AnimationClipRef CompilerGridRun", StringComparison.Ordinal) &&
               source.Contains("AnimationEventRef CompilerStep", StringComparison.Ordinal),
             "Animation clips and marker events become strongly typed references");
+        Check(source.Contains("AudioClipRef CompilerShot", StringComparison.Ordinal),
+            "Audio clips become strongly typed logical references");
         CheckThrows<InvalidDataException>(() => generator.Generate(request with
             {
                 OutputFile = Path.Combine(compiledRoot, "GameEngine.Content.g.cs")
@@ -334,6 +344,33 @@ internal static class Program
         data.SaveTo(stream);
     }
 
+    private static byte[] CreatePcm16Wave()
+    {
+        const short channels = 1;
+        const int sampleRate = 48_000;
+        const int frames = 480;
+        int dataLength = frames * sizeof(short);
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write("RIFF"u8);
+            writer.Write(36 + dataLength);
+            writer.Write("WAVE"u8);
+            writer.Write("fmt "u8);
+            writer.Write(16);
+            writer.Write((short)1);
+            writer.Write(channels);
+            writer.Write(sampleRate);
+            writer.Write(sampleRate * sizeof(short));
+            writer.Write((short)sizeof(short));
+            writer.Write((short)16);
+            writer.Write("data"u8);
+            writer.Write(dataLength);
+            writer.Write(new byte[dataLength]);
+        }
+        return stream.ToArray();
+    }
+
     private static void Check(bool condition, string name)
     {
         if (condition) Console.WriteLine($"  [PASS] {name}");
@@ -397,6 +434,9 @@ internal static class Program
               "loop": "loop",
               "markers": [{ "frame": 1, "event": "compiler.step" }]
             }
+          ],
+          "audioClips": [
+            { "name": "compiler.shot", "path": "shot.wav", "streaming": false }
           ]
         }
         """;

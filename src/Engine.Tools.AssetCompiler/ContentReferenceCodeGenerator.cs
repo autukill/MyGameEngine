@@ -18,6 +18,7 @@ public sealed record ContentReferenceGenerationResult(
     int TextureCount,
     int SpriteCount,
     int AnimationCount,
+    int AudioClipCount,
     int AnimationEventCount);
 
 /// <summary>
@@ -83,6 +84,11 @@ public sealed class ContentReferenceCodeGenerator
             nodesById.Values
                 .SelectMany(node => node.Manifest.Animations)
                 .Select(animation => (animation.Name, (string?)null)));
+        GeneratedMember[] audioClips = CreateMembers(
+            "Audio clip",
+            nodesById.Values
+                .SelectMany(node => node.Manifest.AudioClips)
+                .Select(audio => (audio.Name, (string?)null)));
         GeneratedMember[] animationEvents = CreateMembers(
             "Animation event",
             nodesById.Values
@@ -101,6 +107,7 @@ public sealed class ContentReferenceCodeGenerator
             textures,
             sprites,
             animations,
+            audioClips,
             animationEvents);
         bool changed = GeneratedCodeUtilities.WriteIfChanged(outputFile, source);
         return new ContentReferenceGenerationResult(
@@ -110,6 +117,7 @@ public sealed class ContentReferenceCodeGenerator
             textures.Length,
             sprites.Length,
             animations.Length,
+            audioClips.Length,
             animationEvents.Length);
     }
 
@@ -208,6 +216,7 @@ public sealed class ContentReferenceCodeGenerator
         IReadOnlyList<GeneratedMember> textures,
         IReadOnlyList<GeneratedMember> sprites,
         IReadOnlyList<GeneratedMember> animations,
+        IReadOnlyList<GeneratedMember> audioClips,
         IReadOnlyList<GeneratedMember> animationEvents)
     {
         var source = new StringBuilder();
@@ -245,6 +254,12 @@ public sealed class ContentReferenceCodeGenerator
             "Animations",
             "global::GameEngine.Features.Animation.AnimationClipRef",
             animations);
+        source.AppendLine();
+        AppendReferenceContainer(
+            source,
+            "AudioClips",
+            "global::GameEngine.Features.Audio.AudioClipRef",
+            audioClips);
         source.AppendLine();
         AppendReferenceContainer(
             source,

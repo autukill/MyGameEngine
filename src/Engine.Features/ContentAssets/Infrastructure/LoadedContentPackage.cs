@@ -2,6 +2,7 @@ namespace GameEngine.Features.ContentAssets.Infrastructure;
 
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.Animation;
+using GameEngine.Features.Audio;
 
 /// <summary>An external lease over a loaded package and its transitive dependencies.</summary>
 public sealed class LoadedContentPackage : IDisposable
@@ -27,6 +28,10 @@ public sealed class LoadedContentPackage : IDisposable
     public AnimationClipRef GetAnimation(string name) =>
         (_manager ?? throw new ObjectDisposedException(nameof(LoadedContentPackage)))
             .GetAnimation(Id, name);
+
+    public AudioClipRef GetAudioClip(string name) =>
+        (_manager ?? throw new ObjectDisposedException(nameof(LoadedContentPackage)))
+            .GetAudioClip(Id, name);
 
     public void Dispose()
     {
