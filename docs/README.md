@@ -59,6 +59,11 @@
 - [可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)：AssetCompiler .NET Tool、ContentPipeline NuGet 包、本地 Feed 和外部项目接入。
 - [C# 2D 游戏引擎从零构建](C%23%202D%20游戏引擎从零构建.md)：长期架构与路线推演原稿；其中示例不保证都已实现。
 
+## 游戏设计档案
+
+- [《驮春 / Bloomback》](../games/Bloomback/README.md)：尚未立项的迁徙巨兽与生态花园概念档案。
+- [《神意难测 / The God They Made》](../games/TheGodTheyMade/README.md)：已经进入前期策划、尚未开始代码制作的上帝游戏设计档案；包含信仰推演、神兽学习与首岛垂直切片。
+
 ## 更新约定
 
 Gameplay 协作补充：[Scene 作用域 Gameplay Signals](GAMEPLAY_SIGNALS.md)：结构体通知、构造期监听、确定性投递、暂停/销毁语义与 Asteroids 一对多样例。
