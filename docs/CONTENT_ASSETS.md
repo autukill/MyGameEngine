@@ -4,6 +4,29 @@
 
 当前清单版本为 `schemaVersion: 1`。
 
+## 编译期与运行时边界
+
+Content 系统刻意复用同一份运行时 Manifest Schema，但把“准备内容”和“装配设备资源”分成两个阶段：
+
+```text
+Authoring Assets/
+  assets.json + PNG/WebP/WAV/TileMap
+        ↓ Engine.Tools.AssetCompiler（Build/Publish）
+CompiledAssets/
+  标准 assets.json + Atlas 页/旁路图片/WAV/TileMap + 修订元数据
+        ↓ ContentPackageManager（游戏启动/加载包）
+Texture/Sprite/Animation/Audio/TileSet/TileMap Library
+        ↓ 逻辑 Ref
+Gameplay 与 Renderer
+```
+
+- AssetCompiler 负责安全路径、完整依赖图、增量指纹、离线 Atlas、输出事务和 `GameAssets` 强类型引用。
+- `ContentPackageManager` 负责读取编译后的标准包、设备资源注册、依赖可见性、租约计数、失败回滚和卸载。
+- `GameAssets` 只包含 `TextureRef`、`SpriteRef` 等逻辑名称，不包含像素、PCM、UV 或 GPU Handle。
+- 运行时也可以直接读取源包，便于测试和工具；正式 Build 默认让 Runtime 只消费 `AssetsCompiled`，避免游戏进程执行离线 Atlas 或修改源目录。
+
+编译器不会发明另一套私有二进制 Manifest。启用 Atlas 时，它把 `single/grid/frames` 统一规范化为显式逐帧来源，生成 Atlas PNG，并重写为仍可由 `AssetPackageManifestParser` 读取的 `layout: "frames"`。因此运行时加载、热重载和测试共用相同 Schema 与验证模型。
+
 ## 快速开始
 
 准备目录：
@@ -62,7 +85,9 @@ var player = scene.Add(new PlayerInstance
   "textures": [],
   "sprites": [],
   "animations": [],
-  "audioClips": []
+  "audioClips": [],
+  "tileSets": [],
+  "tileMaps": []
 }
 ```
 
@@ -73,11 +98,22 @@ var player = scene.Add(new PlayerInstance
 - `sprites`：本包拥有的 Sprite 定义，可为空。
 - `animations`：本包拥有的 Animation Clip 定义，可为空。
 - `audioClips`：本包拥有的预加载短 WAV 定义，可为空。
+- `tileSets`：本包拥有的 Tile ID → Sprite/sub-image/collision 定义，可为空。
+- `tileMaps`：本包拥有的外部稀疏 Chunk 地图定义，可为空。
 - `atlas`：可选的离线构建配置；运行时加载源包时不会自动执行打包。
-- 一个包至少需要声明一个 Texture、Sprite、Animation 或 Audio Clip。
+- 一个包至少需要声明一个 Texture、Sprite、Animation、Audio Clip、TileSet 或 TileMap。
 - 未知 JSON 字段会被拒绝，以便尽早发现拼写错误。
 
 资源名称采用区分大小写的全局名称。建议使用包前缀，例如 `player.idle`、`boss.attack.0`。
+
+### Parser 实现原则
+
+`AssetPackageManifestParser` 使用 `System.Text.Json` Source Generation 反序列化 DTO，并启用 `UnmappedMemberHandling.Disallow`。解析分两步：
+
+1. JSON 形状、必填字段、枚举、有限数值、重复名称和局部范围被转换为不可变 Domain 定义。
+2. 需要文件系统或跨包信息的规则留给 Compiler/PackageManager，例如路径是否存在、依赖闭包可见性、图片真实尺寸与 Sprite 帧范围。
+
+这样既避免 Parser 依赖 GPU/设备，也保证编译期和运行时不会各自维护一套互相漂移的 JSON 规则。JSON 属性名按 Web 默认规则大小写不敏感；包 ID 与所有逻辑资源名称的比较使用 `StringComparer.Ordinal`，因此资源名称区分大小写。
 
 ## Texture 定义
 
@@ -295,9 +331,34 @@ Manager 在修改 GPU 状态之前解析完整依赖图，并拒绝：
 - Manifest 或图片路径逃逸安全根目录。
 - Sprite 引用依赖闭包以外的 Texture，或 Animation 引用闭包以外的 Sprite。
 
+## Runtime 装配算法
+
+`ContentPackageManager.Load` 先执行只读 Preflight，再进入有副作用的 Acquire：
+
+```text
+Resolve manifest under packagesRoot
+  → DFS 读取依赖图并校验 expected ID / 循环 / 同 ID 多路径
+  → 全图检查文件、全局名称冲突和依赖闭包可见性
+  → 递归 Acquire 依赖
+  → Texture 解码并上传
+  → Sprite 注册逐帧 TextureRef + PixelRect
+  → Animation 注册 Sprite sub-image 序列
+  → TileSet / TileMap 注册
+  → WAV 同步解码并注册 Audio Clip
+  → 写入 PackageState 并返回 LoadedContentPackage 租约
+```
+
+关键实现决策：
+
+- 依赖 Manifest 始终相对 Manager 的 `packagesRoot`；Texture、WAV 和 TileMap 相对各自所属包目录。
+- 路径经过 `GetFullPath + GetRelativePath` 再确认仍位于安全根内；绝对路径和 `..` 逃逸都会在打开文件前失败。
+- `PackageState` 只记录该包自己注册的 Ref 和直接依赖状态；`GetTexture/GetSprite/...` 递归查询自身与依赖，不会因为某个名称恰好存在于全局 Library 就越权可见。
+- Sprite/Animation/TileSet 的引用在注册时再次用真实 Texture/Sprite 元数据验证，因此编译器输出损坏或被手工修改也不能绕过运行时边界。
+- 同一路径已经加载时只增加引用计数，不重复解码或上传；同一个包 ID 若指向另一 Manifest 会被拒绝。
+
 ## 生命周期与所有权
 
-`TextureLibrary` 拥有 GPU Texture；`SpriteLibrary` 保存逻辑帧映射；`AnimationLibrary` 保存逻辑 Clip；`LoadedContentPackage` 是外部租约。
+`TextureLibrary` 拥有 GPU Texture；`SpriteLibrary` 保存逻辑帧映射；`AnimationLibrary` 和 `AudioLibrary` 保存逻辑 Clip；`TileSetLibrary/TileMapLibrary` 保存世界资源；`LoadedContentPackage` 是外部租约。
 
 ```text
 Load root package
@@ -307,13 +368,14 @@ Load root package
   → Animation 校验并注册
 
 Dispose root lease
-  → Animation 卸载
+  → TileMap / TileSet 卸载
+  → Audio / Animation 卸载
   → Sprite 卸载
-  → Texture 卸载
+  → Texture 卸载并释放 GPU Handle
   → 依赖持有释放
 ```
 
-同一清单多次 `Load` 只装配一次。多个根包共享同一依赖时，只有最后一个引用释放后才卸载依赖。`LoadedContentPackage.Dispose()` 是幂等的。
+同一清单多次 `Load` 只装配一次。当前 `PackageState.ReferenceCount` 同时统计外部 `LoadedContentPackage` 租约与上游包的依赖持有；多个根包共享同一依赖时，只有最后一个引用释放后才卸载依赖。正常 Release 按资源依赖的逆序移除，最后再递归释放依赖；`LoadedContentPackage.Dispose()` 是幂等的。
 
 推荐关闭顺序：
 
@@ -330,7 +392,7 @@ shader.Dispose();
 
 ## 失败与回滚
 
-图片解码、GPU 上传、Sprite 帧范围、Animation sub-image 或资源注册中的任一步失败，Manager 都会恢复调用前的包引用计数，并只移除本次新增的 Animation、Sprite 和 Texture。预先存在且不属于该包的资源不会被删除。
+图片解码、GPU 上传、Sprite 帧范围、Animation sub-image、WAV 解码、Tile 资源或注册中的任一步失败，Manager 都会逆序移除本次新增的 TileMap、TileSet、Audio、Animation、Sprite 和 Texture，再释放本次取得的依赖持有。预先存在且不属于该包的资源不会被删除；已经缓存的依赖只恢复引用计数，不会被误卸载。
 
 显存不足、图片超过解码器/GPU 尺寸上限或 WebP/PNG 数据损坏都会使整个包加载失败；v1 不提供部分成功状态。
 
@@ -348,6 +410,8 @@ shader.Dispose();
 多图片长动画在功能上可以直接使用，但 SpriteBatch 遇到 Texture 变化时需要 Flush。大量实例同时播放跨纹理动画时，纹理切换可能成为主要成本。
 
 离线 `Engine.Tools.AssetCompiler` 已能消费规范化的逐帧来源：小帧重映射到一个或多个 Atlas 页，放不下的大帧保持独立 Texture。这个过程不会改变 `SpriteRef`、`GameInstance`、`ImageIndex` 或 `DrawSprite` API。配置与命令行说明见 [离线 Texture Atlas 使用指南](TEXTURE_ATLAS.md)。
+
+编译器对 Atlas 的处理顺序是：按 Texture/源矩形去重帧 → 按采样模式分组 → 解码并裁剪 RGBA8 → 构建确定性多页 Atlas → 为成功放置的帧生成页 Texture 与新 PixelRect → 对过大帧保留原 Texture → 输出标准运行时 Manifest。Atlas 页使用内部 `__atlas.*` 逻辑名，强类型引用生成器不会暴露这些实现资源。被 Atlas 完全取代的源 Texture 也属于构建输入而非运行时 API；作者声明的 Sprite、Animation 等稳定逻辑资源仍保持原名。
 
 Runner 与 VisualTests 已接入共享 MSBuild Target：Build、Run 和 Publish 会基于内容指纹自动生成 `obj/.../CompiledAssets`，运行时只读取复制到输出目录的标准包。完整构建阶段和属性说明见 [`GameEngine.Content.targets` 解读](GAMEENGINE_CONTENT_TARGETS.md)。
 
