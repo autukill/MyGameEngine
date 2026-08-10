@@ -18,6 +18,7 @@ internal static class Program
         Console.WriteLine("=== TextRendering Feature Smoke Test ===\n");
         VerifyRegistrationAndLifetime();
         VerifyUnicodeLayoutAndFallback();
+        VerifyMultilineLayoutAndReusableBuffers();
         VerifyAtlasAllocationAndCache();
         VerifyRealFontTextureAndDrawBridge();
         VerifyValidation();
@@ -120,6 +121,161 @@ internal static class Program
             "Atlas disposal deletes each owned logical page exactly once");
     }
 
+    private static void VerifyMultilineLayoutAndReusableBuffers()
+    {
+        Console.WriteLine("3. Multi-line wrapping, alignment, overflow, and reusable buffers");
+        using var library = new FontLibrary();
+        FontRef latin = library.Register("font.multi.latin", Metadata("Latin"), LatinRasterizer());
+        FontRef cjk = library.Register("font.multi.cjk", Metadata("CJK"), CjkRasterizer());
+        FontFamily family = library.CreateFamily(latin, cjk);
+        var layouter = new TextLayouter(library);
+
+        TextLayout words = layouter.Layout(
+            family,
+            "AB AB",
+            10f,
+            new TextLayoutOptions(12f, TextWrapMode.Word));
+        Check(words.Lines.Count == 2 && words.Lines[0].GlyphCount == 3,
+            "Word wrapping prefers the available whitespace boundary");
+
+        TextLayout graphemes = layouter.Layout(
+            family,
+            "e\u0301e\u0301",
+            10f,
+            new TextLayoutOptions(5f, TextWrapMode.Character));
+        Check(graphemes.Lines.Count == 2 &&
+              graphemes.Lines.All(line => line.GlyphCount == 2) &&
+              graphemes.ClusterStarts.Count == 2,
+            "Character wrapping never splits an extended grapheme cluster");
+
+        TextLayout emojiClusters = layouter.Layout(
+            family,
+            "\U0001F469\u200D\U0001F680\U0001F469\u200D\U0001F680",
+            10f,
+            new TextLayoutOptions(15f, TextWrapMode.Character));
+        Check(emojiClusters.Lines.Count == 2 &&
+              emojiClusters.Lines.All(line => line.GlyphCount == 3) &&
+              emojiClusters.ClusterStarts.Count == 2,
+            "Emoji ZWJ sequences remain indivisible grapheme clusters during wrapping");
+
+        TextLayout explicitLines = layouter.Layout(
+            family,
+            "A\r\n\nB",
+            10f,
+            new TextLayoutOptions(LineSpacing: 2f));
+        Check(explicitLines.Lines.Count == 3 && explicitLines.Lines[1].GlyphCount == 0 &&
+              Near(explicitLines.Height, 37f),
+            "CRLF, empty lines, and explicit line spacing are deterministic");
+
+        TextLayout centered = layouter.Layout(
+            family,
+            "AB",
+            10f,
+            new TextLayoutOptions(20f, Alignment: TextAlignment.Center));
+        Check(Near(centered.Width, 20f) && Near(centered.Glyphs[0].Position.X, 5.5f),
+            "Center alignment offsets glyphs inside the declared layout width");
+
+        TextLayout rightAligned = layouter.Layout(
+            family,
+            "AB",
+            10f,
+            new TextLayoutOptions(20f, Alignment: TextAlignment.Right));
+        Check(Near(rightAligned.Glyphs[0].Position.X, 11f),
+            "Right alignment offsets the complete line to the far edge");
+
+        TextLayout cjkPunctuation = layouter.Layout(
+            family,
+            "\u4E2D\u6587\uFF0C\u3002",
+            10f,
+            new TextLayoutOptions(20f, TextWrapMode.Word));
+        bool punctuationSafe = cjkPunctuation.Lines.All(line =>
+            line.GlyphCount == 0 ||
+            cjkPunctuation.Glyphs[line.GlyphStart].Rune.Value is not 0xFF0C and not 0x3002);
+        Check(cjkPunctuation.Lines.Count >= 2 && punctuationSafe,
+            "Basic CJK line-start punctuation prohibition is respected");
+
+        TextLayout ellipsis = layouter.Layout(
+            family,
+            "AAAAAA",
+            10f,
+            new TextLayoutOptions(
+                10f,
+                TextWrapMode.Character,
+                MaxLines: 2,
+                Overflow: TextOverflow.Ellipsis));
+        Check(ellipsis.IsTruncated && ellipsis.Lines.Count == 2 &&
+              ellipsis.Glyphs[^1].Rune == new Rune(0x2026),
+            "MaxLines truncation appends one deterministic ellipsis glyph");
+
+        TextLayout clipped = layouter.Layout(
+            family,
+            "AAAA",
+            10f,
+            new TextLayoutOptions(10f, TextWrapMode.NoWrap));
+        Check(clipped.IsTruncated && clipped.Glyphs.Count == 2,
+            "NoWrap with a finite width clips overflowing clusters");
+
+        var layoutBuffer = new TextLayoutBuffer();
+        var preparedBuffer = new PreparedTextLayoutBuffer();
+        var uploader = new FakeUploader();
+        using var atlas = new DynamicGlyphAtlas(library, uploader);
+        var options = new TextLayoutOptions(12f, TextWrapMode.Word);
+        layouter.LayoutInto(family, "AB AB", 10f, options, layoutBuffer);
+        atlas.Prepare(layoutBuffer, preparedBuffer);
+        int layoutExpansions = layoutBuffer.ExpansionCount;
+        int preparedExpansions = preparedBuffer.ExpansionCount;
+        for (int i = 0; i < 32; i++)
+        {
+            layouter.LayoutInto(family, "AB AB", 10f, options, layoutBuffer);
+            atlas.Prepare(layoutBuffer, preparedBuffer);
+        }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1024; i++)
+        {
+            layouter.LayoutInto(family, "AB AB", 10f, options, layoutBuffer);
+            atlas.Prepare(layoutBuffer, preparedBuffer);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(layoutBuffer.ExpansionCount == layoutExpansions &&
+              preparedBuffer.ExpansionCount == preparedExpansions && allocated == 0,
+            $"Warmed Layout/Prepare buffers remain allocation-free ({allocated:N0} B)");
+        Check(preparedBuffer.GlyphCount == layoutBuffer.GlyphCount &&
+              atlas.CaptureDiagnostics().CacheHits > 0 &&
+              layouter.CaptureDiagnostics().LayoutCount > 0,
+            "Text diagnostics expose layout activity and glyph cache reuse");
+
+        var backend = new MutableTextureBackend();
+        using var textures = new TextureLibrary(backend);
+        using var runtime = new TextRuntime(textures);
+        FontRef runtimeFont = runtime.Fonts.Register(
+            "font.buffer-revision",
+            Metadata("Revision"),
+            LatinRasterizer());
+        FontFamily runtimeFamily = runtime.CreateFamily(runtimeFont);
+        var revisionLayout = new TextLayoutBuffer();
+        var revisionPrepared = new PreparedTextLayoutBuffer();
+        runtime.PrepareInto(
+            runtimeFamily,
+            "AB",
+            10f,
+            default,
+            revisionLayout,
+            revisionPrepared);
+        runtime.MultilineLayouter.LayoutInto(
+            runtimeFamily,
+            "BA",
+            10f,
+            default,
+            revisionLayout);
+        CheckThrows<InvalidOperationException>(() => runtime.Draw(
+                new RecordingBatch(),
+                revisionPrepared,
+                Vector2.Zero),
+            "Prepared buffers reject drawing after their Layout revision changes");
+        Check(runtime.CaptureDiagnostics().Atlas.CachedGlyphCount == 2,
+            "TextRuntime aggregates layout and atlas diagnostics");
+    }
+
     private static void VerifyValidation()
     {
         Console.WriteLine("5. Public boundary validation");
@@ -134,6 +290,25 @@ internal static class Program
         var family = library.CreateFamily(font);
         CheckThrows<ArgumentOutOfRangeException>(() => new SingleLineTextLayouter(library).Layout(family, "A", 0),
             "Invalid pixel size is rejected");
+        var multiline = new TextLayouter(library);
+        CheckThrows<ArgumentException>(() => multiline.Layout(
+                family,
+                "A",
+                12f,
+                new TextLayoutOptions(WrapMode: TextWrapMode.Word)),
+            "Automatic wrapping requires a positive width");
+        CheckThrows<ArgumentOutOfRangeException>(() => multiline.Layout(
+                family,
+                "A",
+                12f,
+                new TextLayoutOptions(LineSpacing: -1f)),
+            "Negative line spacing is rejected");
+        CheckThrows<ArgumentOutOfRangeException>(() => multiline.Layout(
+                family,
+                "A",
+                12f,
+                new TextLayoutOptions(MaxLines: -1)),
+            "Negative maximum line count is rejected");
         CheckThrows<ArgumentOutOfRangeException>(() =>
                 new DynamicGlyphAtlas(library, new FakeUploader(), new GlyphAtlasOptions(0, 16, 1, 1)),
             "Invalid atlas options are rejected");
@@ -214,7 +389,10 @@ internal static class Program
     private static FakeRasterizer CjkRasterizer()
     {
         var rasterizer = new FakeRasterizer();
-        rasterizer.Add('中', 10, width: 8, height: 8, advance: 10);
+        rasterizer.Add('\u4E2D', 10, width: 8, height: 8, advance: 10);
+        rasterizer.Add('\u6587', 11, width: 8, height: 8, advance: 10);
+        rasterizer.Add('\uFF0C', 12, width: 8, height: 8, advance: 10);
+        rasterizer.Add('\u3002', 13, width: 8, height: 8, advance: 10);
         return rasterizer;
     }
 

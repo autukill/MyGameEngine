@@ -97,16 +97,30 @@ public sealed class FontLibrary : IDisposable
 
     internal (FontRef Font, uint GlyphIndex) ResolveGlyph(FontFamily family, Rune rune)
     {
+        return ResolveGlyph(family, rune, out _);
+    }
+
+    internal (FontRef Font, uint GlyphIndex) ResolveGlyph(
+        FontFamily family,
+        Rune rune,
+        out bool missing)
+    {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(family);
-        foreach (FontRef font in family.Fonts)
+        ReadOnlySpan<FontRef> candidates = family.FontSpan;
+        for (int i = 0; i < candidates.Length; i++)
         {
+            FontRef font = candidates[i];
             Entry entry = GetEntry(font);
             if (entry.Rasterizer.TryGetGlyphIndex(rune, out uint glyphIndex))
+            {
+                missing = false;
                 return (font, glyphIndex);
+            }
         }
 
         FontRef primary = family.Primary;
+        missing = true;
         return (primary, GetEntry(primary).Rasterizer.MissingGlyphIndex);
     }
 

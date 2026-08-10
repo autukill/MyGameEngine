@@ -10,7 +10,7 @@
 |---|---|---|
 | 逻辑 Font、单行 Layout、Fallback、Glyph Atlas | 已完成 | 接口、确定性 Atlas、真实 Font/GPU Adapter 与测试已落地 |
 | 中文字体加载与基础绘制 | 已完成第一版 | World/SceneGui 共用 SpriteBatch，VisualTest 覆盖 Camera 与释放 |
-| 多行 Unicode Layout、换行和对齐 | P1 高 | 决定中文混排和多语言是否可靠 |
+| 多行 Unicode Layout、换行和对齐 | 第一版已完成 | Grapheme、中文/单词换行、三种对齐、Clip/Ellipsis 与 Buffer 已落地 |
 | 彩色文字与受限富文本 | P1/P2 | 建立在稳定 Layout 上，开发价值高 |
 | Grapheme-aware 打字机效果 | P2 | 对话常用，但不能先于 Unicode Cluster |
 | Sprite Emoji 与 Unicode Emoji 映射 | P2 | 可先复用 Sprite/Atlas，绕开复杂彩色字体格式 |
@@ -330,6 +330,6 @@ text.Draw(layout, position, reveal.VisibleUnits);
 4. `TextRendering.VisualTests` 同屏验证中文/ASCII Fallback、World/SceneGui Projection、Camera 变化和隐藏窗口 smoke。
 5. Fake GPU、真实平台字体 Stream、Atlas Cache 与资源释放均有无窗口测试。
 
-下一切片：多行中文换行、Left/Center/Right 对齐、可复用动态 Layout Buffer 与基础 Text 诊断；复杂脚本 shaping 先做 HarfBuzz 兼容性验证。
+多行切片已完成：中文/单词/字符换行、Left/Center/Right、MaxLines、Clip/Ellipsis、可复用 Layout/Prepared Buffer、Revision 防陈旧绘制和基础 Text 诊断均已落地，真实 VisualTests 展示多段中文与居中 SceneGui。
 
-明确不夹带 RichText、Typewriter、Emoji、AnimatedImage、IME、FairyGUI 或完整 Bidi。基础中文字形和生命周期稳定后，再进入 Layout/换行切片。
+下一 Text 边界是 HarfBuzz 与 Unicode Line Breaking 兼容性 Spike；在复杂脚本 shaping 来源、NativeAOT 和版本策略明确前，不夹带 RichText、Typewriter、彩色 Emoji、AnimatedImage、IME、FairyGUI 或完整 Bidi。

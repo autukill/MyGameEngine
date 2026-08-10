@@ -16,7 +16,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
 - Spawn/Wave Authoring：确定性 Delay/Wave/Loop 时间线、并发门控和状态快照；Asteroids 已移除手写生成 Alarm。
 - Animation Authoring：`assets.json` 命名 Clip、强类型引用、GameInstance 播放/帧事件、状态快照与原子 Content Hot Reload；Text、Audio 与 Transform 仍按各自黄金路径渐进接入。
-- Text Rendering：真实 TTF/OTF、中文 Font Fallback、Grapheme-safe 单行布局、动态 Glyph Atlas，以及共用 SpriteBatch 的 World/SceneGui DrawText。
+- Text Rendering：真实 TTF/OTF、中文 Font Fallback、Grapheme-safe 多行换行、对齐/Ellipsis、可复用 Buffer、动态 Glyph Atlas，以及共用 SpriteBatch 的 World/SceneGui DrawText。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件；不可变逻辑 Action/Axis 把玩法意图与物理绑定分离，并支持固定 Tick 内存录制与无设备回放。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
@@ -67,7 +67,7 @@ src/
 │   ├── TextureAssets/                   # TextureLibrary、Skia 解码与资产清单
 │   ├── TextureAtlas/                    # 纯 CPU Atlas 排布与像素页面生成
 │   ├── ToneMapping/                     # HDR 曝光、ACES/Reinhard 与 RGBA8 显示输出
-│   ├── TextRendering/                   # 真实字体、Fallback、Glyph Atlas 与 World/SceneGui DrawText
+│   ├── TextRendering/                   # 真实字体、多行 Layout、复用 Buffer、Glyph Atlas 与 DrawText
 │   ├── TransformHierarchy/              # Local/World、GameInstance Binding、纯挂点与父子层级
 │   ├── *.Tests/                         # 17 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
@@ -306,7 +306,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 ## 下一阶段
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
-2. Animation 与 Text Rendering 两条黄金路径已经闭环；Text 下一切片是多行中文换行、对齐和可复用动态 Layout Buffer，不提前夹带完整 GUI。
+2. Animation 与 Text Rendering 黄金路径已经闭环，多行中文/单词换行、对齐、Ellipsis 和动态 Layout Buffer 已落地；复杂脚本 Shaping 先做 HarfBuzz 兼容性验证，不提前夹带完整 GUI。
 3. 下一条跨层适配优先 Transform Scene/Prefab 挂点，其后是跨平台 Audio Backend；不把尚未完成的适配描述成可用平台能力。
 4. GUI Compatibility Spike 已完成第一轮决策：Yoga 只作为布局内核继续 NativeAOT 实验，RmlUi 是开发者优先完整 Runtime 候选，FairyGUI 保留设计器优先可选路线。详见[调研记录](docs/HTML_CSS_YOGA_GUI_ROADMAP.md)。
 

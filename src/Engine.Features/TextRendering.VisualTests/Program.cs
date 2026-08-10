@@ -81,6 +81,7 @@ internal static class Program
         private readonly TextRuntime _text;
         private readonly PreparedTextLayout _worldTitle;
         private readonly PreparedTextLayout _worldDetails;
+        private readonly PreparedTextLayout _worldParagraph;
         private readonly PreparedTextLayout _gui;
 
         public TextDemo(TextRuntime text, FontFamily family)
@@ -88,13 +89,31 @@ internal static class Program
             _text = text;
             _worldTitle = text.Prepare(family, "你好，MyGameEngine!", 42f);
             _worldDetails = text.Prepare(family, "World Text · ABC 123 · 中文回退", 24f);
-            _gui = text.Prepare(family, "SceneGui：不受 Camera 移动、缩放和旋转影响", 22f);
+            _worldParagraph = text.Prepare(
+                family,
+                "多行中文会在字素边界稳定换行，标点不会轻易出现在行首。\n" +
+                "Latin words prefer whitespace boundaries; emoji clusters stay together.",
+                22f,
+                new TextLayoutOptions(
+                    520f,
+                    TextWrapMode.Word,
+                    LineSpacing: 6f));
+            _gui = text.Prepare(
+                family,
+                "SceneGui：居中多行文本\n不受 Camera 移动、缩放和旋转影响",
+                22f,
+                new TextLayoutOptions(
+                    620f,
+                    TextWrapMode.Word,
+                    TextAlignment.Center,
+                    LineSpacing: 3f));
         }
 
         public override void OnDraw(ISpriteBatch batch)
         {
             _text.Draw(batch, _worldTitle, new Vector2(180, 240), new Vector4(.35f, .9f, 1f, 1f));
             _text.Draw(batch, _worldDetails, new Vector2(180, 300), new Vector4(1f, .82f, .35f, 1f));
+            _text.Draw(batch, _worldParagraph, new Vector2(180, 342), new Vector4(.85f, .9f, 1f, 1f));
         }
 
         public override void OnDrawGUI(ISpriteBatch batch)

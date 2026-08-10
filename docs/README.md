@@ -10,7 +10,7 @@
 - [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)：实例变换、输入、Spawn/Destroy/Find、帧边界语义与轻量 Alarm。
 - [Spawn/Wave Authoring](SPAWN_WAVE_AUTHORING.md)：确定性延迟/波次时间线、循环、并发门控、状态快照和 Asteroids 用例。
 - [Animation Authoring](ANIMATION_AUTHORING.md)：声明式 Clip、强类型引用、Once/Loop/PingPong、GameInstance 播放、帧事件、快照与热重载。
-- [Text Rendering 使用指南](TEXT_RENDERING.md)：真实 TTF/OTF、中文 Fallback、Glyph Atlas、TextureLibrary 上传及 World/SceneGui DrawText。
+- [Text Rendering 使用指南](TEXT_RENDERING.md)：真实 TTF/OTF、中文/单词多行换行、对齐、Ellipsis、复用 Buffer、Glyph Atlas 及 World/SceneGui DrawText。
 - [Audio 基础垂直切片](AUDIO_RUNTIME.md)：逻辑 Clip/Bus、代际 Voice、优先级抢占、Backend 所有权和真实播放后续边界。
 - [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)：Local/World 变换、父子挂点、Reparent、生命周期边界、扁平系统索引及与 Yoga UI 树的关系。
 - [Transform Hierarchy 创作指南](TRANSFORM_HIERARCHY_AUTHORING.md)：`context.Transforms`、GameInstance Binding、纯挂点、帧边界 Reparent 与销毁语义。

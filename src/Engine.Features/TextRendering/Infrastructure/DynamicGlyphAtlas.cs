@@ -24,6 +24,8 @@ public sealed class DynamicGlyphAtlas : IDisposable
     private readonly string _pageNamePrefix;
     private readonly Dictionary<CacheKey, GlyphAtlasEntry> _cache = new();
     private readonly List<Page> _pages = [];
+    private long _cacheHits;
+    private long _cacheMisses;
     private bool _disposed;
 
     public DynamicGlyphAtlas(
@@ -62,7 +64,12 @@ public sealed class DynamicGlyphAtlas : IDisposable
         if (!float.IsFinite(pixelSize) || pixelSize <= 0)
             throw new ArgumentOutOfRangeException(nameof(pixelSize));
         var key = new CacheKey(placement.Font, placement.GlyphIndex, BitConverter.SingleToInt32Bits(pixelSize));
-        if (_cache.TryGetValue(key, out GlyphAtlasEntry existing)) return existing;
+        if (_cache.TryGetValue(key, out GlyphAtlasEntry existing))
+        {
+            _cacheHits++;
+            return existing;
+        }
+        _cacheMisses++;
 
         IGlyphRasterizer rasterizer = _fonts.GetRasterizer(placement.Font);
         GlyphBitmap bitmap = rasterizer.RasterizeGlyph(placement.GlyphIndex, pixelSize)
@@ -94,7 +101,7 @@ public sealed class DynamicGlyphAtlas : IDisposable
         return entry;
     }
 
-    public PreparedTextLayout Prepare(SingleLineTextLayout layout)
+    public PreparedTextLayout Prepare(TextLayout layout)
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(layout);
@@ -106,6 +113,35 @@ public sealed class DynamicGlyphAtlas : IDisposable
         }
 
         return new PreparedTextLayout(layout, prepared);
+    }
+
+    public void Prepare(TextLayoutBuffer layout, PreparedTextLayoutBuffer destination)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(layout);
+        ArgumentNullException.ThrowIfNull(destination);
+        destination.EnsureCapacity(layout.GlyphCount);
+        ReadOnlySpan<GlyphPlacement> placements = layout.Glyphs;
+        for (int i = 0; i < placements.Length; i++)
+        {
+            GlyphPlacement placement = placements[i];
+            destination.Items[i] = new PreparedGlyph(
+                placement,
+                GetOrAdd(placement, layout.PixelSize));
+        }
+        destination.Layout = layout;
+        destination.LayoutRevision = layout.Revision;
+        destination.GlyphCount = layout.GlyphCount;
+    }
+
+    public GlyphAtlasDiagnostics CaptureDiagnostics()
+    {
+        ThrowIfDisposed();
+        return new GlyphAtlasDiagnostics(
+            _cache.Count,
+            _pages.Count,
+            _cacheHits,
+            _cacheMisses);
     }
 
     public void Dispose()
@@ -177,3 +213,9 @@ public sealed class DynamicGlyphAtlas : IDisposable
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }
+
+public readonly record struct GlyphAtlasDiagnostics(
+    int CachedGlyphCount,
+    int PageCount,
+    long CacheHits,
+    long CacheMisses);

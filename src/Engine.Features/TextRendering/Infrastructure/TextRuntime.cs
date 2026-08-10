@@ -20,17 +20,19 @@ public sealed class TextRuntime : IDisposable
         Textures = textures ?? throw new ArgumentNullException(nameof(textures));
         Fonts = new FontLibrary();
         Layouter = new SingleLineTextLayouter(Fonts);
+        MultilineLayouter = new TextLayouter(Fonts);
         Atlas = new DynamicGlyphAtlas(
             Fonts,
             new TextureLibraryGlyphUploader(textures),
             atlasOptions,
             atlasNamePrefix);
-        Renderer = new TextRenderer(Layouter, Atlas, textures);
+        Renderer = new TextRenderer(Layouter, MultilineLayouter, Atlas, textures);
     }
 
     public TextureLibrary Textures { get; }
     public FontLibrary Fonts { get; }
     public SingleLineTextLayouter Layouter { get; }
+    public TextLayouter MultilineLayouter { get; }
     public DynamicGlyphAtlas Atlas { get; }
     public TextRenderer Renderer { get; }
 
@@ -91,16 +93,39 @@ public sealed class TextRuntime : IDisposable
         return Renderer.Prepare(fonts, text, pixelSize);
     }
 
+    public PreparedTextLayout Prepare(
+        FontFamily fonts,
+        string text,
+        float pixelSize,
+        TextLayoutOptions options)
+    {
+        ThrowIfDisposed();
+        return Renderer.Prepare(fonts, text, pixelSize, options);
+    }
+
+    public void PrepareInto(
+        FontFamily fonts,
+        string text,
+        float pixelSize,
+        TextLayoutOptions options,
+        TextLayoutBuffer layout,
+        PreparedTextLayoutBuffer prepared)
+    {
+        ThrowIfDisposed();
+        Renderer.PrepareInto(fonts, text, pixelSize, options, layout, prepared);
+    }
+
     public void Draw(
         ISpriteBatch batch,
         FontFamily fonts,
         string text,
         Vector2 position,
         float pixelSize,
-        Vector4? color = null)
+        Vector4? color = null,
+        TextLayoutOptions layout = default)
     {
         ThrowIfDisposed();
-        batch.DrawText(Renderer, fonts, text, position, pixelSize, color);
+        batch.DrawText(Renderer, fonts, text, position, pixelSize, color, layout);
     }
 
     public void Draw(
@@ -113,6 +138,24 @@ public sealed class TextRuntime : IDisposable
         batch.DrawText(Renderer, prepared, position, color);
     }
 
+    public void Draw(
+        ISpriteBatch batch,
+        PreparedTextLayoutBuffer prepared,
+        Vector2 position,
+        Vector4? color = null)
+    {
+        ThrowIfDisposed();
+        batch.DrawText(Renderer, prepared, position, color);
+    }
+
+    public TextRuntimeDiagnostics CaptureDiagnostics()
+    {
+        ThrowIfDisposed();
+        return new TextRuntimeDiagnostics(
+            MultilineLayouter.CaptureDiagnostics(),
+            Atlas.CaptureDiagnostics());
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -123,3 +166,7 @@ public sealed class TextRuntime : IDisposable
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }
+
+public readonly record struct TextRuntimeDiagnostics(
+    TextLayouterDiagnostics Layout,
+    GlyphAtlasDiagnostics Atlas);

@@ -1,6 +1,6 @@
 # Text Rendering 使用指南
 
-`Engine.Features.TextRendering` 已提供真实 TTF/OTF 字体解析、Unicode Rune 与 Grapheme Cluster 单行布局、有序 Font Fallback、动态 Glyph Atlas、TextureLibrary 局部上传，以及 World/SceneGui 共用的 `DrawText` 路径。
+`Engine.Features.TextRendering` 已提供真实 TTF/OTF 字体解析、Unicode Rune 与 Grapheme Cluster 多行布局、有序 Font Fallback、中文/单词换行、Left/Center/Right 对齐、Clip/Ellipsis、动态 Glyph Atlas、可复用 Layout Buffer，以及 World/SceneGui 共用的 `DrawText` 路径。
 
 ## Hosting 快速开始
 
@@ -60,7 +60,55 @@ public sealed class HudText : GameInstance
 context.Text.Draw(batch, family, $"Score: {score}", position, 24f, color);
 ```
 
-这条便利路径每次都会重新 Layout/Prepare。静态标签、菜单标题和不常变化的文本应缓存 `PreparedTextLayout`；高频数字后续会增加可复用 Layout Buffer，不应把字符串插值伪装成零分配。
+这条便利路径每次都会重新 Layout/Prepare。静态标签、菜单标题和不常变化的文本应缓存 `PreparedTextLayout`。
+
+## 多行、换行与对齐
+
+```csharp
+PreparedTextLayout paragraph = text.Prepare(
+    family,
+    "多行中文在字素边界换行。\nLatin words prefer spaces.",
+    24f,
+    new TextLayoutOptions(
+        MaxWidth: 480f,
+        WrapMode: TextWrapMode.Word,
+        Alignment: TextAlignment.Center,
+        MaxLines: 4,
+        Overflow: TextOverflow.Ellipsis,
+        LineSpacing: 6f));
+```
+
+- `NoWrap` 不自动换行，但仍识别 `CRLF`、`CR` 和 `LF`；设置有限 `MaxWidth` 后按 Cluster 截断。
+- `Character` 可在合法 Grapheme Cluster 之间换行，不拆分代理项、组合字符或 Emoji ZWJ Cluster。
+- `Word` 优先使用拉丁空白和 CJK 字符边界；基础中文开闭标点禁则会避免常见标点出现在错误行首/行尾。
+- `MaxWidth = 0` 表示不限制宽度；自动换行必须提供正宽度。
+- `MaxLines = 0` 表示不限制行数；`Clip` 省略溢出 Cluster，`Ellipsis` 在最后一行追加 `…`。
+- 极窄宽度下，短中文闭标点串可能有意略微超过 `MaxWidth`，避免产生标点开头的行。
+
+当前换行器是确定性的基础 Unicode/CJK 实现，不宣称完整实现 UAX #14；复杂语言进入 HarfBuzz/Unicode Line Breaking 适配后再扩展。
+
+## 高频动态文本 Buffer
+
+调用方持有 `TextLayoutBuffer` 与 `PreparedTextLayoutBuffer`，可在内容变化时复用容量：
+
+```csharp
+private readonly TextLayoutBuffer _layout = new();
+private readonly PreparedTextLayoutBuffer _prepared = new();
+
+text.PrepareInto(
+    family,
+    scoreText,
+    22f,
+    new TextLayoutOptions(260f, TextWrapMode.NoWrap, TextAlignment.Right),
+    _layout,
+    _prepared);
+
+text.Draw(batch, _prepared, new Vector2(24, 24), Vector4.One);
+```
+
+Buffer 按需几何扩容，容量稳定后相同长度级别的 Layout + Atlas Prepare 为 0 B。`Revision` 防止 Layout 在 Prepare 后被改写却继续绘制旧 Glyph；改写后必须重新 `PrepareInto`。字符串本身仍由调用方负责，高频 `$"Score: {score}"` 的字符串分配不会被 Buffer 隐藏。
+
+`TextRuntime.CaptureDiagnostics()` 返回 Layout 次数、缺字数、Glyph Cache hit/miss、缓存字形和 Atlas 页数；Buffer 自身公开 `ExpansionCount`，便于定位容量抖动。
 
 ## 字体与 Fallback
 
@@ -102,10 +150,10 @@ Hosting 已保证这一逆序释放。手工创建多个 TextRuntime 并共享�
 
 ## 当前边界
 
-- 当前是单行、从左到右的基础 Layout；换行、对齐、裁剪和溢出策略尚未进入实现。
+- 当前支持从左到右的多行基础 Layout、Grapheme 安全换行、基础中文禁则、对齐、最大行数与逻辑 Clip/Ellipsis；尚未提供像素 Scissor/Selection/Caret。
 - `SKFont` 负责真实 Glyph ID、指标与栅格化，但当前尚未接入 HarfBuzz shaping；阿拉伯文、复杂印度文字、连字和高级 Kerning 不能视为完成。
 - 支持单色 Glyph Coverage；尚无 Outline、Shadow、渐变、SDF/MSDF 或彩色 Font Emoji。
 - 尚无声明式 `fonts.json`、强类型 `GameFonts`、Font Hot Reload、IME、RichText 或打字机控制器。
 - 动态 Atlas v1 只增长、不驱逐；超过页上限会明确失败，后续结合实际显存数据设计预算与 LRU。
 
-真实示例位于 `src/Engine.Features/TextRendering.VisualTests`：同屏显示中文/拉丁 Fallback、World Text、SceneGui Text 和 Camera 变化；支持 `--smoke` 隐藏窗口回归。
+真实示例位于 `src/Engine.Features/TextRendering.VisualTests`：同屏显示中文/拉丁 Fallback、多行中文/拉丁换行、居中 SceneGui Text、World Text 和 Camera 变化；支持 `--smoke` 隐藏窗口回归。

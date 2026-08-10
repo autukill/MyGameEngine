@@ -54,6 +54,7 @@
 - 独立 ShaderAssets 切片严格解析版本化 `shaders.json`，统一 Program 文件、Material Schema/default 与安全路径；Hosting 自动装配，AssetCompiler/MSBuild 在 C# 编译前复用同一静态校验。
 - AssetCompiler 从 `shaders.json` 确定性生成 `GameShaders.ManifestPath/Shaders/Materials/Parameters`；`MaterialParameterRef<T>` 在编译期固定值类型并携带所属 Material，Runner 与外部 NuGet 消费项目均不再手写 Shader 资产名称。
 - Gameplay Authoring 提供 `Position/Rotation/Scale`、输入轴/按键边沿、实例级 `Spawn/Destroy/Find`、End Step 后确定性变更提交和暂停感知的轻量 `AlarmId`；可选 `SceneTransformRuntime` 进一步提供 GameInstance Local/World 父子组合、纯挂点、`KeepLocal/KeepWorld` 与安全帧边界同步，`TransformPrefab<TParts>` 支持可复用 `root → weapon → muzzle` 拓扑和强类型具名节点，原有世界坐标 Draw/Collider/查询保持兼容。
+- Text Rendering 支持真实 TTF/OTF/TTC、Font Fallback、Grapheme 安全的中文/单词多行换行、Left/Center/Right、MaxLines、Clip/Ellipsis、可复用 `TextLayoutBuffer/PreparedTextLayoutBuffer`、Glyph Atlas 与基础缓存/缺字诊断；World 和 SceneGui 共享同一布局与 Atlas。
 - `playgrounds/AirplaneShooter` 提供第一个面向游戏开发者的独立可运行样例：方向键/WASD 移动、按住空格发射、强类型 Sprite 资产和 Alarm 子弹回收。
 - Hosting 提供强类型 `SceneRef` 目录、帧边界切换和 persistent 实例保留；Prefab 目录按 `PrefabRef<T>` 注册并在 Build 后冻结。
 - `SceneRef<TArgs>`、泛型 `AddScene/StartScene/SwitchScene` 把值类型参数与目标 Scene 编译期绑定；请求快照、注册类型校验和同帧冲突均发生在切换前，Asteroids 已传递 GameOver 生存数据。

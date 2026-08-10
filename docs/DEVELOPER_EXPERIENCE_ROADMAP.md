@@ -142,7 +142,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | 已完成接入 | Animation Authoring | Content、强类型生成、Hosting、GameInstance 与 Hot Reload 已闭环 |
 | 已完成接入 | Scene Graph / Transform Hierarchy | Scene、GameInstance、纯挂点与强类型 Transform Prefab 已接入；多实例 Composite Prefab 等真实需求验证 |
 | P1 | Tilemap/World Authoring | 关卡生产、Chunk、碰撞和未来静态光照遮挡的共同基础 |
-| 已完成接入 | 原生中文 Text Rendering | 真实 Font、Texture Uploader、Hosting 与 World/SceneGui Draw 已闭环；多行/Shaping 后续推进 |
+| 已完成接入 | 原生中文 Text Rendering | 真实 Font、中文/单词多行、对齐、Ellipsis、复用 Buffer、Hosting 与 World/SceneGui 已闭环；Shaping 后续 Spike |
 | P1 接入 | Audio 基础 | Clip/Bus/Voice 核心已完成；下一步真实 Decoder/Backend/Streaming |
 | 已完成调研 | Yoga/RmlUi/FairyGUI Compatibility Spike | 已建立候选顺序、适配面和 Go/No-Go 门槛 |
 | P2 | RichText、彩色文字、Typewriter、Sprite Emoji | 建立在原生 Text Layout 上 |
@@ -152,7 +152,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | P3 | 彩色 Font Emoji、AnimatedImage、FairyGUI 高级组件 | 由真实产品需求和资产驱动 |
 | P3 | Lighting 软阴影/高级材质、完整物理/导航 | 由性能数据和真实玩法驱动 |
 
-第一轮并行基础建设、Animation 和真实 Text 黄金路径已经完成。推荐后续按集成风险串行收口：`Transform Scene/Prefab → Text 多行/Layout Buffer → Audio Backend → Tilemap → Lighting 0/1`。Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
+Transform Scene/Prefab 与 Text 多行/Layout Buffer 已完成。推荐后续按集成风险串行收口：`Audio Backend → Tilemap/World Authoring → Lighting 0/1`。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
 
 ## 设计约束
 
