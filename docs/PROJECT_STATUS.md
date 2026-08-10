@@ -93,7 +93,7 @@
 - Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；`UseRenderViews` 可声明每个 View 的静态跟随策略，Hosting 惰性创建控制器，Gameplay 仍显式提供和切换运行时目标。
 - 独立 `Engine.PerformanceBenchmarks` 已把多 View 性能实验与 DDD 烟测分离：100/1,000/10,000 实例场景同时报告无剔除/剔除耗时、每 View 候选/Draw/拒绝数与分配量，并以确定性计数、零排序和 `0 B/frame` 作为回归守卫。
 - GPU 回归新增 `multi-render-view-lifecycle`：真实组合主 View HDR Bloom + Tone Mapping 与 0.75 RenderScale observer Tone Mapping，resize 后验证五个活动租约的精确尺寸，逐 View 释放后验证活动效果和租约归零、缓存全部回到 Pool。
-- `games/TheGodTheyMade` 已完成 Gate 1B：除 Gate 1A 的地图、Camera/Pointer、导航与 12 名村民日程外，Simulation 已贯通固定 Tick 局部降雨命令、神意恢复、水库/水闸/水渠、三块田地湿度、单调 `WorldObservation` 和每村民 32 条有界感知记忆。Visual/Auditory/Direct 路由含距离、Bresenham 视线和遮挡，世界稳定 Tick 保持 0 B；信仰与强化学习仍留在后续 Gate。
+- `games/TheGodTheyMade` 已完成 Gate 2：在可观察世界之上加入八条因果白名单、整数证据、窗口反证、角色 Prior、每人八条有界假说、稳定证言传播与公共教义；信仰会改变敲钟、维护和集会任务。固定脚本已通过真实 Replay Bundle 逐 Tick 复现世界、村民、观察和信仰 Hash；神兽强化学习仍留在 Gate 3。
 
 ## 仍在演进
 
@@ -117,11 +117,11 @@
 3. 已提供 Chunk 内静态碰撞贪心烘焙、复用 Buffer、多 Camera 显式可见边界和无窗口回归。
 4. 当前 TileMap 编译产物仍为严格 JSON；Tiled 导入、版本化二进制 Chunk、地图热重载和流式驻留留待后续真实规模驱动。
 
-## 当前真实游戏里程碑：《神意难测》Gate 2
+## 当前真实游戏里程碑：《神意难测》Gate 3
 
-1. 按首岛因果白名单将个人观察转换成有界整数假说，覆盖支持、反证、时间窗和 Prior。
-2. 在午间/黄昏聚集时按稳定顺序传播证言，并形成最小公共教义。
-3. 让信仰真正改变敲钟、维护和集会行为，并接入 Replay/State Hash 确定性验收。
+1. 为猿形身体实现七种离散态势、六个候选动作、合法动作过滤和表格型整数 Q 值。
+2. 接入示范先验、嘉许/制止、环境奖励、受控探索、失败冷却和最近 16 次可解释决策。
+3. 验证错误泛化、纠正、Snapshot 恢复以及固定训练脚本的 Replay/Hash 确定性。
 
 ## 后续引擎候选里程碑：Streaming Music
 

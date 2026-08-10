@@ -11,7 +11,9 @@ using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.Tilemaps.Infrastructure;
 using TheGodTheyMade.Game.Content;
 using TheGodTheyMade.Simulation.Navigation;
+using TheGodTheyMade.Simulation.Beliefs;
 using TheGodTheyMade.Simulation.World;
+using TheGodTheyMade.Simulation.Village;
 
 internal sealed class MingzhongWorldInstance : GameInstance
 {
@@ -36,7 +38,10 @@ internal sealed class MingzhongWorldInstance : GameInstance
     private readonly NavigationGrid _navigation;
     private readonly Action _close;
     private readonly MingzhongWorldSimulation _world;
+    private readonly BeliefSimulation _beliefs;
     private readonly bool _smoke;
+    private readonly bool _scriptedBelief;
+    private readonly bool _suppressRawInput;
     private bool _previousPrimaryDown;
     private bool _captured;
     private Vector2D _captureStart;
@@ -52,8 +57,11 @@ internal sealed class MingzhongWorldInstance : GameInstance
         Func<Vector2D, Vector2D?> screenToWorld,
         NavigationGrid navigation,
         MingzhongWorldSimulation world,
+        BeliefSimulation beliefs,
         Action close,
-        bool smoke)
+        bool smoke,
+        bool scriptedBelief,
+        bool replayPlayback)
         : base("MingzhongWorld", Vector2D.Zero, LayerDepth.Background)
     {
         _map = map;
@@ -62,8 +70,11 @@ internal sealed class MingzhongWorldInstance : GameInstance
         _screenToWorld = screenToWorld;
         _navigation = navigation;
         _world = world;
+        _beliefs = beliefs;
         _close = close;
         _smoke = smoke;
+        _scriptedBelief = scriptedBelief;
+        _suppressRawInput = scriptedBelief || replayPlayback;
         ViewCulling = InstanceViewCullingMode.AlwaysVisible;
     }
 
@@ -71,32 +82,43 @@ internal sealed class MingzhongWorldInstance : GameInstance
     {
         Vector2D movement = InputAxis2D(GameInputs.CameraMove);
         _camera.Position += new Vector2(movement.X, movement.Y) * (360f * (float)deltaTime);
-        float scroll = Controls.MouseScrollDelta;
+        float scroll = _suppressRawInput ? 0f : Controls.MouseScrollDelta;
         if (scroll != 0f)
             _camera.Zoom = Math.Clamp(_camera.Zoom * MathF.Pow(1.12f, scroll), 0.75f, 2f);
         ConstrainCamera();
 
-        _pointerWorld = _screenToWorld(Controls.MousePosition);
-        bool primaryDown = Controls.IsMouseButtonDown(MouseButton.Left);
-        bool pressed = primaryDown && !_previousPrimaryDown;
-        bool released = !primaryDown && _previousPrimaryDown;
-        if (pressed && _pointerWorld is { } pressedWorld)
+        if (!_suppressRawInput)
         {
-            _captured = true;
-            _captureStart = pressedWorld;
+            _pointerWorld = _screenToWorld(Controls.MousePosition);
+            bool primaryDown = Controls.IsMouseButtonDown(MouseButton.Left);
+            bool pressed = primaryDown && !_previousPrimaryDown;
+            bool released = !primaryDown && _previousPrimaryDown;
+            if (pressed && _pointerWorld is { } pressedWorld)
+            {
+                _captured = true;
+                _captureStart = pressedWorld;
+            }
+            if (released && _captured)
+            {
+                if (_pointerWorld is { } releasedWorld)
+                    HandleRelease(releasedWorld);
+                _captured = false;
+            }
+            _previousPrimaryDown = primaryDown;
         }
-        if (released && _captured)
-        {
-            if (_pointerWorld is { } releasedWorld)
-                HandleRelease(releasedWorld);
-            _captured = false;
-        }
-        _previousPrimaryDown = primaryDown;
+
+        if (_scriptedBelief && _world.Tick == 10)
+            _world.TryApply(MingzhongCommand.RingBell(_world.Tick));
+        if (_scriptedBelief && _world.Tick == 20)
+            _world.TryApply(MingzhongCommand.Rain(_world.Tick, MingzhongVillage.Bell));
 
         _world.AdvanceTick();
+        _beliefs.Update(_world);
 
-        if (KeyPressed(InputKey.Escape)) _close();
-        if (_smoke && ++_steps >= 4) _close();
+        if (!_suppressRawInput && KeyPressed(InputKey.Escape)) _close();
+        _steps++;
+        if (_smoke && !_scriptedBelief && _steps >= 4) _close();
+        if (_scriptedBelief && _world.Tick >= MingzhongVillage.TicksPerSecond) _close();
     }
 
     public override void OnDraw(ISpriteBatch batch)
@@ -155,6 +177,8 @@ internal sealed class MingzhongWorldInstance : GameInstance
             writer.Write($"mingzhong.field.{i}.withered", field.Withered);
         }
         writer.Write("mingzhong.worldHash", _world.ComputeStateHash());
+        writer.Write("mingzhong.beliefHash", _beliefs.ComputeStateHash());
+        writer.Write("mingzhong.hasDoctrine", _beliefs.Doctrine is not null);
     }
 
     private void HandleRelease(Vector2D world)

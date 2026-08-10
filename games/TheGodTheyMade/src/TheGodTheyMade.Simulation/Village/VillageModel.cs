@@ -51,6 +51,8 @@ public enum VillageTaskKind
     ObserveFamiliar,
     TendCemetery,
     Gather,
+    DoctrineGather,
+    MaintainBell,
     ClearGate,
     ReturnHome
 }

@@ -1,6 +1,7 @@
 namespace TheGodTheyMade.Simulation.Village;
 
 using TheGodTheyMade.Simulation.Navigation;
+using TheGodTheyMade.Simulation.Beliefs;
 
 public sealed class VillageDirector
 {
@@ -23,7 +24,8 @@ public sealed class VillageDirector
     public VillageTaskAssignment GetAssignment(
         in VillagerDefinition villager,
         long tick,
-        bool gateBlocked)
+        bool gateBlocked,
+        VillageBeliefBehavior belief = default)
     {
         VillagePhase phase = GetPhase(tick);
         int sequence = (int)phase;
@@ -32,11 +34,9 @@ public sealed class VillageDirector
             VillagePhase.Dawn => Dawn(villager, sequence),
             VillagePhase.FirstWork => Work(villager, gateBlocked, sequence),
             VillagePhase.CrisisWork => Crisis(villager, gateBlocked, sequence),
-            VillagePhase.MiddayGathering =>
-                new VillageTaskAssignment(VillageTaskKind.Gather, MingzhongVillage.Square, sequence),
-            VillagePhase.SecondWork => Crisis(villager, gateBlocked, sequence),
-            VillagePhase.DuskGathering =>
-                new VillageTaskAssignment(VillageTaskKind.Gather, MingzhongVillage.Square, sequence),
+            VillagePhase.MiddayGathering => Gathering(belief, sequence),
+            VillagePhase.SecondWork => BeliefWork(villager, gateBlocked, belief, sequence),
+            VillagePhase.DuskGathering => Gathering(belief, sequence),
             _ => new VillageTaskAssignment(
                 VillageTaskKind.ReturnHome, villager.Home, sequence)
         };
@@ -61,6 +61,26 @@ public sealed class VillageDirector
             new(VillageTaskKind.TendCemetery, MingzhongVillage.Cemetery, sequence),
         _ => new VillageTaskAssignment(VillageTaskKind.DepartHome, villager.Work, sequence)
     };
+
+    private static VillageTaskAssignment Gathering(
+        in VillageBeliefBehavior belief,
+        int sequence) => new(
+            belief.AttendDoctrineGathering ? VillageTaskKind.DoctrineGather : VillageTaskKind.Gather,
+            MingzhongVillage.Square,
+            sequence);
+
+    private static VillageTaskAssignment BeliefWork(
+        in VillagerDefinition villager,
+        bool gateBlocked,
+        in VillageBeliefBehavior belief,
+        int sequence)
+    {
+        if (belief.PrioritizeBell && villager.Role is VillagerRole.BellKeeper or VillagerRole.Ritualist)
+            return new VillageTaskAssignment(VillageTaskKind.RingBell, MingzhongVillage.Bell, sequence);
+        if (belief.MaintainBell && villager.Role is VillagerRole.BellApprentice or VillagerRole.Mason)
+            return new VillageTaskAssignment(VillageTaskKind.MaintainBell, MingzhongVillage.Bell, sequence);
+        return Crisis(villager, gateBlocked, sequence);
+    }
 
     private static VillageTaskAssignment Crisis(
         in VillagerDefinition villager,

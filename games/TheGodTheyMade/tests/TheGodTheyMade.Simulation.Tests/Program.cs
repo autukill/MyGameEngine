@@ -3,6 +3,7 @@ namespace TheGodTheyMade.Simulation.Tests;
 using TheGodTheyMade.Simulation.Navigation;
 using TheGodTheyMade.Simulation.Village;
 using TheGodTheyMade.Simulation.World;
+using TheGodTheyMade.Simulation.Beliefs;
 
 internal static class Program
 {
@@ -27,6 +28,13 @@ internal static class Program
         Run("Observation memory keeps strongest recent evidence", ObservationMemoryCapacity);
         Run("Observable world deterministic hash", ObservableWorldDeterministicHash);
         Run("Observable world stable allocation", ObservableWorldStableAllocation);
+        Run("Belief thresholds and authored priors", BeliefThresholdsAndPriors);
+        Run("Observed cause effect supports hypothesis", ObservedCauseEffectSupportsHypothesis);
+        Run("Expired cause creates contradiction", ExpiredCauseCreatesContradiction);
+        Run("Unseen event cannot become belief", UnseenEventCannotBecomeBelief);
+        Run("Gathering establishes public doctrine", GatheringEstablishesPublicDoctrine);
+        Run("Belief changes village behavior", BeliefChangesVillageBehavior);
+        Run("Belief script deterministic and allocation stable", BeliefDeterministicAndStable);
         Console.WriteLine($"TheGodTheyMade Simulation: {_passed} checks passed.");
     }
 
@@ -380,6 +388,164 @@ internal static class Program
     {
         for (int i = 0; i < ticks; i++) world.AdvanceTick();
     }
+
+    private static void BeliefThresholdsAndPriors()
+    {
+        Check(BeliefThresholds.Classify(-201) == BeliefConviction.Opposed, "Opposition boundary.");
+        Check(BeliefThresholds.Classify(-200) == BeliefConviction.Undecided, "Undecided boundary.");
+        Check(BeliefThresholds.Classify(100) == BeliefConviction.Suspected, "Suspicion boundary.");
+        Check(BeliefThresholds.Classify(300) == BeliefConviction.Believed, "Belief boundary.");
+        Check(BeliefThresholds.Classify(450) == BeliefConviction.Advocated, "Advocacy boundary.");
+
+        var beliefs = new BeliefSimulation(MingzhongVillage.Roster);
+        BeliefHypothesisKey key = BellRainKey();
+        Check(beliefs.GetHypothesis(MingzhongVillage.Roster[0].Id, key)?.Score == 120,
+            "Cen should begin with the authored bell-rain prior.");
+        Check(beliefs.GetHypothesis(MingzhongVillage.Roster[6].Id, key)?.Score == 120,
+            "Mian should begin with the authored bell-rain prior.");
+        Check(beliefs.GetHypothesis(MingzhongVillage.Roster[1].Id, key) is null,
+            "Other villagers must not receive an omniscient prior.");
+    }
+
+    private static void ObservedCauseEffectSupportsHypothesis()
+    {
+        (MingzhongWorldSimulation world, BeliefSimulation beliefs, VillagerDefinition observer) =
+            NewSingleObserverBeliefWorld("cen_bellkeeper");
+        world.Publish(ObservationKind.BellRang, "bell", null, observer.Home);
+        world.Publish(ObservationKind.RainStarted, "rain", null, observer.Home);
+        beliefs.Update(world);
+        BeliefHypothesisSnapshot hypothesis = beliefs.GetHypothesis(observer.Id, BellRainKey())!.Value;
+        Check(hypothesis.Score > 120 && hypothesis.SupportingEvidence == 1,
+            "An observed effect inside the window should support the prior hypothesis.");
+        Check(hypothesis.Contradictions == 0, "A resolved cause must not later contradict itself.");
+    }
+
+    private static void ExpiredCauseCreatesContradiction()
+    {
+        (MingzhongWorldSimulation world, BeliefSimulation beliefs, VillagerDefinition observer) =
+            NewSingleObserverBeliefWorld("cen_bellkeeper");
+        world.Publish(ObservationKind.BellRang, "bell", null, observer.Home);
+        beliefs.Update(world);
+        for (int i = 0; i <= 8 * MingzhongVillage.TicksPerSecond + 1; i++)
+        {
+            world.AdvanceTick();
+            beliefs.Update(world);
+        }
+        BeliefHypothesisSnapshot hypothesis = beliefs.GetHypothesis(observer.Id, BellRainKey())!.Value;
+        Check(hypothesis.Score < 120 && hypothesis.Contradictions == 1,
+            "An observed cause without its effect should become one bounded contradiction.");
+    }
+
+    private static void UnseenEventCannotBecomeBelief()
+    {
+        VillagerDefinition observer = MingzhongVillage.Roster[1] with
+        {
+            Home = new GridCell(0, 0),
+            Work = new GridCell(0, 0)
+        };
+        var world = new MingzhongWorldSimulation(new[] { observer }, cell => cell == new GridCell(1, 0));
+        var beliefs = new BeliefSimulation(new[] { observer });
+        world.Publish(ObservationKind.CropWithered, "field", null, new GridCell(2, 0));
+        world.Publish(ObservationKind.RainStarted, "rain", null, new GridCell(20, 20));
+        beliefs.Update(world);
+        var key = new BeliefHypothesisKey(ObservationKind.CropWithered, ObservationKind.RainStarted);
+        Check(world.GetMemory(observer.Id).Count == 0, "Observer fixture should perceive neither event.");
+        Check(beliefs.GetHypothesis(observer.Id, key) is null,
+            "The belief layer must never read the omniscient world log.");
+    }
+
+    private static void GatheringEstablishesPublicDoctrine()
+    {
+        VillagerDefinition[] villagers = MingzhongVillage.Roster.Take(3)
+            .Select(v => v with { Home = MingzhongVillage.Bell, Work = MingzhongVillage.Bell })
+            .ToArray();
+        var world = new MingzhongWorldSimulation(villagers);
+        var beliefs = new BeliefSimulation(villagers);
+        for (int repetition = 0; repetition < 2; repetition++)
+        {
+            world.Publish(ObservationKind.BellRang, "bell", null, MingzhongVillage.Bell);
+            world.Publish(ObservationKind.RainStarted, "rain", null, MingzhongVillage.Bell);
+            beliefs.Update(world);
+            world.AdvanceTick();
+        }
+        beliefs.ConductGathering(world.Tick);
+        PublicDoctrine? established = beliefs.Doctrine;
+        Check(established is { } && established.Value.Key == BellRainKey(),
+            "An advocate and two believing responders should establish a doctrine.");
+        Check(established!.Value.Responders >= 2, "Public doctrine requires at least two responders.");
+    }
+
+    private static void BeliefChangesVillageBehavior()
+    {
+        (MingzhongWorldSimulation world, BeliefSimulation beliefs, VillagerDefinition observer) =
+            NewSingleObserverBeliefWorld("cen_bellkeeper");
+        for (int repetition = 0; repetition < 2; repetition++)
+        {
+            world.Publish(ObservationKind.BellRang, "bell", null, observer.Home);
+            world.Publish(ObservationKind.RainStarted, "rain", null, observer.Home);
+            beliefs.Update(world);
+            world.AdvanceTick();
+        }
+        VillageBeliefBehavior behavior = beliefs.GetBehavior(observer.Id);
+        Check(behavior.PrioritizeBell && behavior.MaintainBell && behavior.AttendDoctrineGathering,
+            "A strong bell-rain believer should expose all three authored behavior biases.");
+        var director = new VillageDirector();
+        VillageTaskAssignment work = director.GetAssignment(observer, 400 * 60, true, behavior);
+        VillageTaskAssignment gathering = director.GetAssignment(observer, 520 * 60, true, behavior);
+        Check(work.Kind == VillageTaskKind.RingBell, "Belief should change second-work behavior to ringing.");
+        Check(gathering.Kind == VillageTaskKind.DoctrineGather,
+            "Belief should make the gathering explicitly doctrinal.");
+    }
+
+    private static void BeliefDeterministicAndStable()
+    {
+        ulong first = SimulateBeliefScript();
+        ulong second = SimulateBeliefScript();
+        Check(first == second, "A fixed logical command/event script must reproduce belief state exactly.");
+
+        var world = NewWorld();
+        var beliefs = new BeliefSimulation(MingzhongVillage.Roster);
+        beliefs.Update(world);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+        {
+            world.AdvanceTick();
+            beliefs.Update(world);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated == 0, $"Stable belief ticks should allocate 0 B, allocated {allocated} B.");
+    }
+
+    private static ulong SimulateBeliefScript()
+    {
+        var world = NewWorld();
+        var beliefs = new BeliefSimulation(MingzhongVillage.Roster);
+        for (int tick = 0; tick < 9 * 60 * MingzhongVillage.TicksPerSecond; tick++)
+        {
+            if (world.Tick == 38 * MingzhongVillage.TicksPerSecond)
+                world.TryApply(MingzhongCommand.Rain(world.Tick, MingzhongVillage.Bell));
+            if (world.Tick == 7L * 60 * MingzhongVillage.TicksPerSecond + 2 * MingzhongVillage.TicksPerSecond)
+                world.TryApply(MingzhongCommand.Rain(world.Tick, new GridCell(35, 23)));
+            world.AdvanceTick();
+            beliefs.Update(world);
+        }
+        return world.ComputeStateHash() ^ RotateLeft(beliefs.ComputeStateHash(), 17);
+    }
+
+    private static (MingzhongWorldSimulation World, BeliefSimulation Beliefs, VillagerDefinition Observer)
+        NewSingleObserverBeliefWorld(string villagerId)
+    {
+        VillagerDefinition observer = MingzhongVillage.Roster.Single(v => v.Id.Value == villagerId);
+        observer = observer with { Home = MingzhongVillage.Bell, Work = MingzhongVillage.Bell };
+        return (new MingzhongWorldSimulation(new[] { observer }),
+            new BeliefSimulation(new[] { observer }), observer);
+    }
+
+    private static BeliefHypothesisKey BellRainKey() =>
+        new(ObservationKind.BellRang, ObservationKind.RainStarted);
+
+    private static ulong RotateLeft(ulong value, int amount) =>
+        value << amount | value >> (64 - amount);
 
     private static void Run(string name, Action test)
     {

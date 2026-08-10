@@ -8,6 +8,7 @@ using TheGodTheyMade.Game.Content;
 using TheGodTheyMade.Simulation.Navigation;
 using TheGodTheyMade.Simulation.Village;
 using TheGodTheyMade.Simulation.World;
+using TheGodTheyMade.Simulation.Beliefs;
 
 internal sealed class VillagerInstance : GameInstance
 {
@@ -28,6 +29,7 @@ internal sealed class VillagerInstance : GameInstance
     private readonly Func<bool> _gateBlocked;
     private readonly NavigationAgent _agent;
     private readonly MingzhongWorldSimulation _world;
+    private readonly BeliefSimulation _beliefs;
     private VillageTaskAssignment _assignment;
     private int _plannedRevision = -1;
     private int _failedPlans;
@@ -41,7 +43,8 @@ internal sealed class VillagerInstance : GameInstance
         NavigationQuery query,
         VillageDirector director,
         Func<bool> gateBlocked,
-        MingzhongWorldSimulation world)
+        MingzhongWorldSimulation world,
+        BeliefSimulation beliefs)
         : base(
             $"Villager.{definition.Id.Value}",
             CellCenter(definition.Home),
@@ -53,6 +56,7 @@ internal sealed class VillagerInstance : GameInstance
         _director = director;
         _gateBlocked = gateBlocked;
         _world = world;
+        _beliefs = beliefs;
         _agent = new NavigationAgent(
             definition.Home,
             MingzhongNavigation.TileSize,
@@ -71,7 +75,7 @@ internal sealed class VillagerInstance : GameInstance
     public override void OnStep(double deltaTime)
     {
         VillageTaskAssignment next = _director.GetAssignment(
-            _definition, _tick, _gateBlocked());
+            _definition, _tick, _gateBlocked(), _beliefs.GetBehavior(_definition.Id));
         if (next != _assignment || _plannedRevision != _navigation.Revision)
         {
             _assignment = next;
@@ -99,6 +103,7 @@ internal sealed class VillagerInstance : GameInstance
         writer.Write("villager.targetY", _assignment.Destination.Y);
         writer.Write("villager.pathIndex", _agent.PathIndex);
         writer.Write("villager.failedPlans", _failedPlans);
+        writer.Write("villager.beliefCount", _beliefs.GetHypothesisCount(_definition.Id));
     }
 
     private void PlanPath()

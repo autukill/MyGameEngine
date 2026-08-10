@@ -74,12 +74,12 @@ Tilemap 已负责世界表达和静态碰撞，但村民需要独立导航语义
 - 每名村民只按 Visual/Auditory/Direct 范围与 Bresenham 视线记录实际观察，最近关键记忆固定为 32 条；本 Gate 不生成信仰。
 - Pointer Release 只在 Game 层转换成带固定 Tick 和目标 Cell 的 `MingzhongCommand`；Simulation Tests 回放最终命令而非原始鼠标像素轨迹。
 
-### Gate 2：信仰误解
+### Gate 2：信仰误解（已完成）
 
-- 注册首岛可观察事件。
-- 实现个人假说和最小公共传播。
-- 信仰至少改变敲钟、维护和集会三类行为。
-- 固定脚本场景可通过 Replay 和 State Hash 复现。
+- 已注册八条首岛因果白名单；只有实际进入村民记忆的事件能够成为个人证据。
+- 已实现整数证据、窗口成功/超时反证、Prior、每人八条有界假说、稳定淘汰、证言传播和最小公共教义。
+- 钟声召雨的分数阈值会改变敲钟、钟塔维护和教义集会三类 `VillageDirector` 任务。
+- `--scripted-belief` 已通过真实 Replay Bundle 录制/回放和逐 Tick Gameplay State Hash 验证；录制逻辑时序而非原始鼠标输入。
 
 ### Gate 3：神兽学习
 
