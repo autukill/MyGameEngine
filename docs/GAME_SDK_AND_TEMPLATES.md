@@ -45,6 +45,16 @@ dotnet run
 
 生成项目不包含仓库绝对路径、`ProjectReference`、手写资产字符串或对 AssetCompiler 的直接调用。分发测试还会安装真实 CLI，对生成项目执行普通 Doctor 与隐藏 OpenGL Probe。
 
+## Windows x64 Native AOT
+
+模板默认保留普通 JIT build/run。需要 Native AOT 时，显式执行：
+
+```powershell
+dotnet publish Game.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:TrimmerSingleWarn=false
+```
+
+该命令生成无需预装 .NET 的自包含目录，但 `glfw3.dll`、`libSkiaSharp.dll` 和内容资产仍是随附文件，不承诺物理单 EXE。GameSdk 运行时程序集启用 `IsAotCompatible`；分发测试的 `--native-aot` 模式要求发布过程没有任何 `warning IL####`，并直接运行发布后的隐藏三帧 smoke。详见 [Windows x64 Native AOT 发布](NATIVE_AOT_PUBLISHING.md)。
+
 ## 包边界
 
 `GameSdk` 暂时采用单包聚合所有正式运行时程序集，以降低原型阶段的版本协调与入门成本。各 Feature 在源码仓库中仍保持垂直切片；将来只有在需要独立发布节奏、裁剪下载体积或稳定公共 API 层级时，才拆成多个 NuGet 包。

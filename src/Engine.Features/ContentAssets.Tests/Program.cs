@@ -92,6 +92,15 @@ internal static class Program
         CheckThrows<InvalidDataException>(() => Parse(json.Replace(
             "\"id\": \"parser.assets\"", "\"id\": \"parser.assets\", \"unknown\": true")),
             "Unknown fields are rejected");
+        var caseInsensitive = Parse("""
+            { "SchemaVersion": 1, "Id": "case.assets", "Textures": [
+              { "Name": "case", "Path": "case.webp" }
+            ] }
+            """);
+        Check(caseInsensitive.Id == "case.assets" && caseInsensitive.Textures.Count == 1,
+            "Manifest property names remain case-insensitive");
+        CheckThrows<InvalidDataException>(() => Parse(string.Empty),
+            "Empty manifests retain the InvalidDataException contract");
         CheckThrows<InvalidDataException>(() => Parse("""
             { "schemaVersion": 1, "id": "bad", "textures": [], "sprites": [
               { "name": "bad", "layout": "frames", "frames": [{}],

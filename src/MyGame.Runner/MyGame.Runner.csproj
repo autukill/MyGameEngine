@@ -35,7 +35,8 @@
     <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" />
     <ProjectReference Include="..\Engine.Features\ToneMapping\ToneMapping.csproj" />
     <ProjectReference Include="..\Engine.Tools.AssetCompiler\Engine.Tools.AssetCompiler.csproj"
-                      ReferenceOutputAssembly="false" />
+                      ReferenceOutputAssembly="false"
+                      GlobalPropertiesToRemove="PublishAot;PublishTrimmed;PublishSingleFile;SelfContained;RuntimeIdentifier;RuntimeIdentifiers" />
   </ItemGroup>
   <Import Project="..\..\build\GameEngine.Content.targets" />
 </Project>

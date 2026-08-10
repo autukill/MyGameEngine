@@ -4,6 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>GameEngine.Hosting</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Silk.NET.OpenGL" />

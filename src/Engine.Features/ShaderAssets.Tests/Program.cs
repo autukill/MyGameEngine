@@ -45,6 +45,10 @@ internal static class Program
             "Engine-owned uniforms remain reserved");
         CheckThrows("could not be mapped", ValidManifest.Replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"extra\":true"),
             "Unknown JSON fields are rejected");
+        CheckThrows("could not be mapped", ValidManifest.Replace("\"schemaVersion\":1", "\"SchemaVersion\":1"),
+            "Shader manifest property names remain case-sensitive");
+        CheckThrows("Invalid shader asset manifest JSON", string.Empty,
+            "Empty Shader manifests retain the InvalidDataException contract");
     }
 
     private static void ValidateSafeFiles()

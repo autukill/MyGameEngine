@@ -5,6 +5,7 @@ using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using SkiaSharp;
 using System.Text;
+using System.Text.Json;
 
 internal static class Program
 {
@@ -189,6 +190,20 @@ internal static class Program
                   backend.Uploads[1].Sampler == TextureSampler.Smooth,
                 "Manifest sampling presets are applied");
 
+            using (var caseStream = new MemoryStream(Encoding.UTF8.GetBytes("""
+                       { "Textures": [{ "Name": "case", "Path": "case.webp" }] }
+                       """)))
+            {
+                var caseManifest = TextureManifestLoader.Parse(caseStream);
+                Check(caseManifest.Textures.Single().Name == "case",
+                    "Texture manifest property names remain case-insensitive");
+            }
+            CheckThrows<JsonException>(() => ParseTextureManifest(
+                    "{ \"textures\": [], \"unknown\": true }"),
+                "Unknown Texture manifest fields are rejected");
+            CheckThrows<JsonException>(() => ParseTextureManifest(string.Empty),
+                "Empty Texture manifests retain the JsonException contract");
+
             var unsafeManifest = new TextureAssetManifest(new[]
             {
                 new TextureAssetDefinition("escape", "../escape.webp", TextureSampler.Smooth)
@@ -217,6 +232,12 @@ internal static class Program
     {
         if (condition) Console.WriteLine($"  [PASS] {name}");
         else { _failures++; Console.WriteLine($"  [FAIL] {name}"); }
+    }
+
+    private static TextureAssetManifest ParseTextureManifest(string json)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        return TextureManifestLoader.Parse(stream);
     }
 
     private static void CheckThrows<T>(Action action, string name) where T : Exception

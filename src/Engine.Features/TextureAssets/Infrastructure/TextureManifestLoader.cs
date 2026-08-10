@@ -8,19 +8,15 @@ using GameEngine.Features.TextureAssets.Domain;
 /// <summary>Parses and atomically loads JSON texture manifests from a constrained content root.</summary>
 public static class TextureManifestLoader
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNameCaseInsensitive = true,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-    };
-
     public static TextureAssetManifest Parse(Stream json)
     {
         ArgumentNullException.ThrowIfNull(json);
         if (!json.CanRead)
             throw new ArgumentException("The manifest stream must be readable.", nameof(json));
 
-        var document = JsonSerializer.Deserialize<ManifestDocument>(json, JsonOptions)
+        var document = JsonSerializer.Deserialize(
+            json,
+            TextureManifestJsonContext.Default.ManifestDocument)
             ?? throw new InvalidDataException("The texture manifest is empty.");
         if (document.Textures is null || document.Textures.Count == 0)
             throw new InvalidDataException("The texture manifest must contain at least one texture.");
@@ -108,12 +104,12 @@ public static class TextureManifestLoader
             _ => throw new InvalidDataException($"Unknown texture sampling preset '{sampling}'.")
         };
 
-    private sealed class ManifestDocument
+    internal sealed class ManifestDocument
     {
         public List<ManifestEntry?>? Textures { get; init; }
     }
 
-    private sealed class ManifestEntry
+    internal sealed class ManifestEntry
     {
         public string? Name { get; init; }
         public string? Path { get; init; }

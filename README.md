@@ -166,6 +166,9 @@ dotnet run --project src/Engine.Build.ContentPipeline.Tests/Engine.Build.Content
 dotnet run --project src/Engine.Distribution.Tests/Engine.Distribution.Tests.csproj
 dotnet run --project src/Engine.Tools.Cli.Tests/Engine.Tools.Cli.Tests.csproj
 
+# Windows x64 Native AOT 分发验收（需要 Visual Studio C++ Desktop workload）
+dotnet run -c Release --project src/Engine.Distribution.Tests/Engine.Distribution.Tests.csproj -- --native-aot
+
 # 隐藏窗口运行三帧，验证 Hosting + Runner 的真实 GL 启动与安全关闭
 dotnet run --project src/MyGame.Runner/MyGame.Runner.csproj -- --smoke
 ```
@@ -213,6 +216,8 @@ dotnet new mygameengine-game -n MyFirstGame
 dotnet tool restore --tool-manifest MyFirstGame/.config/dotnet-tools.json
 dotnet gameengine doctor MyFirstGame
 ```
+
+Windows x64 游戏可显式使用 `dotnet publish -c Release -r win-x64 --self-contained true -p:PublishAot=true` 生成无需预装 .NET 的自包含目录。GLFW、SkiaSharp 原生库与内容资产仍作为随附文件；完整前置条件、产物边界和零 IL 告警验收见 [Windows x64 Native AOT 发布](docs/NATIVE_AOT_PUBLISHING.md)。
 
 生成项目只引用 `MyGameEngine.GameSdk` 与 `MyGameEngine.ContentPipeline`，默认带有 Hosting 启动代码、GameInstance 示例、真实 WebP 资产和强类型 `GameAssets`。完整打包、本地 Feed 与模板说明见 [Game SDK 与项目模板](docs/GAME_SDK_AND_TEMPLATES.md)。
 

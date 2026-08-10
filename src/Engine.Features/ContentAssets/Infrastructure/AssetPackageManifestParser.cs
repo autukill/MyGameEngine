@@ -9,12 +9,6 @@ using GameEngine.Features.TextureAssets.Domain;
 
 public static class AssetPackageManifestParser
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        PropertyNameCaseInsensitive = true,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-    };
-
     public static AssetPackageManifest Parse(Stream json)
     {
         ArgumentNullException.ThrowIfNull(json);
@@ -24,7 +18,9 @@ public static class AssetPackageManifestParser
         ManifestDto document;
         try
         {
-            document = JsonSerializer.Deserialize<ManifestDto>(json, JsonOptions)
+            document = JsonSerializer.Deserialize(
+                json,
+                AssetPackageManifestJsonContext.Default.ManifestDto)
                 ?? throw new InvalidDataException("The asset package manifest is empty.");
         }
         catch (JsonException ex)
@@ -280,7 +276,7 @@ public static class AssetPackageManifestParser
             _ => throw new InvalidDataException($"Unknown texture sampling preset '{sampling}'.")
         };
 
-    private sealed class ManifestDto
+    internal sealed class ManifestDto
     {
         public int SchemaVersion { get; init; }
         public string? Id { get; init; }
@@ -290,20 +286,20 @@ public static class AssetPackageManifestParser
         public AtlasDto? Atlas { get; init; }
     }
 
-    private sealed class DependencyDto
+    internal sealed class DependencyDto
     {
         public string? Id { get; init; }
         public string? Manifest { get; init; }
     }
 
-    private sealed class TextureDto
+    internal sealed class TextureDto
     {
         public string? Name { get; init; }
         public string? Path { get; init; }
         public string? Sampling { get; init; }
     }
 
-    private sealed class SpriteDto
+    internal sealed class SpriteDto
     {
         public string? Name { get; init; }
         public string? Texture { get; init; }
@@ -317,13 +313,13 @@ public static class AssetPackageManifestParser
         public float? FramesPerSecond { get; init; }
     }
 
-    private sealed class FrameDto
+    internal sealed class FrameDto
     {
         public string? Texture { get; init; }
         public RectDto? Source { get; init; }
     }
 
-    private sealed class RectDto
+    internal sealed class RectDto
     {
         public int X { get; init; }
         public int Y { get; init; }
@@ -331,25 +327,25 @@ public static class AssetPackageManifestParser
         public int Height { get; init; }
     }
 
-    private sealed class SizeIntDto
+    internal sealed class SizeIntDto
     {
         public int Width { get; init; }
         public int Height { get; init; }
     }
 
-    private sealed class SizeFloatDto
+    internal sealed class SizeFloatDto
     {
         public float Width { get; init; }
         public float Height { get; init; }
     }
 
-    private sealed class PointDto
+    internal sealed class PointDto
     {
         public float? X { get; init; }
         public float? Y { get; init; }
     }
 
-    private sealed class AtlasDto
+    internal sealed class AtlasDto
     {
         public SizeIntDto? MaxPageSize { get; init; }
         public int? Padding { get; init; }

@@ -8,7 +8,7 @@ public static class CompiledContentRevisionReader
     public const string MetadataFileName = ".mygame-assets.json";
     private const string Owner = "MyGameEngine.AssetCompiler";
 
-    private sealed class Metadata
+    internal sealed class Metadata
     {
         public int SchemaVersion { get; init; }
         public string Owner { get; init; } = string.Empty;
@@ -17,8 +17,6 @@ public static class CompiledContentRevisionReader
         public string RootManifest { get; init; } = string.Empty;
         public string InputFingerprint { get; init; } = string.Empty;
     }
-
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public static CompiledContentRevision Read(string packagesRoot, ContentPackageRef expectedPackage)
     {
@@ -29,7 +27,9 @@ public static class CompiledContentRevisionReader
         Metadata metadata;
         try
         {
-            metadata = JsonSerializer.Deserialize<Metadata>(stream, JsonOptions)
+            metadata = JsonSerializer.Deserialize(
+                stream,
+                CompiledContentRevisionJsonContext.Default.Metadata)
                 ?? throw new InvalidDataException("Compiled content metadata is empty.");
         }
         catch (JsonException ex)

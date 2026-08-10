@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>GameEngine.Features.ShaderAssets</RootNamespace>
     <AssemblyName>ShaderAssets</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />

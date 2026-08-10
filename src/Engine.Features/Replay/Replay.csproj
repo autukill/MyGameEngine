@@ -4,6 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>GameEngine.Features.Replay</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />

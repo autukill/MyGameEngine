@@ -361,7 +361,9 @@ internal static class Program {
                     $"violations={snapshot.BudgetViolations.Count}" );
             }
             if ( _jsonWriter is null ) return;
-            _jsonWriter.WriteLine( JsonSerializer.Serialize( snapshot ) );
+            _jsonWriter.WriteLine( JsonSerializer.Serialize(
+                snapshot,
+                RunnerJsonContext.Default.RuntimePerformanceSnapshot ) );
             _jsonWriter.Flush();
         }
 
@@ -374,7 +376,9 @@ internal static class Program {
                     $"durationMs={diagnostic.Duration.TotalMilliseconds:F1}{suffix}" );
             }
             if ( _jsonWriter is null ) return;
-            _jsonWriter.WriteLine( JsonSerializer.Serialize( diagnostic ) );
+            _jsonWriter.WriteLine( JsonSerializer.Serialize(
+                diagnostic,
+                RunnerJsonContext.Default.ContentHotReloadDiagnostic ) );
             _jsonWriter.Flush();
         }
 
@@ -388,7 +392,9 @@ internal static class Program {
                     $"durationMs={diagnostic.Duration.TotalMilliseconds:F1}{suffix}" );
             }
             if ( _jsonWriter is null ) return;
-            _jsonWriter.WriteLine( JsonSerializer.Serialize( diagnostic ) );
+            _jsonWriter.WriteLine( JsonSerializer.Serialize(
+                diagnostic,
+                RunnerJsonContext.Default.ShaderHotReloadDiagnostic ) );
             _jsonWriter.Flush();
         }
 

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Security;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 internal static class Program
@@ -17,6 +18,7 @@ internal static class Program
         "Engine.Hosting.dll",
         "Presentation.dll",
         "RenderPipeline.dll",
+        "Replay.dll",
         "SceneSystem.dll",
         "ShaderAssets.dll",
         "Sprites.dll",
@@ -28,8 +30,20 @@ internal static class Program
 
     private static int _failures;
 
-    private static int Main()
+    private static int Main(string[] args)
     {
+        bool nativeAot = args.Length == 1 && args[0] == "--native-aot";
+        if (args.Length > (nativeAot ? 1 : 0))
+        {
+            Console.Error.WriteLine("Usage: dotnet run --project Engine.Distribution.Tests [-- --native-aot]");
+            return 2;
+        }
+        if (nativeAot && !OperatingSystem.IsWindows())
+        {
+            Console.Error.WriteLine("The Phase 1.3 Native AOT distribution test currently requires Windows.");
+            return 2;
+        }
+
         Console.WriteLine("=== Game SDK Distribution Tests ===\n");
         string repositoryRoot = FindRepositoryRoot();
         string version = ReadPackageVersion(repositoryRoot);
@@ -37,7 +51,7 @@ internal static class Program
 
         try
         {
-            VerifyDistribution(repositoryRoot, workspace, version);
+            VerifyDistribution(repositoryRoot, workspace, version, nativeAot);
         }
         finally
         {
@@ -54,7 +68,8 @@ internal static class Program
     private static void VerifyDistribution(
         string repositoryRoot,
         string workspace,
-        string version)
+        string version,
+        bool nativeAot)
     {
         string feed = Directory.CreateDirectory(Path.Combine(workspace, "local feed")).FullName;
         string cliHome = Directory.CreateDirectory(Path.Combine(workspace, "dotnet home")).FullName;
@@ -90,7 +105,7 @@ internal static class Program
         VerifyCliPackage(cliPackage);
         VerifyTemplatePackage(templatePackage, version);
 
-        WriteNuGetConfig(nugetConfig, feed);
+        WriteNuGetConfig(nugetConfig, feed, nativeAot);
         RunDotNet(workspace, cliHome,
             "tool", "install", "MyGameEngine.Cli",
             "--tool-path", toolPath,
@@ -185,6 +200,54 @@ internal static class Program
               File.Exists(Path.Combine(publish, "AssetsCompiled", "assets.json")) &&
               !File.Exists(Path.Combine(publish, "GameEngine.Content.g.cs")),
             "External publish contains runtime and compiled content without generated source");
+
+        if (nativeAot)
+            VerifyNativeAotDistribution(
+                consumer,
+                cliHome,
+                packages,
+                nugetConfig,
+                projectPath,
+                workspace);
+    }
+
+    private static void VerifyNativeAotDistribution(
+        string consumer,
+        string cliHome,
+        string packages,
+        string nugetConfig,
+        string projectPath,
+        string workspace)
+    {
+        string publish = Path.Combine(workspace, "published native aot game");
+        ProcessResult result = RunDotNet(consumer, cliHome,
+            "publish", projectPath,
+            "--configuration", "Release",
+            "--runtime", "win-x64",
+            "--self-contained", "true",
+            "-p:PublishAot=true",
+            "-p:TrimmerSingleWarn=false",
+            "--output", publish,
+            "--configfile", nugetConfig,
+            "--packages", packages);
+
+        Check(!Regex.IsMatch(result.Output, @"\bwarning\s+IL\d{4}\b", RegexOptions.IgnoreCase),
+            "Native AOT publish emits no trimming or AOT warnings");
+        Check(File.Exists(Path.Combine(publish, "SampleGame.exe")) &&
+              File.Exists(Path.Combine(publish, "glfw3.dll")) &&
+              File.Exists(Path.Combine(publish, "libSkiaSharp.dll")) &&
+              File.Exists(Path.Combine(publish, "AssetsCompiled", "assets.json")) &&
+              !File.Exists(Path.Combine(publish, "SampleGame.dll")) &&
+              !File.Exists(Path.Combine(publish, "Engine.Core.dll")) &&
+              !File.Exists(Path.Combine(publish, "GameEngine.Content.g.cs")),
+            "Native AOT publish contains the native app, native libraries, and compiled content only");
+
+        RunProcess(
+            Path.Combine(publish, "SampleGame.exe"),
+            publish,
+            cliHome,
+            "--smoke");
+        Check(true, "Published Native AOT game completes the hidden three-frame smoke run");
     }
 
     private static void VerifyGameSdkPackage(string repositoryRoot, string packagePath)
@@ -294,15 +357,18 @@ internal static class Program
         return reader.ReadToEnd();
     }
 
-    private static void WriteNuGetConfig(string path, string feed)
+    private static void WriteNuGetConfig(string path, string feed, bool includeNuGetOrg)
     {
         string escapedFeed = SecurityElement.Escape(feed) ?? feed;
+        string nugetOrg = includeNuGetOrg
+            ? Environment.NewLine + "    <add key=\"nuget.org\" value=\"https://api.nuget.org/v3/index.json\" />"
+            : string.Empty;
         File.WriteAllText(path, $"""
             <?xml version="1.0" encoding="utf-8"?>
             <configuration>
               <packageSources>
                 <clear />
-                <add key="local" value="{escapedFeed}" />
+                <add key="local" value="{escapedFeed}" />{nugetOrg}
               </packageSources>
             </configuration>
             """);

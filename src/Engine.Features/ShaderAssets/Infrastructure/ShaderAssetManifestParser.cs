@@ -8,20 +8,15 @@ using GameEngine.Features.ShaderAssets.Domain;
 
 public static class ShaderAssetManifestParser
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = false,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-    };
-
     public static ShaderAssetManifest Parse(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ManifestDto dto;
         try
         {
-            dto = JsonSerializer.Deserialize<ManifestDto>(stream, JsonOptions) ??
+            dto = JsonSerializer.Deserialize(
+                stream,
+                ShaderAssetManifestJsonContext.Default.ManifestDto) ??
                 throw new InvalidDataException("Shader asset manifest cannot be null.");
         }
         catch (JsonException exception)
@@ -144,7 +139,8 @@ public static class ShaderAssetManifestParser
 
     private static Vector2 ReadVector2(JsonElement value, string material, string uniform)
     {
-        Vector2Dto vector = value.Deserialize<Vector2Dto>(JsonOptions) ??
+        Vector2Dto vector = value.Deserialize(
+            ShaderAssetManifestJsonContext.Default.Vector2Dto) ??
             throw new InvalidDataException("Vector2 default cannot be null.");
         return new Vector2(
             RequireFinite(vector.X, material, uniform),
@@ -153,7 +149,8 @@ public static class ShaderAssetManifestParser
 
     private static Vector4 ReadVector4(JsonElement value, string material, string uniform)
     {
-        Vector4Dto vector = value.Deserialize<Vector4Dto>(JsonOptions) ??
+        Vector4Dto vector = value.Deserialize(
+            ShaderAssetManifestJsonContext.Default.Vector4Dto) ??
             throw new InvalidDataException("Vector4 default cannot be null.");
         return new Vector4(
             RequireFinite(vector.X, material, uniform),
@@ -180,14 +177,14 @@ public static class ShaderAssetManifestParser
             throw new InvalidDataException($"{description} must be a relative path.");
     }
 
-    private sealed record ManifestDto(
+    internal sealed record ManifestDto(
         int SchemaVersion,
         ShaderDto[]? Shaders,
         MaterialDto[]? Materials);
 
-    private sealed record ShaderDto(string? Name, string? Vertex, string? Fragment);
-    private sealed record MaterialDto(string? Name, string? Shader, UniformDto[]? Uniforms);
-    private sealed record UniformDto(string? Name, string? Type, JsonElement Default);
-    private sealed record Vector2Dto(float X, float Y);
-    private sealed record Vector4Dto(float X, float Y, float Z, float W);
+    internal sealed record ShaderDto(string? Name, string? Vertex, string? Fragment);
+    internal sealed record MaterialDto(string? Name, string? Shader, UniformDto[]? Uniforms);
+    internal sealed record UniformDto(string? Name, string? Type, JsonElement Default);
+    internal sealed record Vector2Dto(float X, float Y);
+    internal sealed record Vector4Dto(float X, float Y, float Z, float W);
 }

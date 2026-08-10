@@ -6,5 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>GameEngine.Distribution.Tests</RootNamespace>
     <AssemblyName>GameEngineDistributionTests</AssemblyName>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
 </Project>
