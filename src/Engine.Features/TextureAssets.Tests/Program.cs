@@ -1,5 +1,6 @@
 namespace TextureAssets.Tests;
 
+using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
@@ -51,6 +52,13 @@ internal static class Program
             "Texture diagnostics estimate RGBA8 bytes without exposing handles");
         Check(!library.TryResolve(new TextureRef("missing"), out _),
             "Unknown texture resolves safely");
+
+        byte[] region = [255, 255, 255, 64];
+        library.UpdateRgba(texture, new PixelRectI(1, 2, 1, 1), region);
+        Check(backend.RegionUpdates.Count == 1 &&
+              backend.RegionUpdates[0].Handle == 1 &&
+              backend.RegionUpdates[0].Pixels.SequenceEqual(region),
+            "A logical TextureRef supports bounds-checked partial RGBA updates");
 
         Check(library.Remove(texture) && backend.Deleted.SequenceEqual(new[] { 1u }),
             "Remove deletes the owned handle exactly once");
@@ -252,6 +260,7 @@ internal static class Program
 
         public List<Upload> Uploads { get; } = [];
         public List<uint> Deleted { get; } = [];
+        public List<(uint Handle, PixelRectI Rect, byte[] Pixels)> RegionUpdates { get; } = [];
 
         public uint CreateTexture(
             int width,
@@ -264,6 +273,15 @@ internal static class Program
         }
 
         public void DeleteTexture(uint handle) => Deleted.Add(handle);
+
+        public void UpdateTextureRegion(
+            uint handle,
+            int x,
+            int y,
+            int width,
+            int height,
+            ReadOnlySpan<byte> rgbaPixels) =>
+            RegionUpdates.Add((handle, new PixelRectI(x, y, width, height), rgbaPixels.ToArray()));
     }
 
     private sealed record Upload(

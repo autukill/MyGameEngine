@@ -21,6 +21,7 @@ public sealed class DynamicGlyphAtlas : IDisposable
     private readonly FontLibrary _fonts;
     private readonly IGlyphTextureUploader _uploader;
     private readonly GlyphAtlasOptions _options;
+    private readonly string _pageNamePrefix;
     private readonly Dictionary<CacheKey, GlyphAtlasEntry> _cache = new();
     private readonly List<Page> _pages = [];
     private bool _disposed;
@@ -28,11 +29,15 @@ public sealed class DynamicGlyphAtlas : IDisposable
     public DynamicGlyphAtlas(
         FontLibrary fonts,
         IGlyphTextureUploader uploader,
-        GlyphAtlasOptions? options = null)
+        GlyphAtlasOptions? options = null,
+        string pageNamePrefix = "__text.glyph-atlas")
     {
         _fonts = fonts ?? throw new ArgumentNullException(nameof(fonts));
         _uploader = uploader ?? throw new ArgumentNullException(nameof(uploader));
         _options = options ?? new GlyphAtlasOptions();
+        if (string.IsNullOrWhiteSpace(pageNamePrefix))
+            throw new ArgumentException("Glyph atlas page prefix cannot be empty.", nameof(pageNamePrefix));
+        _pageNamePrefix = pageNamePrefix;
         if (_options.PageWidth <= 0 || _options.PageHeight <= 0)
             throw new ArgumentOutOfRangeException(nameof(options), "Atlas page dimensions must be positive.");
         if (_options.Padding < 0)
@@ -128,7 +133,7 @@ public sealed class DynamicGlyphAtlas : IDisposable
         if (_pages.Count >= _options.MaxPages)
             throw new InvalidOperationException("The glyph atlas page limit has been reached.");
 
-        string name = $"__text.glyph-atlas.{_pages.Count:D4}";
+        string name = $"{_pageNamePrefix}.{_pages.Count:D4}";
         TextureRef texture = _uploader.CreateAlphaPage(name, _options.PageWidth, _options.PageHeight);
         if (texture.IsEmpty)
             throw new InvalidOperationException("The glyph texture uploader returned an empty TextureRef.");

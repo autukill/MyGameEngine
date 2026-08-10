@@ -1,6 +1,6 @@
 # Content Assets 使用指南
 
-`Engine.Features.ContentAssets` 使用单一、版本化的 `assets.json` 声明 Texture、Sprite 和包依赖。它位于 `TextureAssets` 与 `Sprites` 之上，负责把图片同步加载到 GPU，再将这些 Texture 装配为逻辑 Sprite。
+`Engine.Features.ContentAssets` 使用单一、版本化的 `assets.json` 声明 Texture、Sprite、Animation 和包依赖。它负责把图片同步加载到 GPU，把 Texture 装配为逻辑 Sprite，再把 Sprite 装配为命名 Animation Clip。
 
 当前清单版本为 `schemaVersion: 1`。
 
@@ -21,12 +21,14 @@ Assets/
 ```csharp
 using var textures = new TextureLibrary(gl);
 var sprites = new SpriteLibrary(textures);
-using var packages = new ContentPackageManager(textures, sprites, assetsRoot);
+var animations = new AnimationLibrary();
+using var packages = new ContentPackageManager(textures, sprites, animations, assetsRoot);
 using var gameAssets = packages.Load("assets.json");
 
 SpriteRef idle = gameAssets.GetSprite("player.idle");
 SpriteRef attack = gameAssets.GetSprite("player.attack");
 TextureRef white = gameAssets.GetTexture("common.white");
+AnimationClipRef run = gameAssets.GetAnimation("player.run");
 ```
 
 将同一个 `SpriteLibrary` 注入绘制和场景：
@@ -56,7 +58,8 @@ var player = scene.Add(new PlayerInstance
   "id": "game.player",
   "dependencies": [],
   "textures": [],
-  "sprites": []
+  "sprites": [],
+  "animations": []
 }
 ```
 
@@ -65,8 +68,9 @@ var player = scene.Add(new PlayerInstance
 - `dependencies`：依赖包列表，可为空。
 - `textures`：本包拥有的 Texture 定义，可为空。
 - `sprites`：本包拥有的 Sprite 定义，可为空。
+- `animations`：本包拥有的 Animation Clip 定义，可为空。
 - `atlas`：可选的离线构建配置；运行时加载源包时不会自动执行打包。
-- 一个包至少需要声明一个 Texture 或 Sprite。
+- 一个包至少需要声明一个 Texture、Sprite 或 Animation。
 - 未知 JSON 字段会被拒绝，以便尽早发现拼写错误。
 
 资源名称采用区分大小写的全局名称。建议使用包前缀，例如 `player.idle`、`boss.attack.0`。
@@ -194,6 +198,31 @@ v1 暂不支持 Grid margin、spacing 或旋转帧。
 - `size` 可省略；默认采用第一帧源矩形尺寸。
 - v1 不支持逐帧逻辑偏移、trim 补偿或不同源尺寸的隐式拉伸。
 
+## Animation 定义
+
+Animation 将一个逻辑 Sprite 的 sub-image 重组为可播放 Clip：
+
+```json
+{
+  "name": "boss.attack.heavy",
+  "sprite": "boss.attack",
+  "frames": [0, 1, 2, 1],
+  "framesPerSecond": 10,
+  "loop": "pingPong",
+  "markers": [
+    { "frame": 2, "event": "boss.attack.heavy.hit" }
+  ]
+}
+```
+
+- `sprite` 必须来自本包或传递依赖包；仅存在于全局 `SpriteLibrary` 不会获得访问权。
+- `frames` 必须非空，且每个 sub-image 都在目标 Sprite 范围内。
+- `framesPerSecond` 必须有限且大于 `0`。
+- `loop` 支持 `once`、`loop`、`pingPong`，默认 `loop`。
+- Marker 的 `frame` 使用 Clip 内部帧索引，`event` 是区分大小写的稳定逻辑名称。
+
+Animation 不直接保存 Texture 或 UV。多图片 Sprite、Atlas 跨页和大帧旁路都由 Sprite 层解析，因此不会改变 Clip API。
+
 ## 逻辑尺寸、源尺寸与原点
 
 源矩形决定从 Texture 读取哪些像素；`size` 决定 Sprite 在未缩放时的逻辑绘制尺寸。两者可以不同：
@@ -234,28 +263,30 @@ v1 暂不支持 Grid margin、spacing 或旋转帧。
 }
 ```
 
-Sprite 只能引用本包或传递依赖包中的 Texture。仅仅在 `TextureLibrary` 中存在同名 Texture 不会自动赋予包访问权限。
+Sprite 只能引用本包或传递依赖包中的 Texture；Animation 同样只能引用依赖闭包中的 Sprite。仅仅在全局 Library 中存在同名资源不会自动赋予包访问权限。
 
 Manager 在修改 GPU 状态之前解析完整依赖图，并拒绝：
 
 - 循环依赖。
 - 依赖声明 ID 与目标清单 ID 不一致。
 - 同一个包 ID 指向不同清单。
-- 全局 Texture 或 Sprite 名称冲突。
+- 全局 Texture、Sprite 或 Animation 名称冲突。
 - Manifest 或图片路径逃逸安全根目录。
-- Sprite 引用依赖闭包以外的 Texture。
+- Sprite 引用依赖闭包以外的 Texture，或 Animation 引用闭包以外的 Sprite。
 
 ## 生命周期与所有权
 
-`TextureLibrary` 拥有 GPU Texture；`SpriteLibrary` 只保存逻辑帧映射；`LoadedContentPackage` 是外部租约。
+`TextureLibrary` 拥有 GPU Texture；`SpriteLibrary` 保存逻辑帧映射；`AnimationLibrary` 保存逻辑 Clip；`LoadedContentPackage` 是外部租约。
 
 ```text
 Load root package
   → 依赖按拓扑顺序取得持有
   → Texture 同步解码并上传
   → Sprite 校验并注册
+  → Animation 校验并注册
 
 Dispose root lease
+  → Animation 卸载
   → Sprite 卸载
   → Texture 卸载
   → 依赖持有释放
@@ -278,11 +309,11 @@ shader.Dispose();
 
 ## 失败与回滚
 
-图片解码、GPU 上传、帧范围或 Sprite 注册中的任一步失败，Manager 都会恢复调用前的包引用计数，并只移除本次新增的 Sprite 和 Texture。预先存在且不属于该包的资源不会被删除。
+图片解码、GPU 上传、Sprite 帧范围、Animation sub-image 或资源注册中的任一步失败，Manager 都会恢复调用前的包引用计数，并只移除本次新增的 Animation、Sprite 和 Texture。预先存在且不属于该包的资源不会被删除。
 
 显存不足、图片超过解码器/GPU 尺寸上限或 WebP/PNG 数据损坏都会使整个包加载失败；v1 不提供部分成功状态。
 
-开发运行可通过 Hosting 的 `EnableContentHotReload` 消费 AssetCompiler 完整修订。后台准备不会改变当前资源；Texture、Sprite 与包索引只在 Step 和 Draw 之间作为一个事务切换。使用方式、结构化失败诊断和依赖拓扑限制见 [Content 包开发期热重载](CONTENT_HOT_RELOAD.md)。
+开发运行可通过 Hosting 的 `EnableContentHotReload` 消费 AssetCompiler 完整修订。后台准备不会改变当前资源；Texture、Sprite、Animation 与包索引只在 Step 和 Draw 之间作为一个事务切换。使用方式、结构化失败诊断和依赖拓扑限制见 [Content 包开发期热重载](CONTENT_HOT_RELOAD.md)。
 
 ## 性能边界
 

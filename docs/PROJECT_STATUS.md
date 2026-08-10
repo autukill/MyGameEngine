@@ -2,7 +2,7 @@
 
 更新日期：2026-08-10
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 58 个 .NET 项目、仓库共 59 个项目与 300 个 C# 文件；17 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 59 个 .NET 项目、仓库共 60 个项目与 306 个 C# 文件；17 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -45,7 +45,7 @@
 - 可选帧统计默认关闭；启用后零帧分配记录实际 FPS/UPS、引擎 Draw Call、有效 Batch Flush、纹理切换和活跃 Pass，并聚合到 Hosting 诊断快照。
 - TextureLibrary、根 RenderTarget 与 Pool 提供稳定显存估算；活动租约、可用缓存和高级自定义资源分项统计，不暴露 GPU Handle。
 - `PerformanceBudget` 与低频 Sink 只在采样点创建结构化快照；Runner 支持 `--diagnostics` 控制台摘要和 `--diagnostics-json` JSON Lines。
-- Content 包开发期热重载以 `.mygame-assets.json` 指纹为提交标记，后台解码完整修订，并在 Step 与 Draw 之间事务替换 Texture、Sprite 与包索引；失败保留旧修订。
+- Content 包开发期热重载以 `.mygame-assets.json` 指纹为提交标记，后台解码完整修订，并在 Step 与 Draw 之间事务替换 Texture、Sprite、Animation 与包索引；失败保留旧修订。
 - Hosting 提供 `EnableContentHotReload`，Runner 提供 `--content-hot-reload`；同修订失败去重，依赖包内容可更新，v1 明确拒绝运行中改变包依赖拓扑。
 - Hosting 通过 `UseShaders` 装配自定义 Sprite Shader，并把 `ShaderLibrary` 注入主 Scene 与 Stencil Batch；`uProjection` 自动同步，Context 提供动态 uniform 入口。
 - Shader 热重载后台读取双重 SHA-256 稳定快照，在 GL 线程整批编译和原子切换 Program；任一编译/链接失败时全部旧 Handle 保持有效，Runner 提供 `--shader-hot-reload`。
@@ -76,8 +76,8 @@
 - `ReplaySession` 将逻辑输入与状态轨迹保存为确定性 `.mgreplay` 二进制文件；Game/Build 身份、fixed delta、组件版本、SHA-256、受限读取和首次分叉验证形成完整开发期回放边界，Asteroids 提供 `--record-replay/--replay` 示例。
 - Scene-local `Gameplay Signal` 以结构体载荷和泛型 Handler 提供一对多玩法通知；End Step 后按发布/订阅顺序投递，暂停、失活、销毁和嵌套发布语义明确，稳态 0 B 且不使用反射。Asteroids 用一条击毁通知同时驱动玩家计分与 Spawner 统计。
 - `SpawnSequenceBuilder/SpawnSequencePlayer` 提供 Delay、有限 Wave、Once/Loop、并发门控、状态快照和大步长确定性推进；Asteroids 生成器已迁移并保持随机 Prefab 参数由游戏掌握。
-- 独立 Animation 基础提供不可变命名 Clip、Once/Loop/PingPong、正反向播放、完成边沿和可复用 Frame Event Buffer，热身后 Update 为 0 B。
-- 独立 TextRendering 基础提供逻辑 Font/Fallback、Unicode Rune + Grapheme 单行 Layout、Rasterizer/Uploader 契约、确定性动态 Glyph Atlas 与无 GPU Handle 的 Text Draw Command。
+- Animation 已贯通 `assets.json`、依赖闭包验证、强类型 Clip/Event 引用、Hosting Catalog、GameInstance Behavior、状态快照和原子 Content Hot Reload；Once/Loop/PingPong、正反向播放和帧事件热身后 Update 为 0 B。
+- TextRendering 已贯通真实 Skia TTF/OTF、逻辑 Font/Fallback、Unicode Rune + Grapheme 单行 Layout、TextureLibrary 局部 RGBA 上传、确定性动态 Glyph Atlas、Hosting `TextRuntime` 与 World/SceneGui DrawText；真实字体、Fake GPU 与隐藏 OpenGL smoke 均有覆盖。
 - 独立 Audio 基础提供逻辑 Clip/Bus、代际 Voice、确定性 Priority 抢占、即时 Bus Mix、可替换 Backend 和幂等资源所有权。
 - 独立 TransformHierarchy 阶段 0 提供 generation Handle、Local/World 矩阵、KeepLocal/KeepWorld、循环/Shear/不可逆拒绝、2048 深树迭代传播和 0 B 稳态。
 - HTML/CSS/Yoga GUI Compatibility Spike 已比较 Yoga、RmlUi、FairyGUI 与浏览器内核，并固定 NativeAOT、中文、输入、渲染和维护成本的 Go/No-Go 条件。
@@ -102,17 +102,17 @@
 - Hosting v1 仅支持单窗口；已有声明式及强类型参数 Scene 切换和无 UI 暂停策略，但尚无 Scene 栈或后台加载。
 - 多 Render View 可选择不同 Scene Layer 与 HDR/Bloom/Tone Mapping Profile；Layer 索引与 Camera 粗剔除已减少每 View 工作量，但仍独立检查、排序与重绘可见实例，Stencil 暂只属于主 View。
 - 2D Lighting 当前只有规划，没有运行时代码。路线明确先解决颜色空间，再渐进实现每 View Point Light、几何硬阴影、投射阴影和 Normal/Emission 材质；当前不能把 Spotlight Stencil 或现有 ShaderMaterial 描述成完整光照系统。
-- Text 已有逻辑 Font/Layout/Glyph Atlas 基础，但尚无真实字体解析、TextureLibrary Alpha Uploader、World/SceneGui DrawText、RichText、IME 或控件树。FairyGUI MonoGame Runtime 仍不能直接视为 Silk.NET/OpenGL 后端；Yoga/RmlUi/FairyGUI 只完成第一轮兼容性决策。
+- Text 当前仍是单行 LTR 基础布局，尚无 HarfBuzz shaping、多行中文换行/对齐、动态 Layout Buffer、Font Content/Hot Reload、RichText、IME 或控件树。FairyGUI MonoGame Runtime 仍不能直接视为 Silk.NET/OpenGL 后端；Yoga/RmlUi/FairyGUI 只完成第一轮兼容性决策。
 - GameInstance 当前 Transform 仍是根实例世界空间值；独立 TransformHierarchy 数学核心尚未接入 Scene、纯挂点、Draw/Collider、嵌套 Prefab 或 Replay State。
 - Audio 只有 Backend-neutral 逻辑运行时，尚无真实 Decoder、设备 Backend、Streaming、Hosting 或 GameSdk 集成，不能从扬声器播放声音。
-- Animation 播放器尚未接入 GameInstance、Content Manifest、强类型资产生成或 Animation Hot Reload。
+- Animation 尚无过渡状态图、交叉淡化、Blend Tree、骨骼动画、Root Motion 或 Timeline Editor；当前一个 Clip 绑定一个可跨多纹理/Atlas 页的 Sprite。
 
-## 下一里程碑：Authoring 基础适配
+## 下一里程碑：Transform Scene / Prefab 接入
 
-1. 把 Animation Clip Catalog 接入 Content/Hosting，并用薄 GameInstance Adapter 驱动 `ImageIndex` 与帧事件。
-2. 实现真实 Font Rasterizer、TextureLibrary Alpha Uploader 与 SceneGui/World DrawText VisualTest。
-3. 将 TransformHierarchy 接入 Scene 安全帧边界、GameInstance Local/World 与强类型挂点，保持扁平 Step/Layer/Collision 索引。
-4. 选择跨平台 NativeAOT Audio Backend，完成短 SFX、Streaming Music、设备关闭和无声 CI Fake Backend。
+1. 将 TransformHierarchy 接入 Scene 安全帧边界、GameInstance Local/World 与强类型挂点，保持扁平 Step/Layer/Collision 索引。
+2. Text 后续补多行中文换行、对齐与可复用动态 Layout Buffer；HarfBuzz shaping 单独验证。
+3. 选择跨平台 NativeAOT Audio Backend，完成短 SFX、Streaming Music、设备关闭和无声 CI Fake Backend。
+4. 再以真实游戏需求决定 Tilemap/World Authoring 与 Lighting 0/1 的切入顺序。
 5. 完成上述真实适配后，再决定 Yoga C ABI 或 RmlUi Render Spike；不并行产品化两套完整 GUI Runtime。
 
 ## 已知限制

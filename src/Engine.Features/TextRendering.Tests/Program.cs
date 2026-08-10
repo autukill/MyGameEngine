@@ -6,6 +6,8 @@ using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.TextRendering.Domain;
 using GameEngine.Features.TextRendering.Infrastructure;
+using GameEngine.Features.TextureAssets.Domain;
+using GameEngine.Features.TextureAssets.Infrastructure;
 
 internal static class Program
 {
@@ -17,6 +19,7 @@ internal static class Program
         VerifyRegistrationAndLifetime();
         VerifyUnicodeLayoutAndFallback();
         VerifyAtlasAllocationAndCache();
+        VerifyRealFontTextureAndDrawBridge();
         VerifyValidation();
 
         Console.WriteLine();
@@ -119,7 +122,7 @@ internal static class Program
 
     private static void VerifyValidation()
     {
-        Console.WriteLine("4. Public boundary validation");
+        Console.WriteLine("5. Public boundary validation");
         var library = new FontLibrary();
         CheckThrows<ArgumentException>(() => library.Register("", Metadata("Bad"), new FakeRasterizer()),
             "Empty font names are rejected");
@@ -137,6 +140,61 @@ internal static class Program
         using (var defaultAtlas = new DynamicGlyphAtlas(library, new FakeUploader()))
             Check(defaultAtlas.PageCount == 0, "Default atlas options are valid and pages remain lazy");
         library.Dispose();
+    }
+
+    private static void VerifyRealFontTextureAndDrawBridge()
+    {
+        Console.WriteLine("4. Real font parsing, TextureLibrary upload, and DrawText bridge");
+        string? fontPath = FindTestFont();
+        if (fontPath is null)
+        {
+            Console.WriteLine("   SKIP: no known platform TrueType font is installed");
+            return;
+        }
+
+        var backend = new MutableTextureBackend();
+        using var textures = new TextureLibrary(backend);
+        using (var text = new TextRuntime(
+                   textures,
+                   new GlyphAtlasOptions(PageWidth: 128, PageHeight: 128, Padding: 1, MaxPages: 2)))
+        {
+            FontRef font;
+            using (Stream stream = File.OpenRead(fontPath))
+                font = text.LoadFont("font.real", stream);
+            FontFamily family = text.CreateFamily(font);
+            PreparedTextLayout prepared = text.Prepare(family, "ABC123", 24f);
+
+            Check(prepared.Glyphs.Count == 6 && prepared.Layout.Width > 0f,
+                "Skia parses a real font stream and returns concrete glyph metrics");
+            Check(backend.Updates.Count > 0 &&
+                  backend.Updates.Any(update => update.Pixels.Where((_, index) => index % 4 == 3).Any(alpha => alpha > 0)),
+                "Real glyph Alpha8 pixels are expanded into TextureLibrary RGBA region updates");
+
+            var batch = new RecordingBatch();
+            batch.Begin();
+            text.Draw(batch, prepared, new Vector2(12, 34), new Vector4(.2f, .8f, 1f, .75f));
+            batch.End();
+            Check(batch.Draws.Count == prepared.Glyphs.Count(glyph => glyph.Atlas.HasPixels) &&
+                  batch.Draws.All(draw => draw.Handle == 1 && draw.Color.W == .75f),
+                "Prepared DrawText submits cached glyph quads through the current SpriteBatch projection");
+        }
+
+        Check(backend.Deleted.SequenceEqual(new[] { 1u }),
+            "TextRuntime returns each owned atlas page before TextureLibrary disposal");
+    }
+
+    private static string? FindTestFont()
+    {
+        string windows = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+        string[] candidates =
+        [
+            Path.Combine(windows, "arial.ttf"),
+            Path.Combine(windows, "segoeui.ttf"),
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf"
+        ];
+        return candidates.FirstOrDefault(File.Exists);
     }
 
     private static FontMetadata Metadata(string family) => new(family, 1000, .8f, .2f, .1f);
@@ -248,5 +306,49 @@ internal static class Program
             Uploads.Add((texture, destination, alphaPixels.ToArray()));
 
         public void DeletePage(TextureRef texture) => Deleted.Add(texture);
+    }
+
+    private sealed class MutableTextureBackend : ITextureBackend
+    {
+        private uint _next = 1;
+        public List<uint> Deleted { get; } = [];
+        public List<(uint Handle, PixelRectI Rect, byte[] Pixels)> Updates { get; } = [];
+
+        public uint CreateTexture(
+            int width,
+            int height,
+            ReadOnlySpan<byte> rgbaPixels,
+            TextureSampler sampler) => _next++;
+
+        public void UpdateTextureRegion(
+            uint handle,
+            int x,
+            int y,
+            int width,
+            int height,
+            ReadOnlySpan<byte> rgbaPixels) =>
+            Updates.Add((handle, new PixelRectI(x, y, width, height), rgbaPixels.ToArray()));
+
+        public void DeleteTexture(uint handle) => Deleted.Add(handle);
+    }
+
+    private sealed class RecordingBatch : ISpriteBatch
+    {
+        public List<(uint Handle, Vector2 Position, Vector2 Size, Vector4 Color, Vector4 Uv)> Draws { get; } = [];
+        public void Begin() { }
+        public void End() { }
+        public void Draw(uint textureHandle, Vector2 position, Vector2 size, Vector4 color, Vector4 uvBounds) =>
+            Draws.Add((textureHandle, position, size, color, uvBounds));
+        public void DrawSpriteCommand(in SpriteDrawCommand command) { }
+        public bool TryGetSpriteMetadata(SpriteRef sprite, out SpriteMetadata metadata)
+        {
+            metadata = default;
+            return false;
+        }
+        public void Flush() { }
+        public void SetBlendMode(BlendMode mode) { }
+        public void SetDepthState(bool depthTest, bool depthWrite) { }
+        public void SetShader(ShaderRef? shader) { }
+        public void SetMaterial(MaterialRef? material) { }
     }
 }

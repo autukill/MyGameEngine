@@ -41,6 +41,17 @@ public readonly record struct AnimationUpdateResult(
     int CompletedCycles,
     bool JustCompleted);
 
+public readonly record struct AnimationPlayerState(
+    AnimationClipRef Clip,
+    int ClipFrame,
+    int Direction,
+    int CycleStartFrame,
+    double Accumulator,
+    long CompletedCycles,
+    float Speed,
+    bool IsPlaying,
+    bool IsComplete);
+
 public sealed class AnimationPlayer
 {
     private readonly AnimationLibrary _library;
@@ -57,6 +68,9 @@ public sealed class AnimationPlayer
 
     public AnimationClipRef CurrentClip => _clip?.Reference ?? default;
 
+    public GameEngine.Core.Domain.ValueObjects.SpriteRef CurrentSprite =>
+        _clip?.Sprite ?? default;
+
     public bool IsPlaying { get; private set; }
 
     public bool IsComplete { get; private set; }
@@ -68,6 +82,59 @@ public sealed class AnimationPlayer
     public int CurrentSubImage => _clip?.GetSubImage(_clipFrame) ?? 0;
 
     public long CompletedCycles { get; private set; }
+
+    public AnimationPlayerState CaptureState() => new(
+        CurrentClip,
+        _clipFrame,
+        _direction,
+        _cycleStartFrame,
+        _accumulator,
+        CompletedCycles,
+        Speed,
+        IsPlaying,
+        IsComplete);
+
+    public void RestoreState(in AnimationPlayerState state)
+    {
+        if (state.Clip.IsEmpty)
+        {
+            AnimationPlayerState stopped = new(
+                default,
+                ClipFrame: 0,
+                Direction: 1,
+                CycleStartFrame: 0,
+                Accumulator: 0d,
+                CompletedCycles: 0,
+                Speed: 1f,
+                IsPlaying: false,
+                IsComplete: false);
+            if (state != default && state != stopped)
+                throw new ArgumentException("An empty animation state must represent a stopped player.", nameof(state));
+            Stop();
+            return;
+        }
+
+        AnimationClip clip = _library.Get(state.Clip);
+        if ((uint)state.ClipFrame >= (uint)clip.FrameCount ||
+            (uint)state.CycleStartFrame >= (uint)clip.FrameCount ||
+            state.Direction is not (-1 or 1) ||
+            !double.IsFinite(state.Accumulator) || state.Accumulator < 0d ||
+            state.CompletedCycles < 0 || !float.IsFinite(state.Speed) || state.Speed == 0f ||
+            state.IsPlaying && state.IsComplete)
+        {
+            throw new ArgumentException("Animation player state is invalid.", nameof(state));
+        }
+
+        _clip = clip;
+        _clipFrame = state.ClipFrame;
+        _direction = state.Direction;
+        _cycleStartFrame = state.CycleStartFrame;
+        _accumulator = state.Accumulator;
+        CompletedCycles = state.CompletedCycles;
+        Speed = state.Speed;
+        IsPlaying = state.IsPlaying;
+        IsComplete = state.IsComplete;
+    }
 
     public void Play(AnimationClipRef clip, bool restart = false, float speed = 1f)
     {
@@ -127,6 +194,7 @@ public sealed class AnimationPlayer
             throw new ArgumentOutOfRangeException(nameof(deltaTime), "Animation delta time must be finite and non-negative.");
 
         events?.Clear();
+        RefreshClip();
         int previous = CurrentSubImage;
         if (!IsPlaying || _clip is null || deltaTime == 0d)
             return new AnimationUpdateResult(previous, previous, 0, 0, false);
@@ -161,6 +229,21 @@ public sealed class AnimationPlayer
             advanced,
             completedThisUpdate,
             justCompleted);
+    }
+
+    private void RefreshClip()
+    {
+        if (_clip is null) return;
+        if (!_library.TryGet(_clip.Reference, out AnimationClip? live))
+        {
+            Stop();
+            return;
+        }
+        if (ReferenceEquals(live, _clip)) return;
+        _clip = live;
+        _clipFrame = Math.Clamp(_clipFrame, 0, live.FrameCount - 1);
+        _cycleStartFrame = _direction > 0 ? 0 : live.FrameCount - 1;
+        _accumulator = 0d;
     }
 
     private bool AdvanceOneFrame()

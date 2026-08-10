@@ -6,6 +6,7 @@ using System.Text.Json;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
+using GameEngine.Features.Animation;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.TextureAtlas.Domain;
@@ -517,6 +518,41 @@ public sealed class ContentAssetCompiler
             WriteSize(writer, "size", sprite.LogicalSize.X, sprite.LogicalSize.Y);
             WritePoint(writer, "origin", sprite.Origin.X, sprite.Origin.Y);
             writer.WriteNumber("framesPerSecond", sprite.FramesPerSecond);
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+
+        writer.WritePropertyName("animations");
+        writer.WriteStartArray();
+        foreach (AnimationAssetDefinition animation in source.Animations)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("name", animation.Name);
+            writer.WriteString("sprite", animation.SpriteName);
+            writer.WritePropertyName("frames");
+            writer.WriteStartArray();
+            foreach (int frame in animation.Frames)
+                writer.WriteNumberValue(frame);
+            writer.WriteEndArray();
+            writer.WriteNumber("framesPerSecond", animation.FramesPerSecond);
+            writer.WriteString("loop", animation.LoopMode switch
+            {
+                AnimationLoopMode.Once => "once",
+                AnimationLoopMode.Loop => "loop",
+                AnimationLoopMode.PingPong => "pingPong",
+                _ => throw new InvalidDataException(
+                    $"Animation '{animation.Name}' has an unsupported loop mode.")
+            });
+            writer.WritePropertyName("markers");
+            writer.WriteStartArray();
+            foreach (AnimationAssetMarkerDefinition marker in animation.Markers)
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("frame", marker.Frame);
+                writer.WriteString("event", marker.Event);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
             writer.WriteEndObject();
         }
         writer.WriteEndArray();

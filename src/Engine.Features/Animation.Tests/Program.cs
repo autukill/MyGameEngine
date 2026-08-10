@@ -1,5 +1,9 @@
 namespace Animation.Tests;
 
+using GameEngine.Core.Domain.Aggregates;
+using GameEngine.Core.Domain.Entities;
+using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.Animation;
 
 internal static class Program
@@ -13,6 +17,7 @@ internal static class Program
         VerifyLoopingAndEvents();
         VerifyOnceAndReverse();
         VerifyPingPong();
+        VerifyGameInstanceBridge();
         VerifyAllocationBoundary();
 
         Console.WriteLine();
@@ -26,21 +31,24 @@ internal static class Program
     {
         Console.WriteLine("1. Immutable named clips");
         var library = new AnimationLibrary();
+        var sprite = new SpriteRef("player");
         int[] callerFrames = [2, 4, 6];
-        AnimationClipRef clipRef = library.Register("player.run", callerFrames, 12f);
+        AnimationClipRef clipRef = library.Register("player.run", sprite, callerFrames, 12f);
         callerFrames[0] = 99;
         AnimationClip clip = library.Get(clipRef);
 
         Check(clip.FrameCount == 3 && clip.GetSubImage(0) == 2, "Registration freezes caller-owned frames");
-        Check(clip.FramesPerSecond == 12f && clip.LoopMode == AnimationLoopMode.Loop,
-            "Clip retains FPS and loop mode");
-        CheckThrows<ArgumentException>(() => library.Register("player.run", [0], 1f),
+        Check(clip.Sprite == sprite && clip.FramesPerSecond == 12f && clip.LoopMode == AnimationLoopMode.Loop,
+            "Clip retains Sprite, FPS and loop mode");
+        CheckThrows<ArgumentException>(() => library.Register("player.run", sprite, [0], 1f),
             "Duplicate names are rejected");
-        CheckThrows<ArgumentOutOfRangeException>(() => library.Register("bad.fps", [0], 0f),
+        CheckThrows<ArgumentException>(() => library.Register("bad.sprite", default, [0], 1f),
+            "Empty Sprite references are rejected");
+        CheckThrows<ArgumentOutOfRangeException>(() => library.Register("bad.fps", sprite, [0], 0f),
             "Non-positive FPS is rejected");
-        CheckThrows<ArgumentException>(() => library.Register("empty", [], 1f),
+        CheckThrows<ArgumentException>(() => library.Register("empty", sprite, [], 1f),
             "Empty clips are rejected");
-        CheckThrows<ArgumentOutOfRangeException>(() => library.Register("bad.frame", [-1], 1f),
+        CheckThrows<ArgumentOutOfRangeException>(() => library.Register("bad.frame", sprite, [-1], 1f),
             "Negative sub-images are rejected");
     }
 
@@ -50,6 +58,7 @@ internal static class Program
         var library = new AnimationLibrary();
         AnimationClipRef clip = library.Register(
             "player.attack",
+            new SpriteRef("player"),
             [10, 11, 12],
             10f,
             AnimationLoopMode.Loop,
@@ -73,7 +82,7 @@ internal static class Program
     {
         Console.WriteLine("3. Once completion and reverse playback");
         var library = new AnimationLibrary();
-        AnimationClipRef once = library.Register("explosion", [5, 6, 7], 4f, AnimationLoopMode.Once);
+        AnimationClipRef once = library.Register("explosion", new SpriteRef("effects"), [5, 6, 7], 4f, AnimationLoopMode.Once);
         var player = new AnimationPlayer(library);
         player.Play(once);
         AnimationUpdateResult result = player.Update(1.0);
@@ -92,7 +101,7 @@ internal static class Program
     {
         Console.WriteLine("4. Ping-pong playback");
         var library = new AnimationLibrary();
-        AnimationClipRef ping = library.Register("hover", [0, 1, 2], 2f, AnimationLoopMode.PingPong);
+        AnimationClipRef ping = library.Register("hover", new SpriteRef("player"), [0, 1, 2], 2f, AnimationLoopMode.PingPong);
         var player = new AnimationPlayer(library);
         player.Play(ping);
 
@@ -106,14 +115,62 @@ internal static class Program
         player.SetSpeed(-2f);
         Check(player.Update(0.25).CurrentSubImage == 1,
             "Changing speed sign reverses the active direction");
+
+        player.Stop();
+        AnimationPlayerState stopped = player.CaptureState();
+        player.RestoreState(stopped);
+        Check(player.CurrentClip.IsEmpty && !player.IsPlaying,
+            "Stopped player state round-trips through capture and restore");
+    }
+
+    private static void VerifyGameInstanceBridge()
+    {
+        Console.WriteLine("5. GameInstance authoring bridge");
+        var library = new AnimationLibrary();
+        AnimationClipRef clip = library.Register(
+            "player.run",
+            new SpriteRef("player.sheet"),
+            [3, 4],
+            10f,
+            markers: [new AnimationFrameMarker(1, new AnimationEventRef("footstep"))]);
+        var probe = new AnimatedProbe(library, clip);
+        var scene = new SceneAggregate("AnimationBridge");
+        scene.Add(probe);
+        scene.PerformStep(0.1d);
+
+        Check(probe.Sprite == new SpriteRef("player.sheet") && probe.ImageIndex == 4f,
+            "Attached animation drives the owner Sprite and ImageIndex");
+        Check(probe.ImageSpeed == 0f && probe.EventCount == 1,
+            "Clip playback suppresses base Sprite FPS and dispatches typed frame events");
+        var pause = new GameplayPauseKey("animation-test");
+        scene.Time.Pause(pause);
+        scene.PerformStep(0.5d);
+        Check(probe.ImageIndex == 4f && probe.EventCount == 1,
+            "Gameplay pause freezes attached Animation with its owner");
+        scene.Time.Resume(pause);
+        probe.SetActive(false, _ => { });
+        scene.PerformStep(0.5d);
+        Check(probe.ImageIndex == 4f && probe.EventCount == 1,
+            "Inactive owners do not advance attached Animation");
+        probe.SetActive(true, _ => { });
+        probe.StopAnimation();
+        Check(probe.ImageSpeed == 2f,
+            "Stopping a clip restores the owner's previous base Sprite animation speed");
+
+        probe.PlayAnimation(clip, restart: true);
+        library.Remove(clip);
+        scene.PerformStep(0.1d);
+        Check(probe.RequireAnimations().CurrentAnimation.IsEmpty && probe.ImageSpeed == 2f,
+            "Removing an active logical clip stops safely and releases ImageIndex ownership");
     }
 
     private static void VerifyAllocationBoundary()
     {
-        Console.WriteLine("5. Warmed update allocation boundary");
+        Console.WriteLine("6. Warmed update allocation boundary");
         var library = new AnimationLibrary();
         AnimationClipRef clip = library.Register(
             "steady",
+            new SpriteRef("steady"),
             [0, 1],
             60f,
             markers: [new AnimationFrameMarker(1, new AnimationEventRef("tick"))]);
@@ -129,6 +186,20 @@ internal static class Program
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Check(allocated == 0, $"Animation updates remain allocation-free after warmup ({allocated} B)");
+    }
+
+    private sealed class AnimatedProbe : GameInstance, IAnimationEventHandler
+    {
+        public AnimatedProbe(AnimationLibrary library, AnimationClipRef clip)
+        {
+            ImageSpeed = 2f;
+            this.UseAnimations(library);
+            this.PlayAnimation(clip);
+        }
+
+        public int EventCount { get; private set; }
+
+        public void OnAnimationEvent(in AnimationEvent animationEvent) => EventCount++;
     }
 
     private static void Check(bool condition, string name)

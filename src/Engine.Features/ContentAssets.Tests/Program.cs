@@ -4,6 +4,7 @@ using System.Text;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
+using GameEngine.Features.Animation;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
@@ -67,7 +68,12 @@ internal static class Program
                   "size": { "width": 10, "height": 12 },
                   "origin": { "x": 5, "y": 9 }
                 }
-              ]
+              ],
+              "animations": [{
+                "name": "player.run", "sprite": "grid", "frames": [0, 1, 2, 1],
+                "framesPerSecond": 12, "loop": "pingPong",
+                "markers": [{ "frame": 1, "event": "player.footstep" }]
+              }]
             }
             """;
 
@@ -85,6 +91,10 @@ internal static class Program
               manifest.Sprites[2].Frames[1].TextureName == "frame.1" &&
               manifest.Sprites[2].LogicalSize?.X == 10,
             "Frames default texture, override, crop, and logical size parse");
+        Check(manifest.Animations.Count == 1 &&
+              manifest.Animations[0].LoopMode == AnimationLoopMode.PingPong &&
+              manifest.Animations[0].Markers[0].Event == "player.footstep",
+            "Animation Sprite binding, frame list, loop mode and markers parse");
 
         CheckThrows<InvalidDataException>(() => Parse(json.Replace(
             "\"schemaVersion\": 1", "\"schemaVersion\": 2")),
@@ -117,6 +127,12 @@ internal static class Program
               ] }
             """),
             "Origin requires both named coordinates");
+        CheckThrows<InvalidDataException>(() => Parse("""
+            { "schemaVersion":1, "id":"bad-animation", "animations":[{
+              "name":"bad", "sprite":"missing", "frames":[], "framesPerSecond":12
+            }] }
+            """),
+            "Animations reject empty frame lists");
     }
 
     private static void VerifyMultiImageIntegration()
@@ -143,6 +159,11 @@ internal static class Program
                       { "texture": "multi.1", "source": { "x": 2, "y": 1, "width": 8, "height": 8 } }
                     ],
                     "origin": { "x": 4, "y": 6 }, "framesPerSecond": 8
+                  }],
+                  "animations": [{
+                    "name": "multi.walk", "sprite": "multi.sprite",
+                    "frames": [0, 1], "framesPerSecond": 10, "loop": "loop",
+                    "markers": [{ "frame": 1, "event": "multi.step" }]
                   }]
                 }
                 """);
@@ -150,7 +171,8 @@ internal static class Program
             var backend = new FakeTextureBackend();
             using var textures = new TextureLibrary(backend);
             var sprites = new SpriteLibrary(textures);
-            using var manager = new ContentPackageManager(textures, sprites, root);
+            var animations = new AnimationLibrary();
+            using var manager = new ContentPackageManager(textures, sprites, animations, root);
             CheckThrows<InvalidDataException>(() => manager.Load(
                     new ContentPackageRef("unexpected.assets", "assets.json")),
                 "A typed package reference validates its expected package id before loading");
@@ -168,6 +190,11 @@ internal static class Program
             Check(sprites.TryGetMetadata(sprite, out var metadata) &&
                   metadata.FrameCount == 2 && metadata.FramesPerSecond == 8,
                 "Multi-image metadata is registered once");
+            AnimationClipRef animation = package.GetAnimation("multi.walk");
+            AnimationClip clip = animations.Get(animation);
+            Check(clip.Sprite == sprite && clip.SubImages.SequenceEqual([0, 1]) &&
+                  clip.Markers[0].Event == new AnimationEventRef("multi.step"),
+                "Content package registers Animation against its visible Sprite");
         }
         finally
         {
@@ -296,21 +323,25 @@ internal static class Program
             string imagePath = Path.Combine(root, "live.webp");
             string manifestPath = Path.Combine(root, "assets.json");
             WriteWebp(imagePath, 4, 4, SKColors.Red);
-            WriteReloadManifest(manifestPath, origin: 1);
+            WriteReloadManifest(manifestPath, origin: 1, animationFps: 2);
             WriteRevision(root, "revision-1");
 
             var backend = new FakeTextureBackend();
             using var textures = new TextureLibrary(backend);
             var sprites = new SpriteLibrary(textures);
-            using var manager = new ContentPackageManager(textures, sprites, root);
+            var animations = new AnimationLibrary();
+            using var manager = new ContentPackageManager(textures, sprites, animations, root);
             var packageRef = new ContentPackageRef("reload.assets", "assets.json");
             using var package = manager.Load(packageRef);
             TextureRef texture = package.GetTexture("reload.texture");
             SpriteRef sprite = package.GetSprite("reload.sprite");
+            AnimationClipRef animation = package.GetAnimation("reload.idle");
+            var player = new AnimationPlayer(animations);
+            player.Play(animation);
             textures.TryResolve(texture, out var oldTexture);
 
             WriteWebp(imagePath, 8, 8, SKColors.Blue);
-            WriteReloadManifest(manifestPath, origin: 3);
+            WriteReloadManifest(manifestPath, origin: 3, animationFps: 4);
             WriteRevision(root, "revision-2");
             CompiledContentRevision revision = CompiledContentRevisionReader.Read(root, packageRef);
             PreparedContentPackageReload prepared = manager
@@ -322,6 +353,8 @@ internal static class Program
             sprites.TryGetMetadata(sprite, out var spriteBeforeCommit);
             Check(beforeCommit.Handle == oldTexture.Handle && spriteBeforeCommit.Origin.X == 1,
                 "Background preparation has no visible GPU or Sprite mutation");
+            Check(animations.Get(animation).FramesPerSecond == 2 && prepared.AnimationCount == 1,
+                "Background preparation keeps the active Animation catalog unchanged");
 
             manager.CommitReload(prepared);
             textures.TryResolve(texture, out var currentTexture);
@@ -332,6 +365,10 @@ internal static class Program
                   currentSprite.Origin.X == 3 &&
                   backend.Deleted.Contains(oldTexture.Handle),
                 "Commit atomically updates stable refs and releases the old GPU handle");
+            player.Update(0d);
+            Check(animations.Get(animation).FramesPerSecond == 4 &&
+                  player.CurrentClip == animation,
+                "Commit replaces Animation definitions while active players retain logical refs");
 
             File.WriteAllBytes(imagePath, [1, 2, 3]);
             WriteRevision(root, "revision-bad-image");
@@ -377,11 +414,16 @@ internal static class Program
         }
     }
 
-    private static void WriteReloadManifest(string path, int origin) => File.WriteAllText(path, $$"""
+    private static void WriteReloadManifest(
+        string path,
+        int origin,
+        int animationFps) => File.WriteAllText(path, $$"""
         { "schemaVersion":1, "id":"reload.assets", "dependencies":[],
           "textures":[{"name":"reload.texture","path":"live.webp","sampling":"pixelArt"}],
           "sprites":[{"name":"reload.sprite","layout":"single","texture":"reload.texture",
-            "origin":{"x":{{origin}},"y":{{origin}} } } ] }
+            "origin":{"x":{{origin}},"y":{{origin}} } } ],
+          "animations":[{"name":"reload.idle","sprite":"reload.sprite","frames":[0],
+            "framesPerSecond":{{animationFps}},"loop":"loop"}] }
         """);
 
     private static void WriteRevision(string root, string fingerprint) => File.WriteAllText(

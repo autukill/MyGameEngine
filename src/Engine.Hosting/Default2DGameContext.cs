@@ -10,12 +10,14 @@ using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Core.Infrastructure.Diagnostics;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Features.Camera.Domain;
+using GameEngine.Features.Animation;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using GameEngine.Features.TextRendering.Infrastructure;
 
 /// <summary>Scene 装配期的强类型上下文；不是全局服务容器。</summary>
 public sealed class Default2DGameContext
@@ -28,6 +30,8 @@ public sealed class Default2DGameContext
     public SceneAggregate Scene { get; }
     public TextureLibrary Textures { get; }
     public SpriteLibrary Sprites { get; }
+    public AnimationLibrary Animations { get; }
+    public TextRuntime Text { get; }
     public ShaderLibrary Shaders { get; }
     public LoadedContentPackage? Content { get; }
     public Camera2D Camera { get; }
@@ -46,6 +50,8 @@ public sealed class Default2DGameContext
         SceneAggregate scene,
         TextureLibrary textures,
         SpriteLibrary sprites,
+        AnimationLibrary animations,
+        TextRuntime text,
         ShaderLibrary shaders,
         LoadedContentPackage? content,
         Camera2D camera,
@@ -65,6 +71,8 @@ public sealed class Default2DGameContext
         Scene = scene;
         Textures = textures;
         Sprites = sprites;
+        Animations = animations ?? throw new ArgumentNullException(nameof(animations));
+        Text = text ?? throw new ArgumentNullException(nameof(text));
         Shaders = shaders;
         Content = content;
         Camera = camera;
@@ -113,6 +121,8 @@ public sealed class Default2DGameContext
     }
 
     public SpriteRef GetSprite(string name) => RequireContent().GetSprite(name);
+
+    public AnimationClipRef GetAnimation(string name) => RequireContent().GetAnimation(name);
 
     public TextureRef GetTexture(string name) => RequireContent().GetTexture(name);
 

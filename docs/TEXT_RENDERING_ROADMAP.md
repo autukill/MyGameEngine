@@ -1,6 +1,6 @@
 # 中文字体、文本绘制与富文本渐进路线图
 
-本文记录 MyGameEngine 原生 Text Rendering 的长期边界和实施顺序。基础逻辑切片已经实现 `FontRef/FontLibrary`、Unicode Rune + Grapheme Cluster 单行布局、Fallback、可注入 Rasterizer/Uploader、动态 Glyph Atlas 与无 GPU Handle 的 `TextDrawCommand`；真实 SkiaSharp/FreeType 字体适配、TextureLibrary 上传和最终 DrawText 尚未实现。目标是在不依赖完整 GUI 框架的情况下，先让世界空间文字、SceneGui、字幕、对话、伤害数字和调试信息正确显示中文，再渐进加入富文本、打字机、Emoji 和内联动画。
+本文记录 MyGameEngine 原生 Text Rendering 的长期边界和实施顺序。第一条真实绘制链已经实现 `FontRef/FontLibrary`、Unicode Rune + Grapheme Cluster 单行布局、Fallback、SkiaSharp TTF/OTF Rasterizer、TextureLibrary 局部上传、动态 Glyph Atlas、Hosting `TextRuntime` 与 World/SceneGui `DrawText`。目标是在不依赖完整 GUI 框架的情况下，继续补齐多行中文排版，再渐进加入富文本、打字机、Emoji 和内联动画。
 
 原生 Text 与可选 FairyGUI 的关系：Text Rendering 是引擎基础能力；FairyGUI 是可选 GUI Adapter。两者可以并存，但不能让 FairyGUI 成为世界空间文字、运行时诊断或非 FairyGUI 游戏的强制依赖。
 
@@ -8,8 +8,8 @@
 
 | 能力 | 优先级 | 原因 |
 |---|---|---|
-| 逻辑 Font、单行 Layout、Fallback、Glyph Atlas | 已完成基础 | 接口、确定性 Atlas 和无窗口测试已落地，真实 Font/GPU Adapter 待接入 |
-| 中文字体加载与基础绘制 | P1 高 | 下一切片，几乎所有本地化游戏、字幕和调试都需要 |
+| 逻辑 Font、单行 Layout、Fallback、Glyph Atlas | 已完成 | 接口、确定性 Atlas、真实 Font/GPU Adapter 与测试已落地 |
+| 中文字体加载与基础绘制 | 已完成第一版 | World/SceneGui 共用 SpriteBatch，VisualTest 覆盖 Camera 与释放 |
 | 多行 Unicode Layout、换行和对齐 | P1 高 | 决定中文混排和多语言是否可靠 |
 | 彩色文字与受限富文本 | P1/P2 | 建立在稳定 Layout 上，开发价值高 |
 | Grapheme-aware 打字机效果 | P2 | 对话常用，但不能先于 Unicode Cluster |
@@ -127,7 +127,7 @@ text.Draw(layout, position, colorOverride);
 - 缺 Glyph 按 Fallback 顺序解析，最终缺失使用明确 Replacement Glyph。
 - 同一输入在相同 Font Revision 下产生确定性 Layout 结果。
 
-## 阶段 1：中文字体与基础绘制
+## 阶段 1：中文字体与基础绘制（单行第一版已完成）
 
 目标：在 World 与 SceneGui 中高效绘制单色/彩色普通文本。
 
@@ -139,7 +139,7 @@ Engine.Features.TextRendering.Tests
 Engine.Features.TextRendering.VisualTests
 ```
 
-实施内容：
+已完成真实 Font、Fallback、动态 Atlas、TextureLibrary 上传、Hosting 与 World/SceneGui Draw；以下列表同时保留阶段 1 后续扩展范围：
 
 - `FontRef`、FontLibrary、FontMetadata、GlyphMetrics。
 - 动态 Glyph Atlas，多 Page 增长，第一版不驱逐已生成 Glyph。
@@ -322,12 +322,14 @@ text.Draw(layout, position, reveal.VisibleUnits);
 6. 纯逻辑 `TextDrawCommand` 与 `PreparedTextLayout`。
 7. Fake Font/Uploader 无窗口测试。
 
-下一切片：
+第一版真实适配已完成：
 
-1. 真实 SkiaSharp/FreeType Font Adapter 与 NativeAOT Spike。
-2. TextureLibrary Alpha Page Uploader。
-3. 中文/ASCII/Fallback 单行真实绘制。
-4. SceneGui/World 两种 Projection 与 VisualTest。
-5. Glyph/Atlas/Draw 基础诊断。
+1. `SkiaGlyphRasterizer` 从文件、Stream 或系统 Family 解析 TTF/OTF/TTC，并冻结第三方类型在 Infrastructure 内。
+2. `TextureLibraryGlyphUploader` 把 Alpha8 Coverage 写入白色 RGBA8 Atlas，使用 bounds-checked `UpdateRgba/TexSubImage2D`。
+3. `TextRuntime` 聚合 Font、Fallback、Layout、Atlas、Prepare 与 Draw，并由 Hosting 暴露为 `context.Text`。
+4. `TextRendering.VisualTests` 同屏验证中文/ASCII Fallback、World/SceneGui Projection、Camera 变化和隐藏窗口 smoke。
+5. Fake GPU、真实平台字体 Stream、Atlas Cache 与资源释放均有无窗口测试。
+
+下一切片：多行中文换行、Left/Center/Right 对齐、可复用动态 Layout Buffer 与基础 Text 诊断；复杂脚本 shaping 先做 HarfBuzz 兼容性验证。
 
 明确不夹带 RichText、Typewriter、Emoji、AnimatedImage、IME、FairyGUI 或完整 Bidi。基础中文字形和生命周期稳定后，再进入 Layout/换行切片。

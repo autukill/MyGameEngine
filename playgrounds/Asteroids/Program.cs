@@ -70,7 +70,8 @@ internal static class Program
                 context.Scene.Background = BackgroundConfig.FromColor(
                     new Vector4(0.01f, 0.015f, 0.045f, 1f));
                 var player = new PlayerShip(
-                    GameAssets.Sprites.AsteroidsShip,
+                    context.Animations,
+                    GameAssets.Animations.AsteroidsShipIdle,
                     new Vector2D(context.Window.Width * 0.5f, context.Window.Height * 0.5f),
                     context.Window.Width,
                     context.Window.Height);

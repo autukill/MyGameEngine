@@ -11,7 +11,7 @@
 - `GameApplicationBuilder`：配置窗口、内容包、初始 Scene 和默认渲染预设。
 - `GameApplication`：统一接管 Load、Step、Draw、Resize、Closing 与异常清理。
 - `Default2DRendererOptions`：按需启用 HDR/Tone Mapping、Bloom、Stencil 和 SceneGui。
-- `Default2DGameContext`：向 Scene 装配回调提供强类型 Scene、Content、Texture、Sprite、Camera 和渲染扩展入口。
+- `Default2DGameContext`：向 Scene 装配回调提供强类型 Scene、Content、Texture、Sprite、Animation、Camera 和渲染扩展入口。
 - 资源所有权：固定 Builder → Pipeline → Pool → RenderTarget → Content/Library → Batch/Shader 的释放顺序，初始化失败时逆序回滚。
 - 高级逃生口：仍允许注册自定义 `IRenderEffectFactory`、根 Surface 和 RenderPass。
 
@@ -24,10 +24,12 @@
 ```csharp
 GameAssets.Sprites.PlayerIdle
 GameAssets.Textures.WorldTiles
+GameAssets.Animations.PlayerRun
+GameAssets.AnimationEvents.PlayerRunFootstep
 GameAssets.Packages.SharedPrimitives
 ```
 
-目标是把资源拼写错误从运行时提前到编译期。生成器只产生逻辑 `SpriteRef`、`TextureRef` 和 `ContentPackageRef`，不包含 GPU 句柄，也不改变 ContentPackageManager 的生命周期。
+目标是把资源拼写错误从运行时提前到编译期。生成器只产生逻辑 `SpriteRef`、`TextureRef`、`AnimationClipRef`、`AnimationEventRef` 和 `ContentPackageRef`，不包含 GPU 句柄，也不改变 ContentPackageManager 的生命周期。
 
 验收结果：AssetCompiler 从编译后的 Manifest 依赖图生成确定性 `.g.cs`；已打入 Atlas 的源 Texture 与内部 Atlas 页不会泄漏为公开引用，标识符冲突在构建期失败。Runner 已使用 `GameAssets.Packages.Root` 和 `GameAssets.Sprites.RunnerOrbiting`，Hosting 会校验包 ID。
 
@@ -59,7 +61,7 @@ GameAssets.Packages.SharedPrimitives
 - 失败时继续使用上一份有效资源，不破坏当前 Scene。
 - 与 Content 指纹、Atlas 原子替换和 Hosting 生命周期共享同一所有权边界。
 
-当前验收：Content 包已使用编译元数据轮询和去抖，后台完成 Manifest 图校验、图片解码与 Sprite 规范化；Texture/Sprite/包索引在 Step 与 Draw 之间事务切换，失败保留旧修订。自定义 Sprite Shader 支持安全根文件注册、稳定源码快照、整批 Program 原子替换和驱动错误诊断；投影同步覆盖主 Scene 与 Stencil 重绘。类型化材质参数块以逻辑 Shader 引用保存 CPU 参数，支持多材质共享 Program、按 Revision 批处理和热替换后自动重放。材质装配与热重载候选使用 GL 反射验证 Uniform 名称、类型和数组边界；编译诊断保留源码路径、行号、阶段和原始驱动日志。`shaders.json` 已把 Program 文件、Material Schema 和默认值暴露给 Hosting 与 MSBuild；AssetCompiler 在 CoreCompile 前静态校验，并生成 `GameShaders` 下的强类型 Shader、Material 与 Uniform 参数键，运行时继续由真实驱动复核。Runner 提供 `--content-hot-reload` 与 `--shader-hot-reload`。
+当前验收：Content 包已使用编译元数据轮询和去抖，后台完成 Manifest 图校验、图片解码、Sprite 规范化与 Animation Clip 验证；Texture/Sprite/Animation/包索引在 Step 与 Draw 之间事务切换，失败保留旧修订。自定义 Sprite Shader 支持安全根文件注册、稳定源码快照、整批 Program 原子替换和驱动错误诊断；投影同步覆盖主 Scene 与 Stencil 重绘。类型化材质参数块以逻辑 Shader 引用保存 CPU 参数，支持多材质共享 Program、按 Revision 批处理和热替换后自动重放。材质装配与热重载候选使用 GL 反射验证 Uniform 名称、类型和数组边界；编译诊断保留源码路径、行号、阶段和原始驱动日志。`shaders.json` 已把 Program 文件、Material Schema 和默认值暴露给 Hosting 与 MSBuild；AssetCompiler 在 CoreCompile 前静态校验，并生成 `GameShaders` 下的强类型 Shader、Material 与 Uniform 参数键，运行时继续由真实驱动复核。Runner 提供 `--content-hot-reload` 与 `--shader-hot-reload`。
 
 离线 GLSL 编译仍保留为显式可选方向，但不再占用当前开发体验主线；适配器、诊断、缓存与恢复条件记录在[可选离线 Shader 编译方向](OFFLINE_SHADER_COMPILATION.md)。
 
@@ -96,14 +98,14 @@ GameAssets.Packages.SharedPrimitives
 - `ReplaySession` 已把逻辑输入与状态 Hash 收敛为版本化 `.mgreplay`：Hosting 一次装配 Record/Playback、Build 身份和 fixed delta 启动前校验、首次分叉诊断、受限读取与最后 Tick 自动退出；Asteroids 提供录制/回放入口。
 - Scene 作用域强类型 `Gameplay Signal` 已以 Asteroids 击毁事件验证真实一对多协作：值类型载荷、构造期显式监听、End Step 后确定性投递、暂停/失活/销毁语义、嵌套通知延迟和热身后 0 B；不引入全局总线或反射。
 - `SpawnSequenceBuilder/SpawnSequencePlayer` 已把 Delay、有限 Wave、Once/Loop、并发门控、状态快照和大步长确定性推进收敛为 owner-driven 时间线；Asteroids 已移除生成 Alarm，游戏仍掌握随机参数和 Prefab 回调。
-- 独立 Animation 基础切片已提供命名 Clip、Once/Loop/PingPong、正反向播放、完成边沿和可复用帧事件 Buffer；尚未自动接入 `GameInstance.ImageIndex`。
+- Animation 黄金路径已接通：声明式 Content、强类型 Clip/Event、Hosting Catalog、GameInstance Behavior、Sprite/ImageIndex 驱动、状态快照和原子 Hot Reload；Asteroids 提供真实消费样例。
 - 独立 TransformHierarchy 阶段 0 已提供 generation Handle、Local/World、KeepLocal/KeepWorld、循环/Shear/不可逆拒绝、深树迭代传播和 0 B 稳态；尚未接入 Scene/GameInstance/Prefab。
-- TextRendering 基础已提供逻辑 Font/Fallback、Rune + Grapheme 单行 Layout、Rasterizer/Uploader 契约、动态 Glyph Atlas 和逻辑 Draw Command；真实字体与 GPU Draw 待接入。
+- TextRendering 黄金路径已接通：真实 Skia TTF/OTF、Font Fallback、Rune + Grapheme 单行 Layout、TextureLibrary 局部上传、动态 Glyph Atlas、Hosting TextRuntime 与 World/SceneGui DrawText；隐藏 OpenGL smoke 已验证释放链。
 - Audio 基础已提供逻辑 Clip/Bus、代际 Voice、确定性优先级抢占、Backend 契约和幂等所有权；真实解码与平台 Backend 待接入。
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：Spawn/Wave 与四个独立基础切片已经并行落地。下一轮不再继续横向增加模型，而是选择两条真实适配黄金路径：Animation → GameInstance/Sprite/Content，以及 TextRendering → 真实字体/TextureLibrary/SceneGui Draw；Transform Scene 接入和真实 Audio Backend 随后推进。暂不展开完整 Skill/Buff、GUI 控件、协程或物理系统；逐帧异形碰撞继续保持需求记录。
+下一步优先级：Animation 与 TextRendering 两条黄金路径已经闭环，不再继续横向扩张模型。当前转入 TransformHierarchy → Scene/GameInstance/Prefab 挂点；Text 的多行中文 Layout/动态 Buffer 和真实 Audio Backend 随后推进。暂不展开完整 Skill/Buff、GUI 控件、协程或物理系统；逐帧异形碰撞继续保持需求记录。
 
 Transform Hierarchy 数学与 Handle 核心已经完成，后续 P1 是 Scene/GameInstance/Prefab 接入：以 Local/World Transform、纯挂点节点、`KeepLocal/KeepWorld` Reparent 和嵌套 Prefab 改善飞机枪口、角色武器、Boss 部位与跟随效果的组合体验。接入时保留 Scene 扁平 Step、Layer/Depth、Collider 索引和安全帧边界，不让空间父子关系隐式接管生命周期、渲染排序或 UI 布局。完整边界见 [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
 
@@ -137,10 +139,10 @@ Transform Hierarchy 数学与 Handle 核心已经完成，后续 P1 是 Scene/Ga
 | 优先级 | 路线 | 当前决策 |
 |---|---|---|
 | 已完成基础 | Gameplay Signals、Spawn/Wave Authoring | Asteroids 已验证一对多通知与确定性生成时间线 |
-| P1 接入 | Animation Authoring | 播放器核心已完成；下一步接入 Sprite/Content/GameInstance |
+| 已完成接入 | Animation Authoring | Content、强类型生成、Hosting、GameInstance 与 Hot Reload 已闭环 |
 | P1 接入 | Scene Graph / Transform Hierarchy | 数学/Handle 核心已完成；下一步接入 Scene、挂点与嵌套 Prefab |
 | P1 | Tilemap/World Authoring | 关卡生产、Chunk、碰撞和未来静态光照遮挡的共同基础 |
-| P1 接入 | 原生中文 Text Rendering | 逻辑 Font/Layout/Atlas 已完成；下一步真实 Font、Texture Uploader 与 Draw |
+| 已完成接入 | 原生中文 Text Rendering | 真实 Font、Texture Uploader、Hosting 与 World/SceneGui Draw 已闭环；多行/Shaping 后续推进 |
 | P1 接入 | Audio 基础 | Clip/Bus/Voice 核心已完成；下一步真实 Decoder/Backend/Streaming |
 | 已完成调研 | Yoga/RmlUi/FairyGUI Compatibility Spike | 已建立候选顺序、适配面和 Go/No-Go 门槛 |
 | P2 | RichText、彩色文字、Typewriter、Sprite Emoji | 建立在原生 Text Layout 上 |
@@ -150,7 +152,7 @@ Transform Hierarchy 数学与 Handle 核心已经完成，后续 P1 是 Scene/Ga
 | P3 | 彩色 Font Emoji、AnimatedImage、FairyGUI 高级组件 | 由真实产品需求和资产驱动 |
 | P3 | Lighting 软阴影/高级材质、完整物理/导航 | 由性能数据和真实玩法驱动 |
 
-第一轮并行基础建设已经完成。推荐下一轮按集成风险串行收口：`Animation GameInstance/Content → 真实 Text Font/GPU → Transform Scene/Prefab → Audio Backend → Tilemap → Lighting 0/1`。Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过真实 Text、输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
+第一轮并行基础建设、Animation 和真实 Text 黄金路径已经完成。推荐后续按集成风险串行收口：`Transform Scene/Prefab → Text 多行/Layout Buffer → Audio Backend → Tilemap → Lighting 0/1`。Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
 
 ## 设计约束
 

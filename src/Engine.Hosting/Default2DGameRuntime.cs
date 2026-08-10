@@ -9,6 +9,7 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Bloom.Infrastructure;
+using GameEngine.Features.Animation;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
@@ -21,6 +22,7 @@ using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.StencilMasking.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using GameEngine.Features.TextRendering.Infrastructure;
 using GameEngine.Features.ToneMapping.Domain;
 using GameEngine.Features.ToneMapping.Infrastructure;
 
@@ -35,7 +37,9 @@ internal sealed class Default2DGameRuntime : IDisposable
     private SpriteShader _spriteShader = null!;
     private SpriteBatch _batch = null!;
     private TextureLibrary _textures = null!;
+    private TextRuntime _text = null!;
     private SpriteLibrary _sprites = null!;
+    private AnimationLibrary _animations = null!;
     private ShaderLibrary _shaders = null!;
     private SceneAggregate? _scene;
     private Camera2D _camera = null!;
@@ -180,7 +184,9 @@ internal sealed class Default2DGameRuntime : IDisposable
             Statistics = _window.FrameStatisticsSink
         });
         _textures = _resources.Add(new TextureLibrary(gl));
+        _text = _resources.Add(new TextRuntime(_textures));
         _sprites = new SpriteLibrary(_textures);
+        _animations = new AnimationLibrary();
         _shaders = _resources.Add(new ShaderLibrary(gl));
         _batch.SpriteResolver = _sprites;
         _batch.ShaderResolver = _shaders;
@@ -224,6 +230,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             contentManager = _resources.Add(new ContentPackageManager(
                 _textures,
                 _sprites,
+                _animations,
                 packagesRoot));
             content = _resources.Add(renderer.ContentPackage is { } package
                 ? contentManager.Load(package)
@@ -377,6 +384,8 @@ internal sealed class Default2DGameRuntime : IDisposable
             _scene,
             _textures,
             _sprites,
+            _animations,
+            _text,
             _shaders,
             content,
             _camera,

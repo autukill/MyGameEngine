@@ -1,6 +1,6 @@
 # 强类型 Content 引用
 
-内容构建会在编译游戏代码之前，从编译后的运行时 Manifest 依赖图生成 C# 逻辑引用。游戏代码不再重复书写 Sprite、Texture 或包路径字符串：
+内容构建会在编译游戏代码之前，从编译后的运行时 Manifest 依赖图生成 C# 逻辑引用。游戏代码不再重复书写 Texture、Sprite、Animation、帧事件或包路径字符串：
 
 ```csharp
 using MyGame.Runner.Content;
@@ -8,9 +8,11 @@ using MyGame.Runner.Content;
 renderer.UseContent(GameAssets.Packages.Root);
 var sprite = GameAssets.Sprites.RunnerOrbiting;
 var texture = GameAssets.Textures.RunnerWhite;
+var animation = GameAssets.Animations.PlayerRun;
+var footstep = GameAssets.AnimationEvents.PlayerRunFootstep;
 ```
 
-这些成员分别是 `ContentPackageRef`、`SpriteRef` 和 `TextureRef`，只保存稳定名称或包标识，不包含 GPU 句柄，也不拥有运行时资源。
+这些成员分别是 `ContentPackageRef`、`SpriteRef`、`TextureRef`、`AnimationClipRef` 和 `AnimationEventRef`，只保存稳定名称或包标识，不包含 GPU 句柄，也不拥有运行时资源。
 
 ## 生成时序
 
@@ -36,6 +38,7 @@ var texture = GameAssets.Textures.RunnerWhite;
 - 已被 Atlas 完全吞并的源 Texture 不生成成员。
 - `__atlas.*` 内部页不生成成员。
 - 根包生成 `Packages.Root`；传递依赖包按 ID 生成具名成员。
+- Animation Clip 生成到 `Animations`，所有 Marker 事件名去重后生成到 `AnimationEvents`。
 
 Atlas 排布、跨页或未来重打包不会改变 Sprite 引用和绘制 API。
 
@@ -77,7 +80,7 @@ Atlas 排布、跨页或未来重打包不会改变 Sprite 引用和绘制 API�
 
 ## 当前边界
 
-- 生成内容只包含逻辑引用，不生成资源元数据常量、动画枚举或实例类。
+- 生成内容只包含逻辑引用，不生成资源元数据常量、动画状态枚举或实例类。
 - 一个消费项目当前配置一个根 Manifest 和一个 `GameAssets` 根容器。
 - 资源改名是编译期 API 变更；编译器不会保留旧名称别名。
 - 运行时仍由 `LoadedContentPackage`、`TextureLibrary` 和 `SpriteLibrary` 管理加载、解析与释放。

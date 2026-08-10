@@ -178,6 +178,38 @@ public sealed class TextureLibrary : ITextureResolver, IDisposable
         return false;
     }
 
+    /// <summary>Updates a tightly packed RGBA8 region without changing the logical TextureRef.</summary>
+    public void UpdateRgba(
+        TextureRef texture,
+        PixelRectI destination,
+        ReadOnlySpan<byte> rgbaPixels)
+    {
+        ThrowIfDisposed();
+        if (texture.IsEmpty || !_entries.TryGetValue(texture.Name, out Entry? entry))
+            throw new KeyNotFoundException($"Texture '{texture}' is not registered.");
+        if (destination.Width <= 0 || destination.Height <= 0 ||
+            destination.X < 0 || destination.Y < 0 ||
+            destination.Right > entry.Metadata.Width ||
+            destination.Bottom > entry.Metadata.Height)
+        {
+            throw new ArgumentOutOfRangeException(nameof(destination),
+                "Texture update rectangle must be positive and remain inside the texture.");
+        }
+        int expectedLength = checked(destination.Width * destination.Height * 4);
+        if (rgbaPixels.Length != expectedLength)
+            throw new ArgumentException(
+                "Texture update data must contain exactly width * height * 4 bytes.",
+                nameof(rgbaPixels));
+
+        _backend.UpdateTextureRegion(
+            entry.Handle,
+            destination.X,
+            destination.Y,
+            destination.Width,
+            destination.Height,
+            rgbaPixels);
+    }
+
     public bool Remove(TextureRef texture)
     {
         ThrowIfDisposed();

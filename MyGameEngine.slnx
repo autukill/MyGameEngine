@@ -62,6 +62,7 @@
   </Folder>
   <Folder Name="/Engine.Features/TextRendering/">
     <Project Path="src/Engine.Features/TextRendering.Tests/TextRendering.Tests.csproj" />
+    <Project Path="src/Engine.Features/TextRendering.VisualTests/TextRendering.VisualTests.csproj" />
     <Project Path="src/Engine.Features/TextRendering/TextRendering.csproj" />
   </Folder>
   <Folder Name="/Engine.Features/TransformHierarchy/">

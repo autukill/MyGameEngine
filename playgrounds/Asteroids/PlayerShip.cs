@@ -4,10 +4,12 @@ using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Features.Animation;
 
 public sealed class PlayerShip :
     GameInstance,
-    IGameplaySignalHandler<AsteroidDestroyedSignal>
+    IGameplaySignalHandler<AsteroidDestroyedSignal>,
+    IAnimationEventHandler
 {
     public static readonly PrefabRef<Laser, LaserSpawnArgs> LaserPrefab =
         new("asteroids.laser");
@@ -25,10 +27,17 @@ public sealed class PlayerShip :
     private double _survivalSeconds;
     private int _shotsFired;
     private int _score;
+    private int _animationEvents;
 
-    public PlayerShip(SpriteRef sprite, Vector2D position, float worldWidth, float worldHeight)
+    public PlayerShip(
+        AnimationLibrary animations,
+        AnimationClipRef idleAnimation,
+        Vector2D position,
+        float worldWidth,
+        float worldHeight)
     {
-        Sprite = sprite;
+        this.UseAnimations(animations);
+        this.PlayAnimation(idleAnimation);
         Position = position;
         _worldWidth = worldWidth;
         _worldHeight = worldHeight;
@@ -74,6 +83,9 @@ public sealed class PlayerShip :
     public void OnGameplaySignal(in AsteroidDestroyedSignal signal) =>
         _score += signal.Score;
 
+    public void OnAnimationEvent(in AnimationEvent animationEvent) =>
+        _animationEvents++;
+
     private Vector2D Forward() => new(MathF.Sin(Rotation), -MathF.Cos(Rotation));
 
     private void WrapAround()
@@ -93,6 +105,7 @@ public sealed class PlayerShip :
         writer.Write("ship.survivalSeconds", _survivalSeconds);
         writer.Write("ship.shotsFired", _shotsFired);
         writer.Write("ship.score", _score);
+        writer.Write("ship.animationEvents", _animationEvents);
         writer.Write("ship.fireBuffer", _fireBuffer);
         writer.Write("ship.fireCooldown", _fireCooldown);
         writer.Write("ship.worldWidth", _worldWidth);

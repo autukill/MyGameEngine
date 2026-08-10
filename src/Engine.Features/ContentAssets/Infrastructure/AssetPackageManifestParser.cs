@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Features.ContentAssets.Domain;
+using GameEngine.Features.Animation;
 using GameEngine.Features.TextureAssets.Domain;
 
 public static class AssetPackageManifestParser
@@ -37,9 +38,10 @@ public static class AssetPackageManifestParser
         var dependencies = ParseDependencies(document.Dependencies);
         var textures = ParseTextures(document.Textures);
         var sprites = ParseSprites(document.Sprites);
+        var animations = ParseAnimations(document.Animations);
         var atlas = ParseAtlas(document.Atlas, textures);
-        if (textures.Count == 0 && sprites.Count == 0)
-            throw new InvalidDataException("An asset package must contain at least one Texture or Sprite.");
+        if (textures.Count == 0 && sprites.Count == 0 && animations.Count == 0)
+            throw new InvalidDataException("An asset package must contain at least one Texture, Sprite or Animation.");
 
         return new AssetPackageManifest(
             document.SchemaVersion,
@@ -47,7 +49,70 @@ public static class AssetPackageManifestParser
             dependencies,
             textures,
             sprites,
+            animations,
             atlas);
+    }
+
+    private static IReadOnlyList<AnimationAssetDefinition> ParseAnimations(
+        List<AnimationDto?>? source)
+    {
+        if (source is null) return Array.Empty<AnimationAssetDefinition>();
+        var result = new AnimationAssetDefinition[source.Count];
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < source.Count; i++)
+        {
+            AnimationDto item = source[i]
+                ?? throw new InvalidDataException($"Animation entry {i} is null.");
+            if (string.IsNullOrWhiteSpace(item.Name))
+                throw new InvalidDataException($"Animation entry {i} has no name.");
+            if (!names.Add(item.Name))
+                throw new InvalidDataException($"Animation '{item.Name}' appears more than once.");
+            if (string.IsNullOrWhiteSpace(item.Sprite))
+                throw new InvalidDataException($"Animation '{item.Name}' has no Sprite.");
+            if (item.Frames is not { Count: > 0 })
+                throw new InvalidDataException($"Animation '{item.Name}' requires at least one frame.");
+            for (int frame = 0; frame < item.Frames.Count; frame++)
+            {
+                if (item.Frames[frame] < 0)
+                    throw new InvalidDataException($"Animation '{item.Name}' contains a negative Sprite frame.");
+            }
+            float fps = item.FramesPerSecond ?? 0f;
+            if (!float.IsFinite(fps) || fps <= 0f)
+                throw new InvalidDataException($"Animation '{item.Name}' framesPerSecond must be finite and positive.");
+            AnimationLoopMode loopMode = item.Loop?.Trim().ToLowerInvariant() switch
+            {
+                null or "" or "loop" => AnimationLoopMode.Loop,
+                "once" => AnimationLoopMode.Once,
+                "pingpong" or "ping-pong" => AnimationLoopMode.PingPong,
+                _ => throw new InvalidDataException($"Animation '{item.Name}' has unknown loop mode '{item.Loop}'.")
+            };
+
+            List<AnimationMarkerDto?> markers = item.Markers ?? [];
+            var parsedMarkers = new AnimationAssetMarkerDefinition[markers.Count];
+            var markerKeys = new HashSet<(int Frame, string Event)>();
+            for (int markerIndex = 0; markerIndex < markers.Count; markerIndex++)
+            {
+                AnimationMarkerDto marker = markers[markerIndex]
+                    ?? throw new InvalidDataException($"Marker {markerIndex} of Animation '{item.Name}' is null.");
+                if ((uint)marker.Frame >= (uint)item.Frames.Count)
+                    throw new InvalidDataException($"Marker {markerIndex} of Animation '{item.Name}' is outside its frame list.");
+                if (string.IsNullOrWhiteSpace(marker.Event))
+                    throw new InvalidDataException($"Marker {markerIndex} of Animation '{item.Name}' has no event name.");
+                if (!markerKeys.Add((marker.Frame, marker.Event)))
+                    throw new InvalidDataException(
+                        $"Animation '{item.Name}' repeats event '{marker.Event}' on frame {marker.Frame}.");
+                parsedMarkers[markerIndex] = new AnimationAssetMarkerDefinition(marker.Frame, marker.Event);
+            }
+
+            result[i] = new AnimationAssetDefinition(
+                item.Name,
+                item.Sprite,
+                item.Frames.ToArray(),
+                fps,
+                loopMode,
+                parsedMarkers);
+        }
+        return result;
     }
 
     private static AtlasAssetBuildDefinition? ParseAtlas(
@@ -283,6 +348,7 @@ public static class AssetPackageManifestParser
         public List<DependencyDto?>? Dependencies { get; init; }
         public List<TextureDto?>? Textures { get; init; }
         public List<SpriteDto?>? Sprites { get; init; }
+        public List<AnimationDto?>? Animations { get; init; }
         public AtlasDto? Atlas { get; init; }
     }
 
@@ -317,6 +383,22 @@ public static class AssetPackageManifestParser
     {
         public string? Texture { get; init; }
         public RectDto? Source { get; init; }
+    }
+
+    internal sealed class AnimationDto
+    {
+        public string? Name { get; init; }
+        public string? Sprite { get; init; }
+        public List<int>? Frames { get; init; }
+        public float? FramesPerSecond { get; init; }
+        public string? Loop { get; init; }
+        public List<AnimationMarkerDto?>? Markers { get; init; }
+    }
+
+    internal sealed class AnimationMarkerDto
+    {
+        public int Frame { get; init; }
+        public string? Event { get; init; }
     }
 
     internal sealed class RectDto

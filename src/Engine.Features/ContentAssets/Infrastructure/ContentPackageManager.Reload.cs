@@ -4,6 +4,7 @@ using System.Numerics;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.ContentAssets.Domain;
+using GameEngine.Features.Animation;
 using GameEngine.Features.Sprites.Domain;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
@@ -15,13 +16,15 @@ public sealed partial class ContentPackageManager
         string ManifestPath,
         string[] DependencyIds,
         string[] TextureNames,
-        string[] SpriteNames);
+        string[] SpriteNames,
+        string[] AnimationNames);
 
     private sealed record ReloadSnapshot(
         long Generation,
         IReadOnlyDictionary<string, ReloadPackageSnapshot> Packages,
         string[] TextureNames,
-        string[] SpriteNames);
+        string[] SpriteNames,
+        string[] AnimationNames);
 
     private long _revisionGeneration;
 
@@ -72,7 +75,16 @@ public sealed partial class ContentPackageManager
             prepared.Sprites);
         spriteTransaction.Activate();
 
-        var previous = new List<(PackageState State, IReadOnlyList<TextureRef> Textures, IReadOnlyList<SpriteRef> Sprites)>(
+        using var animationTransaction = _animations.BeginReplacement(
+            prepared.ReplacedAnimationNames,
+            prepared.Animations);
+        animationTransaction.Activate();
+
+        var previous = new List<(
+            PackageState State,
+            IReadOnlyList<TextureRef> Textures,
+            IReadOnlyList<SpriteRef> Sprites,
+            IReadOnlyList<AnimationClipRef> Animations)>(
             prepared.Packages.Count);
         try
         {
@@ -81,11 +93,13 @@ public sealed partial class ContentPackageManager
                 PackageState state = GetLivePackage(package.Id);
                 if (!PathComparer.Equals(state.ManifestPath, package.ManifestPath))
                     throw new InvalidOperationException($"Package '{package.Id}' changed while reload was prepared.");
-                previous.Add((state, state.Textures, state.Sprites));
+                previous.Add((state, state.Textures, state.Sprites, state.Animations));
                 state.Textures = package.Textures;
                 state.Sprites = package.Sprites;
+                state.Animations = package.Animations;
             }
 
+            animationTransaction.Commit();
             spriteTransaction.Commit();
             textureTransaction.Commit();
             _revisionGeneration++;
@@ -96,6 +110,7 @@ public sealed partial class ContentPackageManager
             {
                 previous[i].State.Textures = previous[i].Textures;
                 previous[i].State.Sprites = previous[i].Sprites;
+                previous[i].State.Animations = previous[i].Animations;
             }
             throw;
         }
@@ -159,6 +174,9 @@ public sealed partial class ContentPackageManager
 
         var sprites = new List<SpriteReplacementSource>();
         var spriteNames = new HashSet<string>(StringComparer.Ordinal);
+        var spriteFrameCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var animations = new List<AnimationReplacementSource>();
+        var animationNames = new HashSet<string>(StringComparer.Ordinal);
         var preparedPackages = new List<PreparedPackageRevision>(ordered.Length);
         foreach (GraphNode node in ordered)
         {
@@ -175,13 +193,29 @@ public sealed partial class ContentPackageManager
                     visibleTextures,
                     textureMetadata);
                 sprites.Add(sprite);
+                spriteFrameCounts.Add(definition.Name, sprite.Frames.Length);
                 spriteRefs[i] = new SpriteRef(definition.Name);
+            }
+            HashSet<string> visibleSprites = CollectReloadVisibleSprites(node);
+            var animationRefs = new AnimationClipRef[node.Manifest.Animations.Count];
+            for (int i = 0; i < animationRefs.Length; i++)
+            {
+                AnimationAssetDefinition definition = node.Manifest.Animations[i];
+                if (!animationNames.Add(definition.Name))
+                    throw new InvalidDataException(
+                        $"Animation '{definition.Name}' appears more than once in the graph.");
+                animations.Add(BuildReloadAnimation(
+                    definition,
+                    visibleSprites,
+                    spriteFrameCounts));
+                animationRefs[i] = new AnimationClipRef(definition.Name);
             }
             preparedPackages.Add(new PreparedPackageRevision(
                 node.Manifest.Id,
                 node.ManifestPath,
                 packageTextures[node.Manifest.Id],
-                spriteRefs));
+                spriteRefs,
+                animationRefs));
         }
 
         CompiledContentRevision after = CompiledContentRevisionReader.Read(_packagesRoot, package);
@@ -196,8 +230,10 @@ public sealed partial class ContentPackageManager
             preparedPackages,
             snapshot.TextureNames,
             snapshot.SpriteNames,
+            snapshot.AnimationNames,
             textures,
-            sprites);
+            sprites,
+            animations);
     }
 
     private ReloadSnapshot CaptureReloadSnapshot(ContentPackageRef package)
@@ -210,12 +246,14 @@ public sealed partial class ContentPackageManager
         var packages = new Dictionary<string, ReloadPackageSnapshot>(StringComparer.Ordinal);
         var textures = new HashSet<string>(StringComparer.Ordinal);
         var sprites = new HashSet<string>(StringComparer.Ordinal);
+        var animations = new HashSet<string>(StringComparer.Ordinal);
         Capture(root);
         return new ReloadSnapshot(
             _revisionGeneration,
             packages,
             textures.Order(StringComparer.Ordinal).ToArray(),
-            sprites.Order(StringComparer.Ordinal).ToArray());
+            sprites.Order(StringComparer.Ordinal).ToArray(),
+            animations.Order(StringComparer.Ordinal).ToArray());
 
         void Capture(PackageState state)
         {
@@ -223,14 +261,17 @@ public sealed partial class ContentPackageManager
             foreach (PackageState dependency in state.Dependencies) Capture(dependency);
             string[] textureNames = state.Textures.Select(item => item.Name).ToArray();
             string[] spriteNames = state.Sprites.Select(item => item.Name).ToArray();
+            string[] animationNames = state.Animations.Select(item => item.Name).ToArray();
             foreach (string name in textureNames) textures.Add(name);
             foreach (string name in spriteNames) sprites.Add(name);
+            foreach (string name in animationNames) animations.Add(name);
             packages.Add(state.Id, new ReloadPackageSnapshot(
                 state.Id,
                 state.ManifestPath,
                 state.Dependencies.Select(item => item.Id).Order(StringComparer.Ordinal).ToArray(),
                 textureNames,
-                spriteNames));
+                spriteNames,
+                animationNames));
         }
     }
 
@@ -339,6 +380,52 @@ public sealed partial class ContentPackageManager
             foreach (TextureAssetDefinition texture in node.Manifest.Textures) result.Add(texture.Name);
             foreach (GraphNode dependency in node.Dependencies) Visit(dependency);
         }
+    }
+
+    private static HashSet<string> CollectReloadVisibleSprites(GraphNode root)
+    {
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        var visited = new HashSet<string>(PathComparer);
+        Visit(root);
+        return result;
+
+        void Visit(GraphNode node)
+        {
+            if (!visited.Add(node.ManifestPath)) return;
+            foreach (SpriteAssetDefinition sprite in node.Manifest.Sprites) result.Add(sprite.Name);
+            foreach (GraphNode dependency in node.Dependencies) Visit(dependency);
+        }
+    }
+
+    private static AnimationReplacementSource BuildReloadAnimation(
+        AnimationAssetDefinition definition,
+        HashSet<string> visibleSprites,
+        IReadOnlyDictionary<string, int> spriteFrameCounts)
+    {
+        if (!visibleSprites.Contains(definition.SpriteName) ||
+            !spriteFrameCounts.TryGetValue(definition.SpriteName, out int spriteFrameCount))
+        {
+            throw new InvalidDataException(
+                $"Animation '{definition.Name}' references Sprite '{definition.SpriteName}' " +
+                "outside its dependency closure.");
+        }
+        for (int i = 0; i < definition.Frames.Count; i++)
+        {
+            if ((uint)definition.Frames[i] >= (uint)spriteFrameCount)
+            {
+                throw new InvalidDataException(
+                    $"Animation '{definition.Name}' frame {i} exceeds Sprite '{definition.SpriteName}'.");
+            }
+        }
+        return new AnimationReplacementSource(
+            definition.Name,
+            new SpriteRef(definition.SpriteName),
+            definition.Frames.ToArray(),
+            definition.FramesPerSecond,
+            definition.LoopMode,
+            definition.Markers.Select(marker => new AnimationFrameMarker(
+                marker.Frame,
+                new AnimationEventRef(marker.Event))).ToArray());
     }
 
     private static SpriteReplacementSource BuildReloadSprite(

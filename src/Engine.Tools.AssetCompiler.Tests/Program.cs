@@ -1,5 +1,6 @@
 namespace AssetCompiler.Tests;
 
+using GameEngine.Features.Animation;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
@@ -54,8 +55,9 @@ internal static class Program
             string compiledJson = File.ReadAllText(Path.Combine(firstOutput, "assets.json"));
             Check(!compiledJson.Contains("sheet.png", StringComparison.Ordinal) &&
                   compiledJson.Contains("large.png", StringComparison.Ordinal) &&
-                  compiledJson.Contains("atlas/pixel-art-0.png", StringComparison.Ordinal),
-                "Fully packed source Texture is removed while passthrough source is retained");
+                  compiledJson.Contains("atlas/pixel-art-0.png", StringComparison.Ordinal) &&
+                  compiledJson.Contains("compiler.grid.run", StringComparison.Ordinal),
+                "Atlas remap preserves declarative Animation assets");
             Check(File.Exists(Path.Combine(firstOutput, "shared", "assets.json")) &&
                   File.Exists(Path.Combine(firstOutput, "shared", "white.png")),
                 "Dependency packages are copied into the compiled packages root");
@@ -80,6 +82,11 @@ internal static class Program
                 "Oversized frame remains on its independent Texture");
             Check(textures.Count == 4 && sprites.Count == 2,
                 "Existing ContentPackageManager loads the compiled standard package");
+            AnimationClip animation = manager.Animations.Get(
+                package.GetAnimation("compiler.grid.run"));
+            Check(animation.Sprite == grid && animation.SubImages.SequenceEqual([0, 1]) &&
+                  animation.Markers[0].Event == new AnimationEventRef("compiler.step"),
+                "Compiled package loads Animation against the remapped Sprite");
 
             VerifyIncrementalPipeline(source, workspace);
         }
@@ -107,6 +114,7 @@ internal static class Program
         Check(first.Changed && !cached.Changed && File.GetLastWriteTimeUtc(output) == firstWrite,
             "Unchanged generated references preserve the file timestamp");
         Check(first.PackageCount == 2 && first.TextureCount == 2 && first.SpriteCount == 2 &&
+              first.AnimationCount == 1 && first.AnimationEventCount == 1 &&
               source.Contains("ContentPackageRef Root = new(\"compiler.assets\", \"assets.json\")", StringComparison.Ordinal) &&
               source.Contains("ContentPackageRef CompilerShared", StringComparison.Ordinal),
             "Root and dependency package references are generated from the compiled graph");
@@ -118,6 +126,9 @@ internal static class Program
         Check(source.Contains("SpriteRef CompilerGrid", StringComparison.Ordinal) &&
               source.Contains("SpriteRef CompilerLarge", StringComparison.Ordinal),
             "Compiled Sprite names remain stable typed references");
+        Check(source.Contains("AnimationClipRef CompilerGridRun", StringComparison.Ordinal) &&
+              source.Contains("AnimationEventRef CompilerStep", StringComparison.Ordinal),
+            "Animation clips and marker events become strongly typed references");
         CheckThrows<InvalidDataException>(() => generator.Generate(request with
             {
                 OutputFile = Path.Combine(compiledRoot, "GameEngine.Content.g.cs")
@@ -375,6 +386,16 @@ internal static class Program
               "layout": "single",
               "texture": "compiler.large",
               "origin": { "x": 3, "y": 3 }
+            }
+          ],
+          "animations": [
+            {
+              "name": "compiler.grid.run",
+              "sprite": "compiler.grid",
+              "frames": [0, 1],
+              "framesPerSecond": 8,
+              "loop": "loop",
+              "markers": [{ "frame": 1, "event": "compiler.step" }]
             }
           ]
         }

@@ -18,6 +18,7 @@
 - Laser 使用内置 `LifetimeBehavior`，Asteroid 使用项目自定义强类型 `SpinBehavior`。
 - `PrefabRef<T, TArgs>` 传递 Laser/Asteroid 的位置、速度和半径，不使用无类型参数字典。
 - `SpawnSequence` 声明延迟、波次、循环 cadence 与最大并发；生成回调继续拥有随机边缘、速度、半径和 Prefab 参数。
+- Ship 的 idle Clip 在 `assets.json` 声明，并通过生成的 `GameAssets.Animations` 挂到 `GameInstance`；帧 Marker 由 `IAnimationEventHandler` 接收，验证 Content、Hosting、Sprite 与实例生命周期的完整动画路径。
 - `AsteroidSpawner` 保存弱、强类型 `InstanceRef<PlayerShip>`；玩家消失后安全回退到世界中心。
 - 固定 60 Tick 与 owner-local `GameplayRandom` 让生成边缘、速度和半径可复现。
 - PlayerShip、Spawner、Asteroid、Laser 和 SpinBehavior 显式贡献状态 Hash，可直接配合 Replay 分叉诊断。

@@ -2,6 +2,7 @@ namespace GameEngine.Features.ContentAssets.Domain;
 
 using System.Numerics;
 using GameEngine.Core.Domain.Graphics;
+using GameEngine.Features.Animation;
 using GameEngine.Features.TextureAssets.Domain;
 
 public sealed record AssetPackageDependency(
@@ -39,6 +40,18 @@ public sealed record SpriteAssetDefinition(
     Vector2 Origin,
     float FramesPerSecond);
 
+public sealed record AnimationAssetMarkerDefinition(
+    int Frame,
+    string Event);
+
+public sealed record AnimationAssetDefinition(
+    string Name,
+    string SpriteName,
+    IReadOnlyList<int> Frames,
+    float FramesPerSecond,
+    AnimationLoopMode LoopMode,
+    IReadOnlyList<AnimationAssetMarkerDefinition> Markers);
+
 public sealed class AssetPackageManifest
 {
     public const int CurrentSchemaVersion = 1;
@@ -49,6 +62,7 @@ public sealed class AssetPackageManifest
         IEnumerable<AssetPackageDependency> dependencies,
         IEnumerable<TextureAssetDefinition> textures,
         IEnumerable<SpriteAssetDefinition> sprites,
+        IEnumerable<AnimationAssetDefinition> animations,
         AtlasAssetBuildDefinition? atlas = null)
     {
         SchemaVersion = schemaVersion;
@@ -56,6 +70,7 @@ public sealed class AssetPackageManifest
         Dependencies = dependencies.ToArray();
         Textures = textures.ToArray();
         Sprites = sprites.ToArray();
+        Animations = animations.ToArray();
         Atlas = atlas;
     }
 
@@ -64,5 +79,6 @@ public sealed class AssetPackageManifest
     public IReadOnlyList<AssetPackageDependency> Dependencies { get; }
     public IReadOnlyList<TextureAssetDefinition> Textures { get; }
     public IReadOnlyList<SpriteAssetDefinition> Sprites { get; }
+    public IReadOnlyList<AnimationAssetDefinition> Animations { get; }
     public AtlasAssetBuildDefinition? Atlas { get; }
 }

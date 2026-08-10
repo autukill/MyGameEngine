@@ -31,19 +31,20 @@ dotnet build src/MyGame.Runner/MyGame.Runner.csproj
 AssetCompiler 完整发布
   → 指纹轮询与去抖
   → 后台解析完整 Manifest 依赖图
-  → 后台解码全部新图片并规范化 Sprite 帧
+  → 后台解码全部新图片并规范化 Sprite 帧与 Animation Clip
   → Step 完成
   → GPU 上传暂不可见的新 Texture
   → 激活 Texture 映射
   → 校验并激活 Sprite 映射
+  → 校验并激活 Animation 映射
   → 更新包资源索引
   → Draw 使用新修订
   → 释放旧 GPU Texture
 ```
 
-后台准备阶段不调用 OpenGL，也不修改 `TextureLibrary`、`SpriteLibrary` 或包引用计数。提交固定发生在 `ScenePipelineBuilder.ApplyEvents` 之后、`RenderPipeline.Execute` 之前，因此一帧不会混用两个内容修订。
+后台准备阶段不调用 OpenGL，也不修改 `TextureLibrary`、`SpriteLibrary`、`AnimationLibrary` 或包引用计数。提交固定发生在 `ScenePipelineBuilder.ApplyEvents` 之后、`RenderPipeline.Execute` 之前，因此一帧不会混用两个内容修订。
 
-`TextureRef`、`SpriteRef` 和已有 `GameInstance.Sprite` 都是逻辑名称。资源仍存在时，提交后这些引用自动解析到新 GPU Handle、UV、尺寸、原点、帧数和 FPS，不需要重建实例。
+`TextureRef`、`SpriteRef`、`AnimationClipRef` 和已有 `GameInstance.Sprite` 都是逻辑名称。资源仍存在时，提交后这些引用自动解析到新 GPU Handle、UV、尺寸、原点、帧数、FPS 和 Clip 定义，不需要重建实例。活动 `AnimationPlayer` 会在下一次 Update 采用替换定义；若 Clip 被删除则安全停止。
 
 ## 失败回退
 
@@ -61,8 +62,8 @@ AssetCompiler 完整发布
 
 当前修订可以：
 
-- 修改、新增或删除现有依赖图内的 Texture 与 Sprite。
-- 修改图片像素、尺寸、采样、Sprite 帧、原点、逻辑尺寸和 FPS。
+- 修改、新增或删除现有依赖图内的 Texture、Sprite 与 Animation。
+- 修改图片像素、尺寸、采样、Sprite 帧、原点、逻辑尺寸、Animation 帧序列、FPS、Loop 和 Marker。
 - 更新传递依赖包内部的内容；共享该依赖的其他已加载根包会看到同一逻辑资源更新。
 
 当前不能在运行中新增、删除或重定向包依赖边。包 ID、Manifest 路径和依赖拓扑发生变化时，本次修订被拒绝。重新启动游戏即可加载新拓扑。后续若开放拓扑热替换，需要先把包引用计数拆分为“外部租约”和“依赖持有”，避免共享依赖被提前卸载。

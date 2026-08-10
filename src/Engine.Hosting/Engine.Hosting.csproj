@@ -11,6 +11,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\Engine.Features\Animation\Animation.csproj" />
     <ProjectReference Include="..\Engine.Features\Bloom\Bloom.csproj" />
     <ProjectReference Include="..\Engine.Features\Camera\Camera.csproj" />
     <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" />
@@ -20,6 +21,7 @@
     <ProjectReference Include="..\Engine.Features\ShaderAssets\ShaderAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\Engine.Features\StencilMasking\StencilMasking.csproj" />
+    <ProjectReference Include="..\Engine.Features\TextRendering\TextRendering.csproj" />
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\ToneMapping\ToneMapping.csproj" />
   </ItemGroup>

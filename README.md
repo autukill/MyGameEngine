@@ -15,7 +15,8 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Gameplay Query：保留便利结果数组，同时提供可复用 Buffer、强类型 Gameplay Tag 过滤、无集合计数和按真实 Step 聚合的可选查询统计。
 - Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
 - Spawn/Wave Authoring：确定性 Delay/Wave/Loop 时间线、并发门控和状态快照；Asteroids 已移除手写生成 Alarm。
-- Authoring 基础切片：命名 Animation Clip、逻辑 Text/Glyph Atlas、Audio Clip/Bus/Voice 与独立 Transform Hierarchy 数学核心；平台/Scene 适配仍按各自文档渐进接入。
+- Animation Authoring：`assets.json` 命名 Clip、强类型引用、GameInstance 播放/帧事件、状态快照与原子 Content Hot Reload；Text、Audio 与 Transform 仍按各自黄金路径渐进接入。
+- Text Rendering：真实 TTF/OTF、中文 Font Fallback、Grapheme-safe 单行布局、动态 Glyph Atlas，以及共用 SpriteBatch 的 World/SceneGui DrawText。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件；不可变逻辑 Action/Axis 把玩法意图与物理绑定分离，并支持固定 Tick 内存录制与无设备回放。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
@@ -35,7 +36,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 自动 GPU 像素回归：固定时间步、PNG 基线、容差比较以及 expected/actual/diff 诊断产物。
 - 可分发内容工具链：`gameengine-assets` .NET Tool 与内置编译器的 `buildTransitive` NuGet 包。
 - Engine Hosting：声明式启动、默认 2D 渲染预设、强类型 Scene Context、帧循环与资源清理。
-- 强类型 Content：Build 自动生成 Package、Sprite 与 Texture 逻辑引用，并在编译期诊断重名。
+- 强类型 Content：Build 自动生成 Package、Texture、Sprite、Animation 与帧事件逻辑引用，并在编译期诊断重名。
 - 可分发 Game SDK 与模板：`MyGameEngine.GameSdk` 聚合运行时程序集，`dotnet new mygameengine-game` 可在仓库外创建完整项目。
 - 开发环境诊断：`gameengine doctor` 检查 SDK、包版本、内容产物，并可显式探测隐藏 OpenGL 3.3 Context。
 - 运行时渲染快照：显式读取 Pass 顺序、逻辑 Surface、Effect owner 与 RenderTarget 活动租约，不暴露 GPU 句柄。
@@ -55,7 +56,7 @@ src/
 │   ├── Animation/                       # 命名 Clip、循环模式与帧事件
 │   ├── Audio/                           # 逻辑 Clip/Bus/Voice 与 Backend 边界
 │   ├── Bloom/                           # 独立阈值提取与水平/垂直 ping-pong 效果链
-│   ├── ContentAssets/                   # 声明式包、依赖图、Texture/Sprite 装配与租约
+│   ├── ContentAssets/                   # 声明式包、依赖图、Texture/Sprite/Animation 装配与租约
 │   ├── Presentation/                    # 显式 RGBA8/Display 屏幕终端与稳定合成层级
 │   ├── RenderPipeline/                  # RenderTarget、RenderPass DAG、后处理与合成
 │   ├── Replay/                          # 版本化输入 + 状态轨迹 Bundle 与会话 API
@@ -66,7 +67,7 @@ src/
 │   ├── TextureAssets/                   # TextureLibrary、Skia 解码与资产清单
 │   ├── TextureAtlas/                    # 纯 CPU Atlas 排布与像素页面生成
 │   ├── ToneMapping/                     # HDR 曝光、ACES/Reinhard 与 RGBA8 显示输出
-│   ├── TextRendering/                   # Font/Fallback、文本布局与动态 Glyph Atlas
+│   ├── TextRendering/                   # 真实字体、Fallback、Glyph Atlas 与 World/SceneGui DrawText
 │   ├── TransformHierarchy/              # Local/World Transform 与父子层级数学核心
 │   ├── *.Tests/                         # 17 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
@@ -113,7 +114,7 @@ Engine.Core
 Engine.Hosting -> Core + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 58 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 59 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -262,12 +263,14 @@ var playerSprite = sprites.RegisterGrid("player", playerTexture,
 ## 声明式 Content Assets
 
 ```csharp
-using var manager = new ContentPackageManager(textures, sprites, packagesRoot);
+var animations = new AnimationLibrary();
+using var manager = new ContentPackageManager(textures, sprites, animations, packagesRoot);
 using var package = manager.Load(GameAssets.Packages.Root);
 var idle = package.GetSprite("boss.idle");
+var attack = package.GetAnimation("boss.attack");
 ```
 
-`assets.json` 可声明包依赖、Texture，以及 `single`、`grid`、`frames` 三种 Sprite 布局。`frames` 的每一帧都可引用不同 `TextureRef` 并指定像素裁剪区域，因此大尺寸单帧可以保留为独立图片；运行时 Sprite 引用和绘制 API 不受未来 Atlas 重映射影响。Manager 会先验证完整依赖图，再按拓扑顺序同步加载；失败只回滚本次新增资源，共享依赖在最后一个租约释放后才卸载。
+`assets.json` 可声明包依赖、Texture、Animation，以及 `single`、`grid`、`frames` 三种 Sprite 布局。`frames` 的每一帧都可引用不同 `TextureRef` 并指定像素裁剪区域，因此大尺寸单帧可以保留为独立图片；Animation 只绑定逻辑 Sprite 与 sub-image，不受未来 Atlas 重映射影响。Manager 会先验证完整依赖图，再按 Texture → Sprite → Animation 顺序同步加载；失败只回滚本次新增资源，共享依赖在最后一个租约释放后才卸载。
 
 完整清单字段、多纹理长动画、包依赖和生命周期说明见 [Content Assets 使用指南](docs/CONTENT_ASSETS.md)；生成引用、Atlas 过滤和命名规则见[强类型 Content 引用](docs/STRONGLY_TYPED_CONTENT.md)。开发运行可选择启用[编译指纹驱动的 Content 热重载](docs/CONTENT_HOT_RELOAD.md)，新修订后台准备并在 Step 与 Draw 之间原子切换，失败继续使用旧资源。
 
@@ -303,8 +306,8 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 ## 下一阶段
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
-2. 确定性 Gameplay Authoring 的 Spawn/Wave 已接入 Asteroids；下一轮聚焦把 Animation 与 Transform Hierarchy 基础接入 GameInstance/Prefab 黄金路径。
-3. Text 与 Audio 已建立无窗口逻辑核心；下一步分别是真实字体/GPU DrawText 和跨平台音频 Backend，不把尚未完成的适配描述成可播放能力。
+2. Animation 与 Text Rendering 两条黄金路径已经闭环；Text 下一切片是多行中文换行、对齐和可复用动态 Layout Buffer，不提前夹带完整 GUI。
+3. 下一条跨层适配优先 Transform Scene/Prefab 挂点，其后是跨平台 Audio Backend；不把尚未完成的适配描述成可用平台能力。
 4. GUI Compatibility Spike 已完成第一轮决策：Yoga 只作为布局内核继续 NativeAOT 实验，RmlUi 是开发者优先完整 Runtime 候选，FairyGUI 保留设计器优先可选路线。详见[调研记录](docs/HTML_CSS_YOGA_GUI_ROADMAP.md)。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。

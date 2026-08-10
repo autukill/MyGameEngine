@@ -58,6 +58,31 @@ public sealed class OpenGlTextureBackend(GL gl) : ITextureBackend
             _gl.DeleteTexture(handle);
     }
 
+    public unsafe void UpdateTextureRegion(
+        uint handle,
+        int x,
+        int y,
+        int width,
+        int height,
+        ReadOnlySpan<byte> rgbaPixels)
+    {
+        if (handle == 0) throw new ArgumentOutOfRangeException(nameof(handle));
+        _gl.BindTexture(TextureTarget.Texture2D, handle);
+        fixed (byte* pixels = rgbaPixels)
+        {
+            _gl.TexSubImage2D(
+                TextureTarget.Texture2D,
+                0,
+                x,
+                y,
+                (uint)width,
+                (uint)height,
+                PixelFormat.Rgba,
+                PixelType.UnsignedByte,
+                pixels);
+        }
+    }
+
     private static uint Map(TextureFilter filter) => filter switch
     {
         TextureFilter.Nearest => (uint)GLEnum.Nearest,

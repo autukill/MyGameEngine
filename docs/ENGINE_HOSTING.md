@@ -109,8 +109,9 @@ Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后�
 
 - `Scene`、主 `Camera`、`RenderViews/GetRenderView/GetCameraFollow` 和当前 `Window`。
 - `Viewports`、`TryScreenToView/TryScreenToWorld` 与 `CaptureViewportDiagnostics()`，用于布局感知的输入和诊断。
-- `Textures`、`Sprites` 与可选 `Content` 包租约。
-- `GetTexture/GetSprite` 便利方法；未配置 Content 时给出明确异常。
+- `Textures`、`Sprites`、`Animations`、共享 `TextRuntime` 与可选 `Content` 包租约。
+- `GetTexture/GetSprite/GetAnimation` 便利方法；未配置 Content 时给出明确异常。
+- `Text.LoadFont/CreateFamily/Prepare/Draw` 贯通真实字体、Glyph Atlas 与 World/SceneGui 文本；正式游戏仍显式拥有并分发字体文件。
 - `GetMaterial` 取得声明式清单中已装配的逻辑 Material 引用；未声明时给出明确异常。
 - `Pipeline`、`Effects` 和 `RenderTargets` 高级逃生口。
 - `RegisterRenderEffectFactory` 与 `AddRenderPass` 扩展入口。
@@ -167,6 +168,7 @@ RenderTargetPool
 ContentHotReloadCoordinator
 ShaderHotReloadCoordinator
 LoadedContentPackage / ContentPackageManager
+TextRuntime（Glyph Atlas / Font）
 TextureLibrary / SpriteBatch
 Shader
 ```

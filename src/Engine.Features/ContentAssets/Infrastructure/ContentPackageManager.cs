@@ -4,6 +4,7 @@ using System.Numerics;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.ContentAssets.Domain;
+using GameEngine.Features.Animation;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
@@ -27,6 +28,7 @@ public sealed partial class ContentPackageManager : IDisposable
         public required string ManifestPath { get; init; }
         public required IReadOnlyList<TextureRef> Textures { get; set; }
         public required IReadOnlyList<SpriteRef> Sprites { get; set; }
+        public required IReadOnlyList<AnimationClipRef> Animations { get; set; }
         public required IReadOnlyList<PackageState> Dependencies { get; init; }
         public required long LoadOrder { get; init; }
         public int ReferenceCount { get; set; }
@@ -34,6 +36,7 @@ public sealed partial class ContentPackageManager : IDisposable
 
     private readonly TextureLibrary _textures;
     private readonly SpriteLibrary _sprites;
+    private readonly AnimationLibrary _animations;
     private readonly string _packagesRoot;
     private readonly Dictionary<string, PackageState> _packagesById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PackageState> _packagesByPath = new(PathComparer);
@@ -44,9 +47,19 @@ public sealed partial class ContentPackageManager : IDisposable
         TextureLibrary textureLibrary,
         SpriteLibrary spriteLibrary,
         string packagesRoot)
+        : this(textureLibrary, spriteLibrary, new AnimationLibrary(), packagesRoot)
+    {
+    }
+
+    public ContentPackageManager(
+        TextureLibrary textureLibrary,
+        SpriteLibrary spriteLibrary,
+        AnimationLibrary animationLibrary,
+        string packagesRoot)
     {
         _textures = textureLibrary ?? throw new ArgumentNullException(nameof(textureLibrary));
         _sprites = spriteLibrary ?? throw new ArgumentNullException(nameof(spriteLibrary));
+        _animations = animationLibrary ?? throw new ArgumentNullException(nameof(animationLibrary));
         ArgumentException.ThrowIfNullOrWhiteSpace(packagesRoot);
 
         _packagesRoot = Path.GetFullPath(packagesRoot);
@@ -56,6 +69,7 @@ public sealed partial class ContentPackageManager : IDisposable
 
     public int LoadedPackageCount => _packagesById.Count;
     public string PackagesRoot => _packagesRoot;
+    public AnimationLibrary Animations => _animations;
 
     public LoadedContentPackage Load(string rootRelativeManifestPath) =>
         LoadCore(rootRelativeManifestPath, expectedId: null);
@@ -113,6 +127,17 @@ public sealed partial class ContentPackageManager : IDisposable
                 $"Sprite '{name}' is not visible from package '{packageId}'.");
     }
 
+    internal AnimationClipRef GetAnimation(string packageId, string name)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        PackageState state = GetLivePackage(packageId);
+        return TryFindAnimation(state, name, out AnimationClipRef animation)
+            ? animation
+            : throw new KeyNotFoundException(
+                $"Animation '{name}' is not visible from package '{packageId}'.");
+    }
+
     internal void Release(string packageId)
     {
         if (_disposed || !_packagesById.TryGetValue(packageId, out var state))
@@ -129,6 +154,8 @@ public sealed partial class ContentPackageManager : IDisposable
             .ToArray();
         foreach (var state in states)
         {
+            for (int i = state.Animations.Count - 1; i >= 0; i--)
+                _animations.Remove(state.Animations[i]);
             for (int i = state.Sprites.Count - 1; i >= 0; i--)
                 _sprites.Remove(state.Sprites[i]);
         }
@@ -210,6 +237,7 @@ public sealed partial class ContentPackageManager : IDisposable
         GraphNode[] graph = nodes.ToArray();
         var textureNames = new HashSet<string>(StringComparer.Ordinal);
         var spriteNames = new HashSet<string>(StringComparer.Ordinal);
+        var animationNames = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var node in graph)
         {
@@ -241,10 +269,50 @@ public sealed partial class ContentPackageManager : IDisposable
                         $"Sprite name '{definition.Name}' conflicts with an existing package or resource.");
                 }
             }
+
+            foreach (AnimationAssetDefinition definition in node.Manifest.Animations)
+            {
+                if (!animationNames.Add(definition.Name) ||
+                    _animations.TryGet(new AnimationClipRef(definition.Name), out _))
+                {
+                    throw new InvalidDataException(
+                        $"Animation name '{definition.Name}' conflicts with an existing package or resource.");
+                }
+            }
         }
 
         foreach (var node in graph)
+        {
             ValidateSpriteTextureReferences(node);
+            ValidateAnimationSpriteReferences(node);
+        }
+    }
+
+    private static void ValidateAnimationSpriteReferences(GraphNode node)
+    {
+        var visibleSprites = new HashSet<string>(StringComparer.Ordinal);
+        CollectVisibleSpriteNames(node, visibleSprites, new HashSet<string>(PathComparer));
+        foreach (AnimationAssetDefinition animation in node.Manifest.Animations)
+        {
+            if (!visibleSprites.Contains(animation.SpriteName))
+            {
+                throw new InvalidDataException(
+                    $"Animation '{animation.Name}' references Sprite '{animation.SpriteName}' " +
+                    "outside its package dependency closure.");
+            }
+        }
+    }
+
+    private static void CollectVisibleSpriteNames(
+        GraphNode node,
+        HashSet<string> names,
+        HashSet<string> visited)
+    {
+        if (!visited.Add(node.ManifestPath)) return;
+        foreach (SpriteAssetDefinition sprite in node.Manifest.Sprites)
+            names.Add(sprite.Name);
+        foreach (GraphNode dependency in node.Dependencies)
+            CollectVisibleSpriteNames(dependency, names, visited);
     }
 
     private static void ValidateSpriteTextureReferences(GraphNode node)
@@ -303,6 +371,7 @@ public sealed partial class ContentPackageManager : IDisposable
         var dependencies = new List<PackageState>(node.Dependencies.Count);
         var textures = new List<TextureRef>();
         var sprites = new List<SpriteRef>();
+        var animations = new List<AnimationClipRef>();
         try
         {
             foreach (var dependency in node.Dependencies)
@@ -321,12 +390,16 @@ public sealed partial class ContentPackageManager : IDisposable
             foreach (var definition in node.Manifest.Sprites)
                 sprites.Add(RegisterSprite(definition, textures, dependencies));
 
+            foreach (AnimationAssetDefinition definition in node.Manifest.Animations)
+                animations.Add(RegisterAnimation(definition, sprites, dependencies));
+
             var state = new PackageState
             {
                 Id = node.Manifest.Id,
                 ManifestPath = node.ManifestPath,
                 Textures = textures.ToArray(),
                 Sprites = sprites.ToArray(),
+                Animations = animations.ToArray(),
                 Dependencies = dependencies.ToArray(),
                 ReferenceCount = 1,
                 LoadOrder = ++_nextLoadOrder
@@ -338,6 +411,8 @@ public sealed partial class ContentPackageManager : IDisposable
         }
         catch
         {
+            for (int i = animations.Count - 1; i >= 0; i--)
+                _animations.Remove(animations[i]);
             for (int i = sprites.Count - 1; i >= 0; i--)
                 _sprites.Remove(sprites[i]);
             for (int i = textures.Count - 1; i >= 0; i--)
@@ -346,6 +421,63 @@ public sealed partial class ContentPackageManager : IDisposable
                 Release(dependencies[i]);
             throw;
         }
+    }
+
+    private AnimationClipRef RegisterAnimation(
+        AnimationAssetDefinition definition,
+        IReadOnlyList<SpriteRef> ownSprites,
+        IReadOnlyList<PackageState> dependencies)
+    {
+        SpriteRef sprite = FindAllowedSprite(definition.SpriteName, ownSprites, dependencies);
+        if (!_sprites.TryGetMetadata(sprite, out SpriteMetadata metadata))
+            throw new InvalidDataException($"Animation '{definition.Name}' Sprite '{sprite}' is unavailable.");
+        for (int i = 0; i < definition.Frames.Count; i++)
+        {
+            if (definition.Frames[i] >= metadata.FrameCount)
+            {
+                throw new InvalidDataException(
+                    $"Animation '{definition.Name}' frame {i} references sub-image " +
+                    $"{definition.Frames[i]}, but Sprite '{sprite}' has {metadata.FrameCount} frames.");
+            }
+        }
+
+        AnimationFrameMarker[] markers = definition.Markers
+            .Select(marker => new AnimationFrameMarker(
+                marker.Frame,
+                new AnimationEventRef(marker.Event)))
+            .ToArray();
+        try
+        {
+            return _animations.Register(
+                definition.Name,
+                sprite,
+                definition.Frames.ToArray(),
+                definition.FramesPerSecond,
+                definition.LoopMode,
+                markers);
+        }
+        catch (Exception ex) when (ex is ArgumentException or OverflowException)
+        {
+            throw new InvalidDataException($"Animation '{definition.Name}' is invalid.", ex);
+        }
+    }
+
+    private static SpriteRef FindAllowedSprite(
+        string name,
+        IReadOnlyList<SpriteRef> ownSprites,
+        IReadOnlyList<PackageState> dependencies)
+    {
+        foreach (SpriteRef sprite in ownSprites)
+        {
+            if (StringComparer.Ordinal.Equals(sprite.Name, name))
+                return sprite;
+        }
+        foreach (PackageState dependency in dependencies)
+        {
+            if (TryFindSprite(dependency, name, out SpriteRef sprite))
+                return sprite;
+        }
+        throw new InvalidDataException($"Animation references unavailable Sprite '{name}'.");
     }
 
     private SpriteRef RegisterSprite(
@@ -513,6 +645,28 @@ public sealed partial class ContentPackageManager : IDisposable
         return false;
     }
 
+    private static bool TryFindAnimation(
+        PackageState state,
+        string name,
+        out AnimationClipRef animation)
+    {
+        foreach (AnimationClipRef candidate in state.Animations)
+        {
+            if (StringComparer.Ordinal.Equals(candidate.Name, name))
+            {
+                animation = candidate;
+                return true;
+            }
+        }
+        foreach (PackageState dependency in state.Dependencies)
+        {
+            if (TryFindAnimation(dependency, name, out animation))
+                return true;
+        }
+        animation = default;
+        return false;
+    }
+
     private void Release(PackageState state)
     {
         if (state.ReferenceCount <= 0)
@@ -521,6 +675,8 @@ public sealed partial class ContentPackageManager : IDisposable
         if (state.ReferenceCount != 0)
             return;
 
+        for (int i = state.Animations.Count - 1; i >= 0; i--)
+            _animations.Remove(state.Animations[i]);
         for (int i = state.Sprites.Count - 1; i >= 0; i--)
             _sprites.Remove(state.Sprites[i]);
         for (int i = state.Textures.Count - 1; i >= 0; i--)

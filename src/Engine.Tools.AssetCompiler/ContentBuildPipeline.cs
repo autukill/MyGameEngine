@@ -347,6 +347,7 @@ public sealed class ContentBuildPipeline
         var packageDirectories = new HashSet<string>(PathComparer);
         var textureOwners = new Dictionary<string, GraphNode>(StringComparer.Ordinal);
         var spriteNames = new HashSet<string>(StringComparer.Ordinal);
+        var animationNames = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var node in graph)
         {
@@ -373,6 +374,12 @@ public sealed class ContentBuildPipeline
                 if (!spriteNames.Add(sprite.Name))
                     throw new InvalidDataException($"Sprite '{sprite.Name}' appears in multiple packages.");
             }
+            foreach (AnimationAssetDefinition animation in node.Manifest.Animations)
+            {
+                if (!animationNames.Add(animation.Name))
+                    throw new InvalidDataException(
+                        $"Animation '{animation.Name}' appears in multiple packages.");
+            }
         }
 
         foreach (var consumer in graph)
@@ -394,7 +401,32 @@ public sealed class ContentBuildPipeline
                     }
                 }
             }
+            foreach (AnimationAssetDefinition animation in consumer.Manifest.Animations)
+            {
+                if (!HasVisibleSprite(consumer, animation.SpriteName, new HashSet<string>(PathComparer)))
+                {
+                    throw new InvalidDataException(
+                        $"Animation '{animation.Name}' references Sprite '{animation.SpriteName}' " +
+                        "outside its package dependency closure.");
+                }
+            }
         }
+    }
+
+    private static bool HasVisibleSprite(
+        GraphNode node,
+        string spriteName,
+        HashSet<string> visited)
+    {
+        if (!visited.Add(node.ManifestPath)) return false;
+        if (node.Manifest.Sprites.Any(sprite =>
+                StringComparer.Ordinal.Equals(sprite.Name, spriteName)))
+            return true;
+        foreach (GraphNode dependency in node.Dependencies)
+        {
+            if (HasVisibleSprite(dependency, spriteName, visited)) return true;
+        }
+        return false;
     }
 
     private static IEnumerable<string> EnumerateSpriteTextureNames(SpriteAssetDefinition sprite)
