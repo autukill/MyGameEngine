@@ -43,7 +43,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 运行时渲染快照：显式读取 Pass 顺序、逻辑 Surface、Effect owner 与 RenderTarget 活动租约，不暴露 GPU 句柄。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
-文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
+文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。未来真实游戏候选《驮春 / Bloomback》目前仅保存为[概念档案](games/Bloomback/README.md)，尚未立项开发，也不属于当前已实现能力。
 
 ## 工程结构
 
@@ -92,6 +92,9 @@ playgrounds/
 ├── Asteroids/                           # 参数化 Prefab、Circle 碰撞和 Scene 重启示例
 ├── FlappyBird/                          # 完整开始/计分/失败/重开闭环与程序化音效示例
 └── TilemapWorld/                        # 声明式地图、可见 Chunk 与静态碰撞烘焙示例
+
+games/
+└── Bloomback/                           # 《驮春》概念文档与设计稿；尚无游戏工程
 ```
 
 Feature 依赖保持单向：
