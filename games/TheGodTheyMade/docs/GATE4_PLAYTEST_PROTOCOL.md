@@ -47,6 +47,14 @@ dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade
 
 回放若遇到错过 Tick 或命令被拒绝会立即失败。命令流只证明最终 Gameplay 命令与模拟结果可复现，不记录镜头移动、鼠标像素路径、犹豫过程或玩家口述；这些仍由观察表和可选屏幕录像补充。
 
+主持人将每位测试员的主报告放在一个独立目录中，并把 `questionnaire` 的四个布尔值与三个文字回答从 `null` 改为真实访谈结果。即使没有困惑，也要把 `confusionAndBlockers` 明确写为“无”，不能留空。不要把命令回放生成的复核报告混入该目录。完成后运行：
+
+```powershell
+dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj -- --audit-playtests artifacts/playtests --gate-audit-report artifacts/gate4.audit.json
+```
+
+审计器严格读取当前 schema，拒绝未知字段、重复测试员 ID 和超过安全上限的报告；按实际独立测试员数量计算向上取整的 80%/60%/80% 阈值，同时检查所有会话完成、所有问卷完整和至少两种壁画历史。未满足时进程返回 `2` 并逐项列出缺失证据；全部满足才返回 `0`。自动判定不能证明测试员此前不了解规则，这一点仍由招募记录负责。
+
 自动确定性基线使用不依赖原始鼠标像素的固定命令脚本保存 Replay Bundle：
 
 ```powershell

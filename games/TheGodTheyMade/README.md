@@ -30,6 +30,7 @@
 - `--smoke` 隐藏窗口入口，以及不依赖 GPU 的 Simulation 测试。
 - `--scripted-regression --record-replay <file>` 与 `--scripted-regression --replay <file>` 会通过真实 Replay Bundle 逐 Tick 复现固定信仰脚本、神兽示范/搬运/奖励和 Gameplay State Hash。
 - `--record-commands <file>` 与 `--play-commands <file>` 以版本化 Gameplay Command Journal 记录/回放真实会话中被接受的降雨、水闸和神兽 Q/E 反馈；`--playtest-report <file> --tester-id <id>` 输出终局、学习轨迹与状态 Hash，供外部盲测留档。
+- `--audit-playtests <directory> --gate-audit-report <file>` 严格聚合独立测试员报告，检查完成度、问卷、4/5・3/5・4/5 理解阈值及至少两种壁画历史；未满足 Gate 时返回退出码 `2`。
 
 ```powershell
 dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj

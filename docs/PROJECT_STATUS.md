@@ -93,7 +93,7 @@
 - Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；`UseRenderViews` 可声明每个 View 的静态跟随策略，Hosting 惰性创建控制器，Gameplay 仍显式提供和切换运行时目标。
 - 独立 `Engine.PerformanceBenchmarks` 已把多 View 性能实验与 DDD 烟测分离：100/1,000/10,000 实例场景同时报告无剔除/剔除耗时、每 View 候选/Draw/拒绝数与分配量，并以确定性计数、零排序和 `0 B/frame` 作为回归守卫。
 - GPU 回归新增 `multi-render-view-lifecycle`：真实组合主 View HDR Bloom + Tone Mapping 与 0.75 RenderScale observer Tone Mapping，resize 后验证五个活动租约的精确尺寸，逐 View 释放后验证活动效果和租约归零、缓存全部回到 Pool。
-- `games/TheGodTheyMade` 的 Gate 4 工程切片已完成：30 分钟场景状态机组合水闸、湿遗迹、葬礼价值选择、无操作恢复和有限三联壁画；Game 呈现相应灰盒视觉并用程序短音反馈钟/雨/闸/葬礼。37 项无窗口检查覆盖三条完整 108,000 Tick 历史、确定性与版本化 Gameplay Command Journal；结构化 Playtest Report 可留存终局、学习轨迹和 Hash，Gate 仍等待 5 人外部盲测证据后正式关闭。
+- `games/TheGodTheyMade` 的 Gate 4 工程切片已完成：30 分钟场景状态机组合水闸、湿遗迹、葬礼价值选择、无操作恢复和有限三联壁画；Game 呈现相应灰盒视觉并用程序短音反馈钟/雨/闸/葬礼。40 项无窗口检查覆盖三条完整 108,000 Tick 历史、确定性、版本化 Gameplay Command Journal 与 Gate 聚合判定；结构化 Playtest Report 可留存终局、学习轨迹和 Hash，严格审计 CLI 可输出逐项 Gate 结论，Gate 仍等待 5 人外部盲测证据后正式关闭。
 
 ## 仍在演进
 

@@ -19,11 +19,17 @@ using TheGodTheyMade.Simulation.World;
 
 internal static class Program
 {
-    private static void Main(string[] args)
+    private static int Main(string[] args)
     {
         bool smoke = args.Contains("--smoke", StringComparer.Ordinal);
         bool scriptedBelief = args.Contains("--scripted-belief", StringComparer.Ordinal) ||
                               args.Contains("--scripted-regression", StringComparer.Ordinal);
+        string? auditPlaytestsPath = GetOptionValue(args, "--audit-playtests");
+        string? gateAuditReportPath = GetOptionValue(args, "--gate-audit-report");
+        if (gateAuditReportPath is not null && auditPlaytestsPath is null)
+            throw new ArgumentException("--gate-audit-report requires --audit-playtests.");
+        if (auditPlaytestsPath is not null)
+            return AuditPlaytests(auditPlaytestsPath, gateAuditReportPath);
         string? recordReplayPath = GetOptionValue(args, "--record-replay");
         string? playReplayPath = GetOptionValue(args, "--replay");
         string? recordCommandsPath = GetOptionValue(args, "--record-commands");
@@ -175,6 +181,27 @@ internal static class Program
                 commandJournal);
             Console.WriteLine($"Playtest report saved: {Path.GetFullPath(playtestReportPath)}");
         }
+        return 0;
+    }
+
+    private static int AuditPlaytests(string reportsDirectory, string? outputPath)
+    {
+        Gate4PlaytestEvidence[] evidence = Gate4PlaytestEvidenceFiles.ReadDirectory(reportsDirectory);
+        Gate4PlaytestAuditResult result = Gate4PlaytestAudit.Evaluate(evidence);
+        Console.WriteLine(result.Passed ? "Gate 4 external playtest: PASS" : "Gate 4 external playtest: NOT READY");
+        Console.WriteLine($"Players: {result.PlayerCount} (completed {result.CompletedCount})");
+        Console.WriteLine($"Questionnaires: {result.CompleteQuestionnaireCount}/{result.PlayerCount}");
+        Console.WriteLine($"Belief evidence: {result.ExplainedBeliefEvidenceCount}/{result.RequiredBeliefEvidenceCount}");
+        Console.WriteLine($"Waiting as choice: {result.RecognizedWaitingAsChoiceCount}/{result.RequiredWaitingChoiceCount}");
+        Console.WriteLine($"Familiar teaching: {result.LinkedFamiliarActionToTeachingCount}/{result.RequiredFamiliarTeachingCount}");
+        Console.WriteLine($"Distinct mural histories: {result.DistinctMuralHistoryCount}/2");
+        for (int i = 0; i < result.Failures.Count; i++) Console.WriteLine($"- {result.Failures[i]}");
+        if (outputPath is not null)
+        {
+            Gate4PlaytestEvidenceFiles.WriteAudit(outputPath, result);
+            Console.WriteLine($"Gate audit saved: {Path.GetFullPath(outputPath)}");
+        }
+        return result.Passed ? 0 : 2;
     }
 
     private static string? GetOptionValue(string[] args, string option)

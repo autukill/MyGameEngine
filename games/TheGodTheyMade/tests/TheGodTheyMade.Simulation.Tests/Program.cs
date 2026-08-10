@@ -63,6 +63,9 @@ internal static class Program
         Run("Gameplay command journal reproduces world", GameplayCommandJournalReproducesWorld);
         Run("Gameplay command journal reproduces familiar feedback", GameplayCommandJournalReproducesFamiliarFeedback);
         Run("Gameplay command playback rejects missed or divergent command", GameplayCommandPlaybackRejectsDivergence);
+        Run("Gate 4 audit accepts complete diverse evidence", Gate4AuditAcceptsCompleteDiverseEvidence);
+        Run("Gate 4 audit reports threshold and questionnaire failures", Gate4AuditReportsFailures);
+        Run("Gate 4 audit rejects duplicate tester identity", Gate4AuditRejectsDuplicateTester);
         Console.WriteLine($"TheGodTheyMade Simulation: {_passed} checks passed.");
     }
 
@@ -991,6 +994,75 @@ internal static class Program
         Check(recordedFamiliar.ComputeStateHash() == replayedFamiliar.ComputeStateHash(),
             "Familiar praise should reproduce the learned Q state and explanation trace.");
     }
+
+    private static void Gate4AuditAcceptsCompleteDiverseEvidence()
+    {
+        Gate4MuralHistory first = new("rain-awakening", "ape-guardian", "lantern-cost");
+        Gate4MuralHistory second = new("bell-awakening", "villager-guardian", "crop-cost");
+        Gate4PlaytestEvidence[] evidence =
+        [
+            NewGate4Evidence("tester-01", first, belief: true, waiting: true, familiar: true),
+            NewGate4Evidence("tester-02", first, belief: true, waiting: true, familiar: true),
+            NewGate4Evidence("tester-03", second, belief: true, waiting: true, familiar: true),
+            NewGate4Evidence("tester-04", second, belief: true, waiting: false, familiar: true),
+            NewGate4Evidence("tester-05", second, belief: false, waiting: false, familiar: false)
+        ];
+
+        Gate4PlaytestAuditResult result = Gate4PlaytestAudit.Evaluate(evidence);
+        Check(result.Passed && result.Failures.Count == 0,
+            "Exactly 4/5 belief, 3/5 waiting, 4/5 familiar and two histories should pass Gate 4.");
+        Check(result.DistinctMuralHistoryCount == 2 && result.CompleteQuestionnaireCount == 5,
+            "Passing evidence should retain history diversity and questionnaire completeness.");
+    }
+
+    private static void Gate4AuditReportsFailures()
+    {
+        Gate4MuralHistory history = new("same", "same", "same");
+        Gate4PlaytestEvidence[] evidence =
+        [
+            NewGate4Evidence("tester-01", history, belief: true, waiting: true, familiar: true),
+            NewGate4Evidence("tester-02", history, belief: true, waiting: false, familiar: true),
+            NewGate4Evidence("tester-03", history, belief: true, waiting: false, familiar: false),
+            NewGate4Evidence("tester-04", history, belief: false, waiting: false, familiar: false),
+            new Gate4PlaytestEvidence(
+                "tester-05",
+                false,
+                history,
+                new Gate4Questionnaire(null, null, null, null, null, null, null))
+        ];
+
+        Gate4PlaytestAuditResult result = Gate4PlaytestAudit.Evaluate(evidence);
+        Check(!result.Passed && result.Failures.Count == 6,
+            "Incomplete play, questionnaire, three understanding thresholds and one history should all be reported.");
+        Check(result.CompletedCount == 4 && result.CompleteQuestionnaireCount == 4,
+            "Audit should expose evidence counts instead of reducing failure to one boolean.");
+    }
+
+    private static void Gate4AuditRejectsDuplicateTester()
+    {
+        Gate4MuralHistory history = new("a", "b", "c");
+        Gate4PlaytestEvidence first = NewGate4Evidence("same-tester", history, true, true, true);
+        Gate4PlaytestEvidence duplicate = NewGate4Evidence("same-tester", history, true, true, true);
+        ExpectThrows<ArgumentException>(() => Gate4PlaytestAudit.Evaluate(new[] { first, duplicate }));
+    }
+
+    private static Gate4PlaytestEvidence NewGate4Evidence(
+        string testerId,
+        Gate4MuralHistory mural,
+        bool belief,
+        bool waiting,
+        bool familiar) => new(
+        testerId,
+        true,
+        mural,
+        new Gate4Questionnaire(
+            belief,
+            waiting,
+            familiar,
+            DiscoveredWetRuin: true,
+            FuneralChoiceAndTradeoff: "保住灯火，牺牲庄稼。",
+            RetoldMural: "神、守护者与代价形成一段历史。",
+            ConfusionAndBlockers: "无永久卡点。"));
 
     private static void Run(string name, Action test)
     {

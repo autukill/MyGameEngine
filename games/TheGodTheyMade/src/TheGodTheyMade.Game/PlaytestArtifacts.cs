@@ -66,10 +66,13 @@ internal static class MingzhongCommandRecordingFormat
 
 internal static class PlaytestReportWriter
 {
+    private const string GameId = "the-god-they-made.mingzhong";
+    private const long MaxFileBytes = 16 * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
+        WriteIndented = true,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
     public static void Write(
@@ -95,7 +98,7 @@ internal static class PlaytestReportWriter
         MuralTriptych? mural = scenario.Mural;
         var report = new PlaytestReport(
             SchemaVersion: 1,
-            GameId: "the-god-they-made.mingzhong",
+            GameId: GameId,
             TesterId: testerId,
             RecordedAtUtc: DateTimeOffset.UtcNow,
             Tick: world.Tick,
@@ -130,6 +133,44 @@ internal static class PlaytestReportWriter
         AtomicJson.Write(path, report, JsonOptions);
     }
 
+    public static Gate4PlaytestEvidence ReadEvidence(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        var info = new FileInfo(path);
+        if (!info.Exists) throw new FileNotFoundException("Playtest report was not found.", path);
+        if (info.Length > MaxFileBytes)
+            throw new InvalidDataException($"Playtest report exceeds {MaxFileBytes} bytes.");
+        using FileStream stream = File.OpenRead(info.FullName);
+        PlaytestReport report = JsonSerializer.Deserialize<PlaytestReport>(stream, JsonOptions)
+            ?? throw new InvalidDataException("Playtest report is empty.");
+        if (report.SchemaVersion != 1)
+            throw new InvalidDataException($"Unsupported playtest report schema version {report.SchemaVersion}.");
+        if (!string.Equals(report.GameId, GameId, StringComparison.Ordinal))
+            throw new InvalidDataException($"Playtest report belongs to '{report.GameId}'.");
+        if (string.IsNullOrWhiteSpace(report.TesterId))
+            throw new InvalidDataException("Playtest report has no tester id.");
+        if (report.Questionnaire is null)
+            throw new InvalidDataException("Playtest report has no questionnaire object.");
+        Gate4MuralHistory? mural = report.Mural is null
+            ? null
+            : new Gate4MuralHistory(
+                report.Mural.Awakening,
+                report.Mural.Guardian,
+                report.Mural.Cost);
+        return new Gate4PlaytestEvidence(
+            report.TesterId,
+            report.Completed,
+            mural,
+            new Gate4Questionnaire(
+                report.Questionnaire.ExplainedBeliefEvidence,
+                report.Questionnaire.RecognizedWaitingAsChoice,
+                report.Questionnaire.LinkedFamiliarActionToTeaching,
+                report.Questionnaire.DiscoveredWetRuin,
+                report.Questionnaire.FuneralChoiceAndTradeoff,
+                report.Questionnaire.RetoldMural,
+                report.Questionnaire.ConfusionAndBlockers));
+    }
+
     private sealed record PlaytestReport(
         int SchemaVersion,
         string GameId,
@@ -155,7 +196,7 @@ internal static class PlaytestReportWriter
         ulong BeliefHash,
         ulong FamiliarHash,
         ulong ScenarioHash,
-        PlaytestQuestionnaire Questionnaire);
+        PlaytestQuestionnaire? Questionnaire);
 
     private sealed record FieldReport(string Id, byte Moisture, bool Withered);
     private sealed record DoctrineReport(string Cause, string Effect, string AdvocateId, int Responders, long EstablishedTick);
@@ -168,6 +209,47 @@ internal static class PlaytestReportWriter
         string? FuneralChoiceAndTradeoff,
         string? RetoldMural,
         string? ConfusionAndBlockers);
+}
+
+internal static class Gate4PlaytestEvidenceFiles
+{
+    private const int MaxReportCount = 100;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+
+    public static Gate4PlaytestEvidence[] ReadDirectory(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        string directory = Path.GetFullPath(path);
+        if (!Directory.Exists(directory))
+            throw new DirectoryNotFoundException($"Playtest report directory was not found: {directory}");
+        string[] files = Directory.GetFiles(directory, "*.report.json", SearchOption.TopDirectoryOnly);
+        Array.Sort(files, StringComparer.Ordinal);
+        if (files.Length > MaxReportCount)
+            throw new InvalidDataException($"Playtest report directory exceeds {MaxReportCount} files.");
+        var evidence = new Gate4PlaytestEvidence[files.Length];
+        for (int i = 0; i < files.Length; i++) evidence[i] = PlaytestReportWriter.ReadEvidence(files[i]);
+        return evidence;
+    }
+
+    public static void WriteAudit(string path, Gate4PlaytestAuditResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        AtomicJson.Write(path, new Gate4AuditFile(
+            SchemaVersion: 1,
+            GameId: "the-god-they-made.mingzhong",
+            AuditedAtUtc: DateTimeOffset.UtcNow,
+            Result: result), JsonOptions);
+    }
+
+    private sealed record Gate4AuditFile(
+        int SchemaVersion,
+        string GameId,
+        DateTimeOffset AuditedAtUtc,
+        Gate4PlaytestAuditResult Result);
 }
 
 internal static class AtomicJson
