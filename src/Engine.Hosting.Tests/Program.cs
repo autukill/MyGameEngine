@@ -40,6 +40,7 @@ internal static class Program
         TestDeterministicSimulationPrimitives();
         TestGameplayStateHashing();
         TestGameplaySignals();
+        TestSpawnSequences();
         TestGameplayTags();
         TestGameplayBehaviors();
         TestSceneCatalogAndPrefabs();
@@ -1249,6 +1250,118 @@ internal static class Program
             $"Cooldown updates remain allocation-free after warmup ({allocated:N0} B)");
     }
 
+    private static void TestSpawnSequences()
+    {
+        Console.WriteLine("3h. Deterministic Spawn/Wave authoring");
+        SpawnSequence finite = new SpawnSequenceBuilder()
+            .Delay(0.5d)
+            .Wave(count: 3, intervalSeconds: 0.25d)
+            .Delay(0.5d)
+            .Wave(count: 2, intervalSeconds: 0d)
+            .Build();
+        var emissions = new List<SpawnEmission>();
+        var player = new SpawnSequencePlayer(finite);
+        SpawnEmissionHandler record = (in SpawnEmission emission) => emissions.Add(emission);
+
+        Check(player.Update(0.49d, 0, record) == 0 && emissions.Count == 0,
+            "Initial delay holds a finite wave until its deterministic boundary");
+        Check(player.Update(0.01d, 0, record) == 1 &&
+              emissions[0] == new SpawnEmission(0, 0, 0, 0),
+            "Entering a wave makes its first item immediately ready");
+        Check(player.Update(0.5d, 0, record) == 2 && emissions.Count == 3 &&
+              emissions[2] == new SpawnEmission(0, 0, 2, 2) && !player.IsCompleted,
+            "A large Step deterministically carries time across every due wave item");
+        Check(player.Update(0.5d, 0, record) == 2 && player.IsCompleted &&
+              emissions[3].WaveIndex == 1 && emissions[3].ItemIndex == 0 &&
+              emissions[4].WaveIndex == 1 && emissions[4].ItemIndex == 1,
+            "Finite multi-wave sequences explicitly complete after their last item");
+
+        SpawnSequence loop = new SpawnSequenceBuilder()
+            .Wave(count: 1, intervalSeconds: 0.1d)
+            .Build(SpawnSequenceRepeat.Loop, maximumConcurrent: 2);
+        var loopSink = new SpawnCountingSink();
+        var looping = new SpawnSequencePlayer(loop);
+        Check(looping.Update(1d, 2, loopSink.Emit) == 0 && looping.IsWaitingForCapacity,
+            "Maximum-concurrent gate blocks a ready emission without advancing it");
+        Check(looping.Update(1d, 1, loopSink.Emit) == 1 && looping.IsWaitingForCapacity &&
+              loopSink.Count == 1,
+            "Queued emissions count toward the gate before Scene mutation commit");
+        Check(looping.Update(0d, 1, loopSink.Emit) == 1 && loopSink.Count == 2,
+            "A gated emission resumes without accumulating a catch-up burst");
+        looping.Complete();
+        Check(looping.IsCompleted && looping.Update(10d, 0, loopSink.Emit) == 0,
+            "Explicit completion stops a looping sequence");
+        looping.Restart();
+        Check(!looping.IsCompleted && looping.TotalEmissions == 0 &&
+              looping.Update(0d, 0, loopSink.Emit) == 1,
+            "Restart rewinds timeline and deterministic emission counters");
+
+        var stateSource = new SpawnSequencePlayer(loop);
+        stateSource.Update(0.05d, 0, loopSink.Emit);
+        SpawnSequencePlayerState saved = stateSource.CaptureState();
+        var restored = new SpawnSequencePlayer(loop);
+        restored.RestoreState(saved);
+        Check(restored.CaptureState() == saved,
+            "Player state can be captured and restored for deterministic replay diagnostics");
+        SpawnSequencePlayerState finiteCompleted = player.CaptureState();
+        CheckThrows<ArgumentException>(
+            () => player.RestoreState(finiteCompleted with { WaveIndex = 0 }),
+            "State restore rejects a Wave index that conflicts with the authored segment");
+        CheckThrows<ArgumentException>(
+            () => restored.RestoreState(saved with { WaitingAtLoopBoundary = false }),
+            "State restore rejects an impossible loop-boundary flag");
+
+        CheckThrows<InvalidOperationException>(
+            () => new SpawnSequenceBuilder()
+                .Wave(1, 0d)
+                .Build(SpawnSequenceRepeat.Loop),
+            "Looping sequences reject zero-duration infinite timelines");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new SpawnSequenceBuilder().Wave(0, 1d),
+            "Wave authoring rejects empty finite waves");
+
+        SpawnSequence delayed = new SpawnSequenceBuilder()
+            .Delay(0.2d)
+            .Wave(1, 0d)
+            .Build();
+        var gameplayOwner = new SpawnSequenceProbe(delayed);
+        var unscaledOwner = new SpawnSequenceProbe(delayed)
+            { TimeMode = InstanceTimeMode.Unscaled };
+        var scene = new SceneAggregate("SpawnSequenceTimeDomains");
+        scene.Add(gameplayOwner);
+        scene.Add(unscaledOwner);
+        scene.PerformStep(0.1d);
+        var pause = new GameplayPauseKey("spawn-sequence-test");
+        scene.Time.Pause(pause);
+        scene.PerformStep(0.1d);
+        Check(gameplayOwner.EmissionCount == 0 && unscaledOwner.EmissionCount == 1,
+            "Owner-driven sequences inherit Gameplay pause and Unscaled time semantics");
+        scene.Time.Resume(pause);
+        gameplayOwner.SetActive(false, _ => { });
+        scene.PerformStep(0.1d);
+        Check(gameplayOwner.EmissionCount == 0,
+            "Inactive owners do not advance their Spawn sequence");
+        gameplayOwner.SetActive(true, _ => { });
+        scene.PerformStep(0.1d);
+        Check(gameplayOwner.EmissionCount == 1,
+            "Reactivated owners continue from their preserved timeline position");
+
+        var allocationSink = new SpawnCountingSink();
+        SpawnEmissionHandler allocationEmit = allocationSink.Emit;
+        SpawnSequence allocationPlan = new SpawnSequenceBuilder()
+            .Wave(1, 0.001d)
+            .Build(SpawnSequenceRepeat.Loop);
+        var allocationPlayer = new SpawnSequencePlayer(allocationPlan);
+        for (int i = 0; i < 64; i++)
+            allocationPlayer.Update(0.001d, 0, allocationEmit);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+            allocationPlayer.Update(0.001d, 0, allocationEmit);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated == 0,
+            $"Warmed Spawn sequence updates remain allocation-free ({allocated:N0} B)");
+    }
+
     private static void TestGameplaySignals()
     {
         Console.WriteLine("3g. Scene-scoped strongly typed gameplay signals");
@@ -2280,6 +2393,32 @@ internal static class Program
             Cooldown = new GameplayCooldown(durationSeconds);
 
         public override void OnStep(double deltaTime) => Cooldown.Update(deltaTime);
+    }
+
+    private sealed class SpawnSequenceProbe : GameInstance
+    {
+        private readonly SpawnSequencePlayer _player;
+        private readonly SpawnEmissionHandler _emit;
+
+        public SpawnSequenceProbe(SpawnSequence sequence)
+        {
+            _player = new SpawnSequencePlayer(sequence);
+            _emit = OnEmission;
+        }
+
+        public int EmissionCount { get; private set; }
+
+        public override void OnStep(double deltaTime) =>
+            _player.Update(deltaTime, 0, _emit);
+
+        private void OnEmission(in SpawnEmission emission) => EmissionCount++;
+    }
+
+    private sealed class SpawnCountingSink
+    {
+        public int Count { get; private set; }
+
+        public void Emit(in SpawnEmission emission) => Count++;
     }
 
     private sealed class CountingBehavior<TOwner> : GameplayBehavior<TOwner>

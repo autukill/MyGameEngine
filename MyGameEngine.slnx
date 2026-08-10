@@ -1,5 +1,13 @@
 <Solution>
   <Folder Name="/Engine.Features/" />
+  <Folder Name="/Engine.Features/Animation/">
+    <Project Path="src/Engine.Features/Animation.Tests/Animation.Tests.csproj" />
+    <Project Path="src/Engine.Features/Animation/Animation.csproj" />
+  </Folder>
+  <Folder Name="/Engine.Features/Audio/">
+    <Project Path="src/Engine.Features/Audio.Tests/Audio.Tests.csproj" />
+    <Project Path="src/Engine.Features/Audio/Audio.csproj" />
+  </Folder>
   <Folder Name="/Engine.Hosting/">
     <Project Path="src/Engine.Hosting.Tests/Engine.Hosting.Tests.csproj" />
     <Project Path="src/Engine.Hosting/Engine.Hosting.csproj" />
@@ -51,6 +59,14 @@
   <Folder Name="/Engine.Features/TextureAtlas/">
     <Project Path="src/Engine.Features/TextureAtlas.Tests/TextureAtlas.Tests.csproj" />
     <Project Path="src/Engine.Features/TextureAtlas/TextureAtlas.csproj" />
+  </Folder>
+  <Folder Name="/Engine.Features/TextRendering/">
+    <Project Path="src/Engine.Features/TextRendering.Tests/TextRendering.Tests.csproj" />
+    <Project Path="src/Engine.Features/TextRendering/TextRendering.csproj" />
+  </Folder>
+  <Folder Name="/Engine.Features/TransformHierarchy/">
+    <Project Path="src/Engine.Features/TransformHierarchy.Tests/TransformHierarchy.Tests.csproj" />
+    <Project Path="src/Engine.Features/TransformHierarchy/TransformHierarchy.csproj" />
   </Folder>
   <Folder Name="/Engine.Features/ToneMapping/">
     <Project Path="src/Engine.Features/ToneMapping.Tests/ToneMapping.Tests.csproj" />

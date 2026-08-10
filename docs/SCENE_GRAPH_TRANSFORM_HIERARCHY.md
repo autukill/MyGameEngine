@@ -1,6 +1,6 @@
 # Scene Graph 与 Transform Hierarchy 设计思考
 
-本文记录 MyGameEngine 对 Node Tree、Scene Graph 与父子 Transform 的术语、使用场景、边界和渐进实施方向。它是后续 Gameplay Authoring 路线，**不表示当前 `GameInstance` 已支持父子节点或局部坐标**。
+本文记录 MyGameEngine 对 Node Tree、Scene Graph 与父子 Transform 的术语、使用场景、边界和渐进实施方向。独立 `Engine.Features.TransformHierarchy` 已实现阶段 0 的数学与 Handle 核心；**当前 `GameInstance` 仍未接入父子节点或局部坐标**。
 
 参考实现中，Unity 的 `Transform` 同时提供相对父节点的 `localPosition/localRotation/localScale` 与世界空间变换；PixiJS 则以 `Container` 构成 Scene Graph，让父节点的变换、可见性和透明度影响子节点。参考：[Unity Transform](https://docs.unity3d.com/ja/6000.0/ScriptReference/Transform.html)、[PixiJS Scene Graph](https://pixijs.com/8.x/guides/concepts/scene-graph)和 [PixiJS Scene Objects](https://pixijs.com/8.x/guides/components/scene-objects)。
 
@@ -21,9 +21,11 @@
 节点保存局部变换，并从父节点推导世界变换：
 
 ```text
-LocalMatrix = Translation × Rotation × Scale × OriginOffset
-WorldMatrix = ParentWorldMatrix × LocalMatrix
+LocalMatrix = Scale × Rotation(-radians) × Translation
+WorldMatrix = LocalMatrix × ParentWorldMatrix
 ```
+
+以上采用 `System.Numerics` 的行向量约定；负号保持项目在 Y 向下屏幕坐标中“正弧度视觉逆时针”的既有行为。Sprite Origin 仍在绘制几何阶段应用，不进入通用节点 Transform。
 
 因此，子节点的世界位置不是始终等于父子 Position 简单相加。父节点旋转或缩放后，子节点的位置、方向和间距也会被组合。
 
@@ -251,7 +253,7 @@ Engine.Integrations.FairyGUI
 
 ## 渐进实施建议
 
-### 阶段 0：语义与数学核心
+### 阶段 0：语义与数学核心（已完成）
 
 - 固定 Local/World、矩阵乘法顺序、Origin 与负缩放约定。
 - `TransformNodeHandle`、单父级树、循环校验。
@@ -283,8 +285,8 @@ Engine.Integrations.FairyGUI
 
 ## 当前决策
 
-- Transform Hierarchy 是 Gameplay Authoring 的高价值 P1 路线。
-- 当前 P0 仍先完成已有 Gameplay Signals 与 Spawn/Wave Authoring，不改变正在进行的提交边界。
+- Transform Hierarchy 数学核心已完成，Scene/GameInstance 接入仍是 Gameplay Authoring 的高价值 P1 路线。
+- Spawn/Wave Authoring 已完成；下一次接入只修改世界空间组合，不夹带渲染顺序或 UI 树。
 - 第一阶段只做空间层级，不夹带完整 ECS、物理、GUI、编辑器或通用序列化系统。
 - 世界变换树、生命周期、渲染顺序和 UI 布局保持显式分离。
 - 在进入 HTML/CSS + Yoga GUI 前，先稳定 Local/World 与节点 Handle 思想；UI 仍使用自己的 Rect/Layout 语义。

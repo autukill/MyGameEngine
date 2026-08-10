@@ -14,6 +14,8 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Gameplay State：强类型 Enter/Step/Exit、状态持续时间、确定性切换和零稳态分配，直接继承实例暂停与时间域。
 - Gameplay Query：保留便利结果数组，同时提供可复用 Buffer、强类型 Gameplay Tag 过滤、无集合计数和按真实 Step 聚合的可选查询统计。
 - Gameplay 组合：声明式 Scene 目录、`SceneRef<TArgs>` 安全参数快照、类型安全 Prefab，以及 Box/Circle 碰撞和区域/半径查询。
+- Spawn/Wave Authoring：确定性 Delay/Wave/Loop 时间线、并发门控和状态快照；Asteroids 已移除手写生成 Alarm。
+- Authoring 基础切片：命名 Animation Clip、逻辑 Text/Glyph Atlas、Audio Clip/Bus/Voice 与独立 Transform Hierarchy 数学核心；平台/Scene 适配仍按各自文档渐进接入。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件；不可变逻辑 Action/Axis 把玩法意图与物理绑定分离，并支持固定 Tick 内存录制与无设备回放。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
@@ -50,6 +52,8 @@ src/
 ├── Engine.Hosting.Tests/                # 配置、默认 owner 和资源所有权验证
 ├── Engine.Features/
 │   ├── Camera/                          # Camera2D
+│   ├── Animation/                       # 命名 Clip、循环模式与帧事件
+│   ├── Audio/                           # 逻辑 Clip/Bus/Voice 与 Backend 边界
 │   ├── Bloom/                           # 独立阈值提取与水平/垂直 ping-pong 效果链
 │   ├── ContentAssets/                   # 声明式包、依赖图、Texture/Sprite 装配与租约
 │   ├── Presentation/                    # 显式 RGBA8/Display 屏幕终端与稳定合成层级
@@ -62,7 +66,9 @@ src/
 │   ├── TextureAssets/                   # TextureLibrary、Skia 解码与资产清单
 │   ├── TextureAtlas/                    # 纯 CPU Atlas 排布与像素页面生成
 │   ├── ToneMapping/                     # HDR 曝光、ACES/Reinhard 与 RGBA8 显示输出
-│   ├── *.Tests/                         # 13 个 Feature 无窗口控制台冒烟项目
+│   ├── TextRendering/                   # Font/Fallback、文本布局与动态 Glyph Atlas
+│   ├── TransformHierarchy/              # Local/World Transform 与父子层级数学核心
+│   ├── *.Tests/                         # 17 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 5 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
@@ -86,8 +92,12 @@ Feature 依赖保持单向：
 
 ```text
 Engine.Core
+  ├─ Animation
+  ├─ Audio
   ├─ Sprites
   ├─ ShaderAssets
+  ├─ TextRendering（同时依赖 TextureAssets 的逻辑引用）
+  ├─ TransformHierarchy
   ├─ TextureAssets
   │    └─ ContentAssets（同时依赖 Sprites）
   ├─ TextureAtlas
@@ -103,7 +113,7 @@ Engine.Core
 Engine.Hosting -> Core + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 50 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 58 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -127,7 +137,7 @@ dotnet run --project playgrounds/AirplaneShooter/AirplaneShooter.csproj
 
 使用方向键或 `WASD` 移动飞机，按住空格连续发射子弹。示例完整展示 Hosting、强类型 Content、输入、`Spawn` 和 `Alarm`，详见 [Airplane Shooter Playground](playgrounds/AirplaneShooter/README.md)。
 
-第二个 Gameplay 样例使用旋转推进、`PrefabRef<T, TArgs>`、Alarm 敌人生成、Circle 碰撞、强类型 GameOver 参数和 `P` 键无 UI 暂停：
+第二个 Gameplay 样例使用旋转推进、`PrefabRef<T, TArgs>`、声明式 Spawn/Wave 时间线、Circle 碰撞、强类型 GameOver 参数和 `P` 键无 UI 暂停：
 
 ```bash
 dotnet run --project playgrounds/Asteroids/Asteroids.csproj
@@ -293,8 +303,9 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 ## 下一阶段
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
-2. 确定性 Gameplay Authoring 的 Clock/Random、输入、状态 Hash、磁盘 Replay 与 Scene-local Gameplay Signal 已闭环；下一项聚焦生成策略/波次编排，继续减少普通玩法类的手写调度样板。
-3. Scene Graph / Transform Hierarchy 已完成设计记录，作为后续 Gameplay Authoring P1 候选；目标是提供 Local/World、挂点、Reparent 与嵌套 Prefab，同时保留扁平 Step、碰撞索引和独立渲染顺序。详见[设计思考](docs/SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
+2. 确定性 Gameplay Authoring 的 Spawn/Wave 已接入 Asteroids；下一轮聚焦把 Animation 与 Transform Hierarchy 基础接入 GameInstance/Prefab 黄金路径。
+3. Text 与 Audio 已建立无窗口逻辑核心；下一步分别是真实字体/GPU DrawText 和跨平台音频 Backend，不把尚未完成的适配描述成可播放能力。
+4. GUI Compatibility Spike 已完成第一轮决策：Yoga 只作为布局内核继续 NativeAOT 实验，RmlUi 是开发者优先完整 Runtime 候选，FairyGUI 保留设计器优先可选路线。详见[调研记录](docs/HTML_CSS_YOGA_GUI_ROADMAP.md)。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
 

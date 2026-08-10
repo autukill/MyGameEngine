@@ -1,6 +1,6 @@
 # 中文字体、文本绘制与富文本渐进路线图
 
-本文记录 MyGameEngine 原生 Text Rendering 的长期边界和实施顺序。它是规划文档，不表示 API 已实现。目标是在不依赖完整 GUI 框架的情况下，先让世界空间文字、SceneGui、字幕、对话、伤害数字和调试信息正确显示中文，再渐进加入富文本、打字机、Emoji 和内联动画。
+本文记录 MyGameEngine 原生 Text Rendering 的长期边界和实施顺序。基础逻辑切片已经实现 `FontRef/FontLibrary`、Unicode Rune + Grapheme Cluster 单行布局、Fallback、可注入 Rasterizer/Uploader、动态 Glyph Atlas 与无 GPU Handle 的 `TextDrawCommand`；真实 SkiaSharp/FreeType 字体适配、TextureLibrary 上传和最终 DrawText 尚未实现。目标是在不依赖完整 GUI 框架的情况下，先让世界空间文字、SceneGui、字幕、对话、伤害数字和调试信息正确显示中文，再渐进加入富文本、打字机、Emoji 和内联动画。
 
 原生 Text 与可选 FairyGUI 的关系：Text Rendering 是引擎基础能力；FairyGUI 是可选 GUI Adapter。两者可以并存，但不能让 FairyGUI 成为世界空间文字、运行时诊断或非 FairyGUI 游戏的强制依赖。
 
@@ -8,8 +8,9 @@
 
 | 能力 | 优先级 | 原因 |
 |---|---|---|
-| 中文字体加载、Glyph Atlas、基础绘制 | P1 高 | 几乎所有本地化游戏、字幕和调试都需要 |
-| Unicode Layout、Fallback、换行和对齐 | P1 高 | 决定中文混排和多语言是否可靠 |
+| 逻辑 Font、单行 Layout、Fallback、Glyph Atlas | 已完成基础 | 接口、确定性 Atlas 和无窗口测试已落地，真实 Font/GPU Adapter 待接入 |
+| 中文字体加载与基础绘制 | P1 高 | 下一切片，几乎所有本地化游戏、字幕和调试都需要 |
+| 多行 Unicode Layout、换行和对齐 | P1 高 | 决定中文混排和多语言是否可靠 |
 | 彩色文字与受限富文本 | P1/P2 | 建立在稳定 Layout 上，开发价值高 |
 | Grapheme-aware 打字机效果 | P2 | 对话常用，但不能先于 Unicode Cluster |
 | Sprite Emoji 与 Unicode Emoji 映射 | P2 | 可先复用 Sprite/Atlas，绕开复杂彩色字体格式 |
@@ -309,14 +310,24 @@ text.Draw(layout, position, reveal.VisibleUnits);
 - FairyGUI：可先使用 FairyGUI 自身 Text Runtime；原生 Text 不强制替换它。只有共享 Font/Glyph Cache 被证明兼容且有收益时才桥接。
 - Localization：文本系统只负责 Unicode/Layout，不负责翻译表、Plural Rule 或剧情数据库；后续可独立增加 Localization Assets。
 
-## 推荐首次实施切片
+## 基础切片进度
 
-首次只完成：
+已经完成：
 
-1. Font 后端 NativeAOT Spike。
-2. `FontRef + fonts.json + FontLibrary`。
-3. 中文/ASCII/Fallback 单行绘制。
-4. 动态 Glyph Atlas 与 SceneGui/World 两种 Projection。
-5. 基础诊断、无窗口度量测试和一个 VisualTest。
+1. `FontRef`、Font Metadata、严格 `FontLibrary` 与 Owned/Borrowed Rasterizer 生命周期。
+2. `FontFamily` 有序 Fallback。
+3. Unicode Scalar 与 Grapheme Cluster 边界的单行逻辑 Layout。
+4. 可注入 `IGlyphRasterizer` 与 `IGlyphTextureUploader`。
+5. 确定性 Shelf `DynamicGlyphAtlas`，Padding、多 Page、缓存和幂等释放。
+6. 纯逻辑 `TextDrawCommand` 与 `PreparedTextLayout`。
+7. Fake Font/Uploader 无窗口测试。
+
+下一切片：
+
+1. 真实 SkiaSharp/FreeType Font Adapter 与 NativeAOT Spike。
+2. TextureLibrary Alpha Page Uploader。
+3. 中文/ASCII/Fallback 单行真实绘制。
+4. SceneGui/World 两种 Projection 与 VisualTest。
+5. Glyph/Atlas/Draw 基础诊断。
 
 明确不夹带 RichText、Typewriter、Emoji、AnimatedImage、IME、FairyGUI 或完整 Bidi。基础中文字形和生命周期稳定后，再进入 Layout/换行切片。

@@ -8,11 +8,14 @@
 - [项目现状](PROJECT_STATUS.md)：当前能力、限制和近期里程碑。
 - [Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)：Hosting、强类型资产、项目模板、诊断与热重载演进顺序。
 - [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)：实例变换、输入、Spawn/Destroy/Find、帧边界语义与轻量 Alarm。
+- [Spawn/Wave Authoring](SPAWN_WAVE_AUTHORING.md)：确定性延迟/波次时间线、循环、并发门控、状态快照和 Asteroids 用例。
+- [Animation Authoring 基础切片](ANIMATION_AUTHORING.md)：命名 Clip、Once/Loop/PingPong、正反向播放、帧事件和 GameInstance 接入边界。
+- [Audio 基础垂直切片](AUDIO_RUNTIME.md)：逻辑 Clip/Bus、代际 Voice、优先级抢占、Backend 所有权和真实播放后续边界。
 - [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)：Local/World 变换、父子挂点、Reparent、生命周期边界、扁平系统索引及与 Yoga UI 树的关系。
 - [缓动、插值与平滑运动](EASING_TWEEN_MOTION.md)：Easing 曲线、有限时长 Tween、最短弧度角和与帧率无关的 Motion。
 - [Gameplay 暂停、时间缩放与回溯方向](GAMEPLAY_TIME_CONTROL.md)：无 UI 时间域、Pause owner 生命周期、调度语义及可选快照回溯边界。
 - [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)：声明式 Scene 切换、类型安全实例工厂、Box/Circle 与区域/半径查询。
-- [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)：移动、旋转推进、射击冷却、参数化 Prefab、Alarm、碰撞和 Scene 重启配方。
+- [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)：移动、旋转推进、射击冷却、参数化 Prefab、Alarm、Spawn/Wave、碰撞和 Scene 重启配方。
 - [Gameplay Cooldown](GAMEPLAY_COOLDOWN.md)：owner-local 冷却的 ready/use/progress、输入缓冲组合与暂停时间域语义。
 - [Gameplay Health 与 Damage](GAMEPLAY_HEALTH.md)：生命钳制、零分配变化结果、一次性耗尽/复活转换和 Tag + capability 组合。
 - [强类型 Instance 引用](INSTANCE_REFERENCES.md)：跨帧弱引用、O(1) 解析、类型安全销毁和 Scene 生命周期语义。
@@ -45,6 +48,7 @@
 - [2D 光照、阴影与受光材质渐进路线图](LIGHTING_2D_ROADMAP.md)：颜色空间、每 View Light Buffer、灯光预算、几何硬阴影、投射阴影、Normal/Emission 材质及高级后端进入条件。
 - [中文字体、文本绘制与富文本渐进路线图](TEXT_RENDERING_ROADMAP.md)：Unicode/Grapheme、中文 Font/Fallback、Glyph Atlas、富文本、彩色文字、打字机、Emoji、内联动画和 IME。
 - [FairyGUI 可选集成渐进路线图](FAIRYGUI_INTEGRATION_ROADMAP.md)：MonoGame Runtime 兼容性验证、Package/Render/Input Adapter、强类型绑定、中文富文本与产品化退出条件。
+- [HTML/CSS、Yoga 与游戏 GUI 兼容性 Spike](HTML_CSS_YOGA_GUI_ROADMAP.md)：Yoga、RmlUi、FairyGUI、浏览器内核的适配面、风险和 Go/No-Go 指标。
 - [StencilMask 分组与几何](STENCIL_MASK_GEOMETRY.md)：显式组、多 owner/批量管理、Circle、Sprite Alpha、性能与呈现边界。
 - [Cooldown UI Effects 需求记录](COOLDOWN_UI_EFFECTS_REQUIREMENTS.md)：圆形、环形、圆角矩形、弧形与 Sprite Alpha 蒙灰倒计时边界。
 - [GPU 像素回归测试](VISUAL_REGRESSION.md)：固定时间步截图、PNG 基线、容差、差异产物和场景扩展方式。

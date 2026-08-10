@@ -87,7 +87,7 @@ GameAssets.Packages.SharedPrimitives
 - 类型安全、构建后冻结的 Instance Factory / Prefab。
 - `PrefabRef<T, TArgs>` 与 `in TArgs` 提供不装箱的强类型构造参数。
 - Box/Circle Collider，以及按类型的相交、区域和半径查询。
-- AirplaneShooter 与 Asteroids 分别验证直线射击和旋转推进/周期生成/重启流程。
+- AirplaneShooter 与 Asteroids 分别验证直线射击和旋转推进/声明式 Spawn/Wave/重启流程。
 - Gameplay Cookbook 收敛常见配方；Release 基准记录 100/1,000/10,000 Collider 线性查询成本。
 - `Easing`、`Tween` 与 `Motion` 提供归一化曲线、值/最短弧度角插值、限速追踪和半衰期平滑，不引入全局 Manager。
 - SceneAggregate 使用可复用阶段快照和原地稳定排序；Input、Step、Draw、DrawGUI 在实例规模预热后保持 0 B/帧，同时保留阶段间直接变更与 Gameplay 帧边界提交语义。
@@ -95,12 +95,17 @@ GameAssets.Packages.SharedPrimitives
 - `GameplayQueryBuffer<T>`、`CountInstances<T>()` 与 Buffer 查询重载保留便利数组 API，同时给高频路径提供 0 B 结果复用；可选遥测按真实 Step 汇总调用、候选、命中和耗时。
 - `ReplaySession` 已把逻辑输入与状态 Hash 收敛为版本化 `.mgreplay`：Hosting 一次装配 Record/Playback、Build 身份和 fixed delta 启动前校验、首次分叉诊断、受限读取与最后 Tick 自动退出；Asteroids 提供录制/回放入口。
 - Scene 作用域强类型 `Gameplay Signal` 已以 Asteroids 击毁事件验证真实一对多协作：值类型载荷、构造期显式监听、End Step 后确定性投递、暂停/失活/销毁语义、嵌套通知延迟和热身后 0 B；不引入全局总线或反射。
+- `SpawnSequenceBuilder/SpawnSequencePlayer` 已把 Delay、有限 Wave、Once/Loop、并发门控、状态快照和大步长确定性推进收敛为 owner-driven 时间线；Asteroids 已移除生成 Alarm，游戏仍掌握随机参数和 Prefab 回调。
+- 独立 Animation 基础切片已提供命名 Clip、Once/Loop/PingPong、正反向播放、完成边沿和可复用帧事件 Buffer；尚未自动接入 `GameInstance.ImageIndex`。
+- 独立 TransformHierarchy 阶段 0 已提供 generation Handle、Local/World、KeepLocal/KeepWorld、循环/Shear/不可逆拒绝、深树迭代传播和 0 B 稳态；尚未接入 Scene/GameInstance/Prefab。
+- TextRendering 基础已提供逻辑 Font/Fallback、Rune + Grapheme 单行 Layout、Rasterizer/Uploader 契约、动态 Glyph Atlas 和逻辑 Draw Command；真实字体与 GPU Draw 待接入。
+- Audio 基础已提供逻辑 Clip/Bus、代际 Voice、确定性优先级抢占、Backend 契约和幂等所有权；真实解码与平台 Backend 待接入。
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：版本化磁盘 Replay 已闭环并退出当前主线；Scene-local Gameplay Signal 也已用真实一对多用例收敛边界。下一项继续聚焦 Gameplay Authoring，优先设计“玩法对象生成策略/波次编排”的小切片，让 Spawner 从手写 Alarm 与上限判断升级为可组合、可测试且仍由游戏掌握规则的 API。暂不展开完整 Skill/Buff、UI、协程或物理系统；逐帧异形碰撞继续保持需求记录。
+下一步优先级：Spawn/Wave 与四个独立基础切片已经并行落地。下一轮不再继续横向增加模型，而是选择两条真实适配黄金路径：Animation → GameInstance/Sprite/Content，以及 TextRendering → 真实字体/TextureLibrary/SceneGui Draw；Transform Scene 接入和真实 Audio Backend 随后推进。暂不展开完整 Skill/Buff、GUI 控件、协程或物理系统；逐帧异形碰撞继续保持需求记录。
 
-Transform Hierarchy 已完成设计记录，列为 Spawn/Wave 之后的 P1 Gameplay Authoring 候选：以 Local/World Transform、纯挂点节点、`KeepLocal/KeepWorld` Reparent 和嵌套 Prefab 改善飞机枪口、角色武器、Boss 部位与跟随效果的组合体验。实现时保留 Scene 扁平 Step、Layer/Depth、Collider 索引和安全帧边界，不让空间父子关系隐式接管生命周期、渲染排序或 UI 布局。完整边界见 [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
+Transform Hierarchy 数学与 Handle 核心已经完成，后续 P1 是 Scene/GameInstance/Prefab 接入：以 Local/World Transform、纯挂点节点、`KeepLocal/KeepWorld` Reparent 和嵌套 Prefab 改善飞机枪口、角色武器、Boss 部位与跟随效果的组合体验。接入时保留 Scene 扁平 Step、Layer/Depth、Collider 索引和安全帧边界，不让空间父子关系隐式接管生命周期、渲染排序或 UI 布局。完整边界见 [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
 
 ## 候选视觉主线：2D Lighting（已规划，尚未实施）
 
@@ -115,7 +120,7 @@ Transform Hierarchy 已完成设计记录，列为 Spawn/Wave 之后的 P1 Gamep
 
 完整阶段、API 候选、验收和非目标见 [2D 光照、阴影与受光材质渐进路线图](LIGHTING_2D_ROADMAP.md)。
 
-## 候选内容与 GUI 主线：Text Rendering + FairyGUI（已规划，尚未实施）
+## 候选内容与 GUI 主线：Text Rendering + GUI Integrations（基础/Spike 已完成）
 
 原生 Text Rendering 与 FairyGUI 保持两条边界：
 
@@ -123,20 +128,21 @@ Transform Hierarchy 已完成设计记录，列为 Spawn/Wave 之后的 P1 Gamep
 - FairyGUI 是可选集成，不进入 Core 或默认 SDK。官方 MonoGame Runtime 与当前 Silk.NET/OpenGL 后端不同，因此先做受限 Compatibility Spike；只有 Render/Input/Loader Adapter 成本可控、NativeAOT 和真实 Package 通过后才产品化。
 - FairyGUI 初期保留自己的 Text/RichText 语义，原生 Text 不强行替换其 Layout。两者可以复用字体文件、Texture 上传和诊断，但必须保持 Editor Preview 一致性。
 - GIF/Animated WebP 直接解码不是文本第一阶段；内联动图优先使用现有 `SpriteRef`/未来 Animation Clip 或 FairyGUI MovieClip。
+- GUI 第一轮兼容性 Spike 已完成：Yoga 只作为 Flexbox Layout 内核进入 C ABI/NativeAOT 后续实验；RmlUi 是开发者优先完整 Runtime 首选候选；FairyGUI 继续作为设计器优先可选路线。三者不同时产品化。
 
-完整路线见[中文字体、文本绘制与富文本渐进路线图](TEXT_RENDERING_ROADMAP.md)和[FairyGUI 可选集成渐进路线图](FAIRYGUI_INTEGRATION_ROADMAP.md)。
+完整路线见[中文字体、文本绘制与富文本渐进路线图](TEXT_RENDERING_ROADMAP.md)、[HTML/CSS、Yoga 与游戏 GUI 兼容性 Spike](HTML_CSS_YOGA_GUI_ROADMAP.md)和[FairyGUI 可选集成渐进路线图](FAIRYGUI_INTEGRATION_ROADMAP.md)。
 
 ## 跨路线当前优先级
 
 | 优先级 | 路线 | 当前决策 |
 |---|---|---|
-| P0 | 当前 Gameplay Signals 收尾、Spawn/Wave Authoring | 先完成并提交现有工作，再减少 Spawner/波次样板 |
-| P1 | Animation Authoring | 命名 Clip、循环/完成、切换与帧事件，直接改善所有 Sprite 游戏 |
-| P1 | Scene Graph / Transform Hierarchy | Local/World、挂点、显式 Reparent 与嵌套 Prefab；运行时系统继续使用扁平索引 |
+| 已完成基础 | Gameplay Signals、Spawn/Wave Authoring | Asteroids 已验证一对多通知与确定性生成时间线 |
+| P1 接入 | Animation Authoring | 播放器核心已完成；下一步接入 Sprite/Content/GameInstance |
+| P1 接入 | Scene Graph / Transform Hierarchy | 数学/Handle 核心已完成；下一步接入 Scene、挂点与嵌套 Prefab |
 | P1 | Tilemap/World Authoring | 关卡生产、Chunk、碰撞和未来静态光照遮挡的共同基础 |
-| P1 | 原生中文 Text Rendering 基础 | Font/Fallback、Unicode Layout、Glyph Atlas 与 World/SceneGui Draw |
-| P1 | Audio 基础 | 真实游戏闭环不可缺少，建立 Clip/Bus/Voice/Streaming 边界 |
-| P1 调研 | FairyGUI Compatibility Spike | 尽早确认可行性和 Fork 成本，但不承诺完整接入 |
+| P1 接入 | 原生中文 Text Rendering | 逻辑 Font/Layout/Atlas 已完成；下一步真实 Font、Texture Uploader 与 Draw |
+| P1 接入 | Audio 基础 | Clip/Bus/Voice 核心已完成；下一步真实 Decoder/Backend/Streaming |
+| 已完成调研 | Yoga/RmlUi/FairyGUI Compatibility Spike | 已建立候选顺序、适配面和 Go/No-Go 门槛 |
 | P2 | RichText、彩色文字、Typewriter、Sprite Emoji | 建立在原生 Text Layout 上 |
 | P2 | Gamepad/Rebinding、Save Game | Logical Input 与显式状态协议已有基础 |
 | P2 | Lighting 阶段 0/1 | 先做颜色空间与无阴影 Point Light，不直接跳到 G-Buffer |
@@ -144,7 +150,7 @@ Transform Hierarchy 已完成设计记录，列为 Spawn/Wave 之后的 P1 Gamep
 | P3 | 彩色 Font Emoji、AnimatedImage、FairyGUI 高级组件 | 由真实产品需求和资产驱动 |
 | P3 | Lighting 软阴影/高级材质、完整物理/导航 | 由性能数据和真实玩法驱动 |
 
-这里 P1 项不要求并行开工。推荐执行顺序调整为：`Spawn/Wave → Animation 或 Transform Hierarchy → Tilemap 或原生 Text 基础 → Audio → Lighting 0/1`；先由嵌套对象/挂点的真实 Playground 需求决定 Animation 与 Transform Hierarchy 的先后。FairyGUI/Yoga Spike 可以在原生 Text 后端选择前后独立进行，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
+第一轮并行基础建设已经完成。推荐下一轮按集成风险串行收口：`Animation GameInstance/Content → 真实 Text Font/GPU → Transform Scene/Prefab → Audio Backend → Tilemap → Lighting 0/1`。Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过真实 Text、输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
 
 ## 设计约束
 

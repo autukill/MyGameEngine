@@ -93,7 +93,7 @@ instances.Register(BulletPrefab,
 Spawn(BulletPrefab, Position);
 ```
 
-## Alarm 生命周期和周期生成
+## Alarm 生命周期与 Spawn/Wave 编排
 
 仅需要“存在一段时间后销毁”时，优先复用 Behavior：
 
@@ -104,21 +104,41 @@ public Bullet(...)
 }
 ```
 
-需要到期执行对象专属回调或周期性重新调度时继续使用 Alarm。Behavior 与 Alarm 都继承 Owner 的时间域和暂停语义，但 Behavior 更适合跨对象复用完整局部能力。
+需要到期执行对象专属回调时继续使用 Alarm。Behavior 与 Alarm 都继承 Owner 的时间域和暂停语义，但 Behavior 更适合跨对象复用完整局部能力。
 
 ```csharp
-private static readonly AlarmId SpawnTimer = new("spawn");
-public override void OnCreate() => SetAlarm(SpawnTimer, 0d);
+private static readonly AlarmId Invulnerability = new("invulnerability");
+public override void OnCreate() => SetAlarm(Invulnerability, 0.25d);
 
 public override void OnAlarm(AlarmId alarm)
 {
-    if (alarm != SpawnTimer) return;
-    Spawn(AsteroidPrefab, CreateSpawnArgs());
-    SetAlarm(SpawnTimer, 0.45d);
+    if (alarm == Invulnerability)
+        CanTakeDamage = true;
 }
 ```
 
 Alarm 到期后先移除再回调，所以可以在 `OnAlarm` 中安全重设同一个 ID。inactive 实例的 Alarm 会暂停。
+
+敌人波次、阶段延迟和循环出怪应使用可读、可快照的 `SpawnSequence`，不要把关卡时间线拆成一串互相重设的 Alarm：
+
+```csharp
+private static readonly SpawnSequence Sequence = new SpawnSequenceBuilder()
+    .Delay(1d)
+    .Wave(count: 8, intervalSeconds: 0.45d)
+    .Build(SpawnSequenceRepeat.Loop, maximumConcurrent: 24);
+
+private readonly SpawnSequencePlayer player = new(Sequence);
+private readonly SpawnEmissionHandler emit;
+
+public EnemySpawner() => emit = SpawnAsteroid;
+
+public override void OnStep(double deltaTime)
+{
+    player.Update(deltaTime, CountInstances<Asteroid>(), emit);
+}
+```
+
+生成回调仍由游戏拥有随机参数和 Prefab 选择；序列只负责“何时、多少次、是否循环以及并发门控”。完整 API 与快照边界见 [Spawn/Wave Authoring](SPAWN_WAVE_AUTHORING.md)。
 
 ## 有进入/更新/退出阶段的玩法状态
 

@@ -55,6 +55,8 @@ Context 只暴露实例生命周期和查询，不暴露 Window、RenderPipeline
 
 多个对象共享的生命周期或局部能力可通过 `UseBehavior` 构造期组合；Behavior 自动继承 Owner 的暂停、时间域与安全销毁边界。第一版内置 `LifetimeBehavior`，自定义行为可继承 `GameplayBehavior<TInstance>` 获得强类型 Owner。完整边界见 [Gameplay Behavior 组合](GAMEPLAY_BEHAVIORS.md)。
 
+Spawner 的延迟、有限波次、循环、并发门控与确定性状态使用 `SpawnSequenceBuilder/SpawnSequencePlayer`；时间线只决定 emission 时刻，Prefab、随机参数和生成规则继续由游戏回调掌握。Asteroids 已迁移为真实用例，详见 [Spawn/Wave Authoring](SPAWN_WAVE_AUTHORING.md)。
+
 ## 帧边界语义
 
 通过 Gameplay Context 发起的 Spawn/Destroy 使用请求顺序队列：

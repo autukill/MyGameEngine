@@ -10,9 +10,13 @@ public sealed class AsteroidSpawner :
 {
     public static readonly PrefabRef<Asteroid, AsteroidSpawnArgs> AsteroidPrefab =
         new("asteroids.rock");
-    private static readonly AlarmId SpawnTimer = new("spawn");
+    private static readonly SpawnSequence SpawnTimeline = new SpawnSequenceBuilder()
+        .Wave(count: 1, intervalSeconds: 0.45d)
+        .Build(SpawnSequenceRepeat.Loop, maximumConcurrent: 24);
 
     private readonly GameplayRandom _random = new(0xA57E201DUL);
+    private readonly SpawnSequencePlayer _spawns = new(SpawnTimeline);
+    private readonly SpawnEmissionHandler _emitAsteroid;
     private readonly InstanceRef<PlayerShip> _target;
     private readonly float _worldWidth;
     private readonly float _worldHeight;
@@ -26,41 +30,38 @@ public sealed class AsteroidSpawner :
         _target = target;
         _worldWidth = worldWidth;
         _worldHeight = worldHeight;
+        _emitAsteroid = EmitAsteroid;
         ListenSignal<AsteroidDestroyedSignal>();
     }
 
     public void OnGameplaySignal(in AsteroidDestroyedSignal signal) =>
         _destroyedAsteroids++;
 
-    public override void OnCreate() => SetAlarm(SpawnTimer, 0d);
+    public override void OnStep(double deltaTime) =>
+        _spawns.Update(deltaTime, CountInstances<Asteroid>(), _emitAsteroid);
 
-    public override void OnAlarm(AlarmId alarm)
+    private void EmitAsteroid(in SpawnEmission emission)
     {
-        if (alarm != SpawnTimer) return;
-        if (CountInstances<Asteroid>() < 24)
-        {
-            bool horizontalEdge = _random.Chance(0.5f);
-            float x = horizontalEdge
-                ? _random.Range(0f, _worldWidth)
-                : (_random.Chance(0.5f) ? -30f : _worldWidth + 30f);
-            float y = horizontalEdge
-                ? (_random.Chance(0.5f) ? -30f : _worldHeight + 30f)
-                : _random.Range(0f, _worldHeight);
-            Vector2D targetPosition = Resolve(_target)?.Position ?? new Vector2D(
-                _worldWidth * 0.5f,
-                _worldHeight * 0.5f);
-            Vector2D towardTarget = (targetPosition - new Vector2D(x, y)).Normalize();
-            float speed = _random.Range(55f, 130f);
-            float radius = _random.Range(16f, 34f);
-            var spawn = new AsteroidSpawnArgs(
-                new Vector2D(x, y),
-                towardTarget * speed,
-                radius,
-                _worldWidth,
-                _worldHeight);
-            Spawn(AsteroidPrefab, spawn);
-        }
-        SetAlarm(SpawnTimer, 0.45d);
+        bool horizontalEdge = _random.Chance(0.5f);
+        float x = horizontalEdge
+            ? _random.Range(0f, _worldWidth)
+            : (_random.Chance(0.5f) ? -30f : _worldWidth + 30f);
+        float y = horizontalEdge
+            ? (_random.Chance(0.5f) ? -30f : _worldHeight + 30f)
+            : _random.Range(0f, _worldHeight);
+        Vector2D targetPosition = Resolve(_target)?.Position ?? new Vector2D(
+            _worldWidth * 0.5f,
+            _worldHeight * 0.5f);
+        Vector2D towardTarget = (targetPosition - new Vector2D(x, y)).Normalize();
+        float speed = _random.Range(55f, 130f);
+        float radius = _random.Range(16f, 34f);
+        var spawn = new AsteroidSpawnArgs(
+            new Vector2D(x, y),
+            towardTarget * speed,
+            radius,
+            _worldWidth,
+            _worldHeight);
+        Spawn(AsteroidPrefab, spawn);
     }
 
     protected override void OnWriteGameplayState(ref GameplayStateWriter writer)
@@ -69,5 +70,14 @@ public sealed class AsteroidSpawner :
         writer.Write("spawner.worldWidth", _worldWidth);
         writer.Write("spawner.worldHeight", _worldHeight);
         writer.Write("spawner.destroyedAsteroids", _destroyedAsteroids);
+        SpawnSequencePlayerState state = _spawns.CaptureState();
+        writer.Write("spawner.sequence.segment", state.SegmentIndex);
+        writer.Write("spawner.sequence.item", state.ItemIndex);
+        writer.Write("spawner.sequence.wave", state.WaveIndex);
+        writer.Write("spawner.sequence.iteration", state.Iteration);
+        writer.Write("spawner.sequence.emissions", state.TotalEmissions);
+        writer.Write("spawner.sequence.remaining", state.RemainingSeconds);
+        writer.Write("spawner.sequence.waitingAtLoop", state.WaitingAtLoopBoundary);
+        writer.Write("spawner.sequence.completed", state.IsCompleted);
     }
 }

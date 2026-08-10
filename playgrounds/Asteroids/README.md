@@ -17,6 +17,7 @@
 - `GameplayTag` 表达 Player、Enemy、Damageable 和 PlayerProjectile；Laser 依赖 Enemy 身份和 `IHasGameplayHealth` 能力，不依赖具体 Asteroid 类。
 - Laser 使用内置 `LifetimeBehavior`，Asteroid 使用项目自定义强类型 `SpinBehavior`。
 - `PrefabRef<T, TArgs>` 传递 Laser/Asteroid 的位置、速度和半径，不使用无类型参数字典。
+- `SpawnSequence` 声明延迟、波次、循环 cadence 与最大并发；生成回调继续拥有随机边缘、速度、半径和 Prefab 参数。
 - `AsteroidSpawner` 保存弱、强类型 `InstanceRef<PlayerShip>`；玩家消失后安全回退到世界中心。
 - 固定 60 Tick 与 owner-local `GameplayRandom` 让生成边缘、速度和半径可复现。
 - PlayerShip、Spawner、Asteroid、Laser 和 SpinBehavior 显式贡献状态 Hash，可直接配合 Replay 分叉诊断。
@@ -33,6 +34,8 @@ PublishSignal(in destroyed);
 ```
 
 PlayerShip 监听它并累加分数，AsteroidSpawner 同时监听并统计已击毁数量。Laser 不持有这两个消费者；新增音效、波次或成就系统时也无需修改发布者。通知在 End Step 后确定性分发，两个消费者都把影响未来玩法的结果写入 `OnWriteGameplayState`。完整语义见 [`docs/GAMEPLAY_SIGNALS.md`](../../docs/GAMEPLAY_SIGNALS.md)。
+
+生成时间线的声明、循环边界、并发门控和快照语义见 [`docs/SPAWN_WAVE_AUTHORING.md`](../../docs/SPAWN_WAVE_AUTHORING.md)。
 
 ## 运行
 
