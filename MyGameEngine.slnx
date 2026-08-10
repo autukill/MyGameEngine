@@ -118,4 +118,9 @@
     <Project Path="playgrounds/FlappyBird/FlappyBird.csproj" />
     <Project Path="playgrounds/TilemapWorld/TilemapWorld.csproj" />
   </Folder>
+  <Folder Name="/Games/TheGodTheyMade/">
+    <Project Path="games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj" />
+    <Project Path="games/TheGodTheyMade/src/TheGodTheyMade.Simulation/TheGodTheyMade.Simulation.csproj" />
+    <Project Path="games/TheGodTheyMade/tests/TheGodTheyMade.Simulation.Tests/TheGodTheyMade.Simulation.Tests.csproj" />
+  </Folder>
 </Solution>

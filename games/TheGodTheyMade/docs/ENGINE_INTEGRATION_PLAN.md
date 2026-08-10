@@ -59,12 +59,20 @@ Tilemap 已负责世界表达和静态碰撞，但村民需要独立导航语义
 - 首岛事件词汇、玩家动词、地图、村民、强化学习参数和验证问题已冻结首版，入口见[首个 10 分钟可玩流程](FIRST_PLAYABLE_SCRIPT.md)与[模拟数据契约](SIMULATION_DATA_CONTRACT.md)。
 - 不创建正式资产，不实现第二个神迹。
 
-### Gate 1：交互与村庄灰盒
+### Gate 1A：交互、导航与村庄灰盒（已完成）
 
-- 建立游戏工程和声明式 Content Package。
-- 实现 Pointer Interaction 与 Grid Navigation 最小切片。
-- 12 名村民能绕开障碍完成取水、耕作、聚集和休息。
-- Camera、选择、暂停与简单调试覆盖可用。
+- 已建立 Simulation、Game、Simulation Tests 和声明式 Content Package。
+- 复用 Hosting 现有 Screen→World API，在游戏侧实现 Pointer Hover/Press/Drag/Release 与捕获，不重复新增 Engine Pointer Feature。
+- 已实现确定性四方向 Grid Navigation、Navigation Revision、复用 Path Buffer 和 0 B 稳态查询。
+- 12 名占位村民已按 600 秒日程在工作锚点、广场和家庭间移动；Camera、缩放、Cell 调试与巨石阻挡切换可用。
+- 当前未实现降雨、信仰或强化学习，保持 Gate 间的验收边界。
+
+### Gate 1B：可观察世界状态
+
+- 实现神意、局部降雨、蓄水池、水闸、水渠和三块田地湿度。
+- 把钟声、降雨、枯萎、恢复和水闸打开发布为游戏侧 `WorldObservation`。
+- 先记录每名村民实际观察到的事件，不在这一阶段生成信仰。
+- 为 Pointer 最终游戏命令建立确定性测试入口；不回放原始鼠标像素轨迹。
 
 ### Gate 2：信仰误解
 

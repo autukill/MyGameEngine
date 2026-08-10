@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "the-god-they-made.assets",
+  "dependencies": [],
+  "textures": [
+    {
+      "name": "debug.white",
+      "path": "white.webp",
+      "sampling": "pixelArt"
+    }
+  ],
+  "sprites": [
+    {
+      "name": "debug.solid",
+      "layout": "single",
+      "texture": "debug.white",
+      "size": { "width": 1, "height": 1 },
+      "origin": { "x": 0, "y": 0 }
+    },
+    {
+      "name": "debug.villager",
+      "layout": "single",
+      "texture": "debug.white",
+      "size": { "width": 16, "height": 24 },
+      "origin": { "x": 8, "y": 24 }
+    },
+    {
+      "name": "debug.familiar",
+      "layout": "single",
+      "texture": "debug.white",
+      "size": { "width": 30, "height": 38 },
+      "origin": { "x": 15, "y": 38 }
+    }
+  ],
+  "tileSets": [
+    {
+      "name": "mingzhong.tiles",
+      "tileSize": { "width": 32, "height": 32 },
+      "tiles": [
+        {
+          "id": 1,
+          "sprite": "debug.solid",
+          "subImage": 0,
+          "collision": "none"
+        }
+      ]
+    }
+  ],
+  "tileMaps": [
+    { "name": "mingzhong.world", "path": "mingzhong.tilemap.json" }
+  ]
+}

@@ -43,7 +43,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 运行时渲染快照：显式读取 Pass 顺序、逻辑 Surface、Effect owner 与 RenderTarget 活动租约，不暴露 GPU 句柄。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
-文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。真实游戏候选目前包括尚未立项的《驮春 / Bloomback》[概念档案](games/Bloomback/README.md)，以及已经进入前期玩法设计、但尚未开始代码制作的《神意难测 / The God They Made》[设计档案](games/TheGodTheyMade/README.md)；两者都不属于当前已实现能力。
+文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。真实游戏候选包括尚未立项的《驮春 / Bloomback》[概念档案](games/Bloomback/README.md)，以及正在使用 MyGameEngine 开发灰盒原型的《神意难测 / The God They Made》[游戏档案](games/TheGodTheyMade/README.md)。
 
 ## 工程结构
 
@@ -95,7 +95,11 @@ playgrounds/
 
 games/
 ├── Bloomback/                           # 《驮春》概念文档与设计稿；尚无游戏工程
-└── TheGodTheyMade/                      # 《神意难测》前期策划与垂直切片设计；尚无游戏工程
+└── TheGodTheyMade/
+    ├── src/TheGodTheyMade.Simulation/   # 导航、村庄日程与后续信仰/学习纯逻辑
+    ├── src/TheGodTheyMade.Game/         # Hosting、Tilemap、Camera 与灰盒运行入口
+    ├── tests/TheGodTheyMade.Simulation.Tests/ # 无窗口确定性测试
+    └── docs/                            # 游戏愿景、首岛、数据契约与原型流程
 ```
 
 Feature 依赖保持单向：
@@ -124,7 +128,7 @@ Engine.Core
 Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 65 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 68 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 

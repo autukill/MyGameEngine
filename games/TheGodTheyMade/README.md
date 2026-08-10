@@ -1,6 +1,6 @@
-# 《神意难测 / The God They Made》前期设计档案
+# 《神意难测 / The God They Made》
 
-> 状态：前期策划与玩法验证设计，尚未进入游戏代码制作。
+> 状态：Gate 1A 灰盒原型开发；尚未进入正式内容制作。
 
 《神意难测》是一款俯视角 2D 上帝游戏：玩家扮演一位无法直接说话的小神，通过有限的神迹影响村落；村民会观察事件、推断因果并形成可能正确、也可能荒诞的信仰；一只守护神兽则会从玩家和村民的行为中学习。
 
@@ -10,7 +10,22 @@
 
 这张概念稿用于确定俯视角游戏尺度、钟塔与农田的空间关系、局部神迹范围、村民观察、猿形神兽和克制 HUD 的画面方向。它不是引擎截图或正式美术资产；图中的四个神迹按钮属于未来视觉探索，首个可玩原型仍只实现局部降雨。
 
-当前目录只包含前期设计，不包含 `.csproj`、可执行程序、正式资产、Content Package 或解决方案引用。只有在首个灰盒验证范围稳定后，才创建游戏工程。
+当前目录已经建立无窗口 Simulation、可运行 Game 与 Simulation Tests 三个项目，并进入首个 10 分钟验证的工程阶段。当前画面仍使用单色占位资源，不代表正式美术、完整神迹、信仰或神兽学习已经实现。
+
+## 当前可运行能力
+
+- 48×32 声明式《鸣钟谷》Tilemap 和 Content Package。
+- Camera 平移、滚轮缩放、世界 Cell Hover、Pointer Press/Drag/Release 与捕获。
+- 点击水闸巨石可解除阻挡并递增 Navigation Revision。
+- 游戏侧确定性四方向 A*、稳定破局、复用 Path Buffer 和预热后零分配查询。
+- 12 名村民按 600 秒日程执行工作、集会和归家，并按脚底 Y 排序。
+- 一只猿形神兽占位体；尚未接入强化学习。
+- `--smoke` 隐藏窗口入口，以及不依赖 GPU 的 Simulation 测试。
+
+```powershell
+dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj
+dotnet run --project games/TheGodTheyMade/tests/TheGodTheyMade.Simulation.Tests/TheGodTheyMade.Simulation.Tests.csproj
+```
 
 ## 设计文档
 
@@ -33,3 +48,10 @@
 - 信仰采用有限、确定、可解释的规则；神兽允许使用可解释的表格型强化学习，但首版不使用生成式 AI 或黑箱神经网络。
 - 不提前制作开放世界、完整地下城经营、数百 NPC、多神兽身体或复杂物理。
 - 不为了概念需求提前扩张 MyGameEngine 的公共 API。
+
+## 当前未实现
+
+- 降雨神迹及水位、田地湿度运行时。
+- 村民观察、个人信仰和公共教义传播。
+- 神兽示范、奖励、Q 表与梦境解释。
+- 葬礼、湿遗迹、正式壁画、正式 UI、美术和音频。
