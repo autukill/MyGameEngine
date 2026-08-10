@@ -8,6 +8,7 @@
 - [项目现状](PROJECT_STATUS.md)：当前能力、限制和近期里程碑。
 - [Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)：Hosting、强类型资产、项目模板、诊断与热重载演进顺序。
 - [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)：实例变换、输入、Spawn/Destroy/Find、帧边界语义与轻量 Alarm。
+- [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)：Local/World 变换、父子挂点、Reparent、生命周期边界、扁平系统索引及与 Yoga UI 树的关系。
 - [缓动、插值与平滑运动](EASING_TWEEN_MOTION.md)：Easing 曲线、有限时长 Tween、最短弧度角和与帧率无关的 Motion。
 - [Gameplay 暂停、时间缩放与回溯方向](GAMEPLAY_TIME_CONTROL.md)：无 UI 时间域、Pause owner 生命周期、调度语义及可选快照回溯边界。
 - [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)：声明式 Scene 切换、类型安全实例工厂、Box/Circle 与区域/半径查询。
@@ -41,6 +42,9 @@
 - [显式 Presentation 与 HDR/LDR UI 边界](PRESENTATION.md)：唯一屏幕终端、呈现层级、SceneGui 根 Surface 与生命周期。
 - [Bloom 效果使用指南](BLOOM_EFFECT.md)：独立描述符、设置边界、三目标 ping-pong 链、resize 与释放语义。
 - [HDR 与 Tone Mapping 使用指南](TONE_MAPPING.md)：RGBA16F Scene/Bloom、曝光、ACES/Reinhard 和显示输出边界。
+- [2D 光照、阴影与受光材质渐进路线图](LIGHTING_2D_ROADMAP.md)：颜色空间、每 View Light Buffer、灯光预算、几何硬阴影、投射阴影、Normal/Emission 材质及高级后端进入条件。
+- [中文字体、文本绘制与富文本渐进路线图](TEXT_RENDERING_ROADMAP.md)：Unicode/Grapheme、中文 Font/Fallback、Glyph Atlas、富文本、彩色文字、打字机、Emoji、内联动画和 IME。
+- [FairyGUI 可选集成渐进路线图](FAIRYGUI_INTEGRATION_ROADMAP.md)：MonoGame Runtime 兼容性验证、Package/Render/Input Adapter、强类型绑定、中文富文本与产品化退出条件。
 - [StencilMask 分组与几何](STENCIL_MASK_GEOMETRY.md)：显式组、多 owner/批量管理、Circle、Sprite Alpha、性能与呈现边界。
 - [Cooldown UI Effects 需求记录](COOLDOWN_UI_EFFECTS_REQUIREMENTS.md)：圆形、环形、圆角矩形、弧形与 Sprite Alpha 蒙灰倒计时边界。
 - [GPU 像素回归测试](VISUAL_REGRESSION.md)：固定时间步截图、PNG 基线、容差、差异产物和场景扩展方式。
@@ -50,6 +54,8 @@
 - [C# 2D 游戏引擎从零构建](C%23%202D%20游戏引擎从零构建.md)：长期架构与路线推演原稿；其中示例不保证都已实现。
 
 ## 更新约定
+
+Gameplay 协作补充：[Scene 作用域 Gameplay Signals](GAMEPLAY_SIGNALS.md)：结构体通知、构造期监听、确定性投递、暂停/销毁语义与 Asteroids 一对多样例。
 
 每次功能切片发生以下变化时，应在同一提交中更新相关文档：
 

@@ -36,6 +36,7 @@ public class GameInstance
     private HashSet<GameplayTag>? _gameplayTags;
     private List<GameplayTag>? _stateTagKeys;
     private List<GameplayBehavior>? _behaviors;
+    private List<IGameplaySignalSubscription>? _signalSubscriptions;
     private bool _behaviorsFrozen;
 
     public InstanceId Id { get; } = InstanceId.New();
@@ -132,6 +133,9 @@ public class GameInstance
 
     /// <summary>Number of construction-time gameplay behaviors owned by this Instance.</summary>
     public int BehaviorCount => _behaviors?.Count ?? 0;
+
+    /// <summary>Number of Scene-local signal types handled by this Instance.</summary>
+    public int SignalHandlerCount => _signalSubscriptions?.Count ?? 0;
 
     /// <summary>
     /// Conservative per-View draw culling policy. Automatic uses LocalDrawBounds first, then the
@@ -337,6 +341,44 @@ public class GameInstance
             if (_behaviors[i] is TBehavior behavior) return behavior;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Registers this Instance as a strongly typed signal handler. Call from the constructor and
+    /// implement IGameplaySignalHandler&lt;TSignal&gt;; Scene membership owns subscription lifetime.
+    /// </summary>
+    protected void ListenSignal<TSignal>() where TSignal : struct
+    {
+        if (_behaviorsFrozen || _gameplay is not null)
+            throw new InvalidOperationException(
+                "Gameplay signal handlers must be declared before an Instance enters a Scene.");
+        if (this is not IGameplaySignalHandler<TSignal> handler)
+        {
+            throw new InvalidOperationException(
+                $"Instance '{GetType().Name}' must implement " +
+                $"IGameplaySignalHandler<{typeof(TSignal).Name}> before listening.");
+        }
+
+        _signalSubscriptions ??= [];
+        for (int i = 0; i < _signalSubscriptions.Count; i++)
+        {
+            if (_signalSubscriptions[i].SignalType == typeof(TSignal))
+                throw new InvalidOperationException(
+                    $"Instance '{GetType().Name}' already handles signal " +
+                    $"'{typeof(TSignal).Name}'.");
+        }
+        _signalSubscriptions.Add(new GameplaySignalSubscription<TSignal>(this, handler));
+    }
+
+    /// <summary>
+    /// Queues one transient strongly typed notification for deterministic Scene-boundary delivery.
+    /// </summary>
+    protected void PublishSignal<TSignal>(in TSignal signal) where TSignal : struct
+    {
+        IGameplayContext gameplay = RequireGameplay();
+        if (gameplay is not IGameplaySignalContext signalContext)
+            throw new InvalidOperationException("The current Scene does not support gameplay signals.");
+        signalContext.PublishSignal(this, in signal);
     }
 
     protected bool KeyDown(InputKey key) => Controls.IsKeyDown(key);
@@ -735,6 +777,30 @@ public class GameInstance
         if (!ReferenceEquals(_gameplay, gameplay)) return;
         _gameplay = null;
         _alarms?.Clear();
+    }
+
+    internal void AttachGameplaySignals(GameplaySignalHub hub)
+    {
+        if (_signalSubscriptions is null) return;
+        int attached = 0;
+        try
+        {
+            for (; attached < _signalSubscriptions.Count; attached++)
+                _signalSubscriptions[attached].Attach(hub);
+        }
+        catch
+        {
+            for (int i = attached - 1; i >= 0; i--)
+                _signalSubscriptions[i].Detach(hub);
+            throw;
+        }
+    }
+
+    internal void DetachGameplaySignals(GameplaySignalHub hub)
+    {
+        if (_signalSubscriptions is null) return;
+        for (int i = _signalSubscriptions.Count - 1; i >= 0; i--)
+            _signalSubscriptions[i].Detach(hub);
     }
 
     internal void AttachDrawTracker(IInstanceDrawTracker tracker)

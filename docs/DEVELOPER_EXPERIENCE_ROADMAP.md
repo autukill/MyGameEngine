@@ -94,10 +94,57 @@ GameAssets.Packages.SharedPrimitives
 - `GameplayStateMachine<TState>` 提供强类型 Enter/Step/Exit、状态计时、确定性回调后切换和冲突/循环保护；配置后 Update/Change/Restart 保持零稳态分配。
 - `GameplayQueryBuffer<T>`、`CountInstances<T>()` 与 Buffer 查询重载保留便利数组 API，同时给高频路径提供 0 B 结果复用；可选遥测按真实 Step 汇总调用、候选、命中和耗时。
 - `ReplaySession` 已把逻辑输入与状态 Hash 收敛为版本化 `.mgreplay`：Hosting 一次装配 Record/Playback、Build 身份和 fixed delta 启动前校验、首次分叉诊断、受限读取与最后 Tick 自动退出；Asteroids 提供录制/回放入口。
+- Scene 作用域强类型 `Gameplay Signal` 已以 Asteroids 击毁事件验证真实一对多协作：值类型载荷、构造期显式监听、End Step 后确定性投递、暂停/失活/销毁语义、嵌套通知延迟和热身后 0 B；不引入全局总线或反射。
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：版本化磁盘 Replay 已闭环 Input + State Trace，并暂时退出当前开发主线；只有真实长会话暴露中途跳转成本时才重新评估游戏参与的 Checkpoint。当前回到 Gameplay Authoring Experience，优先继续减少普通玩法对象之间协作与状态编排的样板。Gameplay Signal 仍需以真实一对多用例限定边界，不预建全局总线。暂不展开完整 Skill/Buff、UI、协程或物理系统；逐帧异形碰撞继续保持需求记录。
+下一步优先级：版本化磁盘 Replay 已闭环并退出当前主线；Scene-local Gameplay Signal 也已用真实一对多用例收敛边界。下一项继续聚焦 Gameplay Authoring，优先设计“玩法对象生成策略/波次编排”的小切片，让 Spawner 从手写 Alarm 与上限判断升级为可组合、可测试且仍由游戏掌握规则的 API。暂不展开完整 Skill/Buff、UI、协程或物理系统；逐帧异形碰撞继续保持需求记录。
+
+Transform Hierarchy 已完成设计记录，列为 Spawn/Wave 之后的 P1 Gameplay Authoring 候选：以 Local/World Transform、纯挂点节点、`KeepLocal/KeepWorld` Reparent 和嵌套 Prefab 改善飞机枪口、角色武器、Boss 部位与跟随效果的组合体验。实现时保留 Scene 扁平 Step、Layer/Depth、Collider 索引和安全帧边界，不让空间父子关系隐式接管生命周期、渲染排序或 UI 布局。完整边界见 [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
+
+## 候选视觉主线：2D Lighting（已规划，尚未实施）
+
+2D Lighting 已收敛为独立渐进路线，但目前不冒充已完成能力，也不覆盖 Gameplay Authoring 当前优先级。未来切换到该主线时，按以下顺序推进：
+
+1. 先固定 sRGB 颜色纹理、Linear 数据纹理、Linear Scene Surface 与最终显示编码，建立 GPU 基线。
+2. 实现每 View 显式启用的 Environment + 无阴影 Point Light，共享一个 Lighting Runtime，默认 Half Light Buffer、256 可见灯预算。
+3. 增加 Point/Spot 的 Box、Circle、Convex Polygon 可见性硬阴影，默认 32 个阴影灯预算。
+4. 增加 Directional、Contact Shadow 与 Projected Shadow，覆盖平台游戏、户外与角色落地感。
+5. 在多纹理材质、配对 Atlas 与 Multi-Attachment/G-Buffer 边界稳定后，再实现 Normal/Emission Lighting Material。
+6. Cookie、Line Light、Fog、Soft Shadow、SDF/极坐标 Shadow Map 和空间索引均由真实画面与性能数据触发。
+
+完整阶段、API 候选、验收和非目标见 [2D 光照、阴影与受光材质渐进路线图](LIGHTING_2D_ROADMAP.md)。
+
+## 候选内容与 GUI 主线：Text Rendering + FairyGUI（已规划，尚未实施）
+
+原生 Text Rendering 与 FairyGUI 保持两条边界：
+
+- 原生 Text 是引擎基础能力，服务 World Text、SceneGui、字幕、对话、伤害数字和无 FairyGUI 游戏。优先实现中文 Font、Fallback、Unicode Layout、动态 Glyph Atlas 与基础 Draw，再渐进加入彩色富文本、Grapheme-aware 打字机、Sprite Emoji、内联动画和 IME。
+- FairyGUI 是可选集成，不进入 Core 或默认 SDK。官方 MonoGame Runtime 与当前 Silk.NET/OpenGL 后端不同，因此先做受限 Compatibility Spike；只有 Render/Input/Loader Adapter 成本可控、NativeAOT 和真实 Package 通过后才产品化。
+- FairyGUI 初期保留自己的 Text/RichText 语义，原生 Text 不强行替换其 Layout。两者可以复用字体文件、Texture 上传和诊断，但必须保持 Editor Preview 一致性。
+- GIF/Animated WebP 直接解码不是文本第一阶段；内联动图优先使用现有 `SpriteRef`/未来 Animation Clip 或 FairyGUI MovieClip。
+
+完整路线见[中文字体、文本绘制与富文本渐进路线图](TEXT_RENDERING_ROADMAP.md)和[FairyGUI 可选集成渐进路线图](FAIRYGUI_INTEGRATION_ROADMAP.md)。
+
+## 跨路线当前优先级
+
+| 优先级 | 路线 | 当前决策 |
+|---|---|---|
+| P0 | 当前 Gameplay Signals 收尾、Spawn/Wave Authoring | 先完成并提交现有工作，再减少 Spawner/波次样板 |
+| P1 | Animation Authoring | 命名 Clip、循环/完成、切换与帧事件，直接改善所有 Sprite 游戏 |
+| P1 | Scene Graph / Transform Hierarchy | Local/World、挂点、显式 Reparent 与嵌套 Prefab；运行时系统继续使用扁平索引 |
+| P1 | Tilemap/World Authoring | 关卡生产、Chunk、碰撞和未来静态光照遮挡的共同基础 |
+| P1 | 原生中文 Text Rendering 基础 | Font/Fallback、Unicode Layout、Glyph Atlas 与 World/SceneGui Draw |
+| P1 | Audio 基础 | 真实游戏闭环不可缺少，建立 Clip/Bus/Voice/Streaming 边界 |
+| P1 调研 | FairyGUI Compatibility Spike | 尽早确认可行性和 Fork 成本，但不承诺完整接入 |
+| P2 | RichText、彩色文字、Typewriter、Sprite Emoji | 建立在原生 Text Layout 上 |
+| P2 | Gamepad/Rebinding、Save Game | Logical Input 与显式状态协议已有基础 |
+| P2 | Lighting 阶段 0/1 | 先做颜色空间与无阴影 Point Light，不直接跳到 G-Buffer |
+| P2 | FairyGUI 最小可用集成 | 只有 Spike 通过且 Text/Input/SceneGui 边界稳定后进入 |
+| P3 | 彩色 Font Emoji、AnimatedImage、FairyGUI 高级组件 | 由真实产品需求和资产驱动 |
+| P3 | Lighting 软阴影/高级材质、完整物理/导航 | 由性能数据和真实玩法驱动 |
+
+这里 P1 项不要求并行开工。推荐执行顺序调整为：`Spawn/Wave → Animation 或 Transform Hierarchy → Tilemap 或原生 Text 基础 → Audio → Lighting 0/1`；先由嵌套对象/挂点的真实 Playground 需求决定 Animation 与 Transform Hierarchy 的先后。FairyGUI/Yoga Spike 可以在原生 Text 后端选择前后独立进行，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
 
 ## 设计约束
 

@@ -73,6 +73,7 @@ public class SceneAggregate : IInstanceDrawTracker
     private readonly List<DrawEntry> _drawSnapshot = new();
     private readonly QueryCounters[] _queryCounters = new QueryCounters[4];
     private readonly IGameplayContext _gameplay;
+    private readonly GameplaySignalHub _gameplaySignals = new();
     private List<PendingInstanceMutation> _pendingMutations = new();
     private List<PendingInstanceMutation> _committingMutations = new();
     private IInputProvider? _input;
@@ -92,6 +93,7 @@ public class SceneAggregate : IInstanceDrawTracker
     public GameplayTimeController Time { get; } = new();
     public SimulationClock Clock { get; } = new();
     public bool GameplayQueryStatisticsEnabled => _gameplayQueryStatisticsEnabled;
+    public int PendingGameplaySignalCount => _gameplaySignals.PendingCount;
 
     /// <summary>
     /// Captures a diagnostic gameplay hash after a stable Step boundary. This explicit operation
@@ -252,10 +254,12 @@ public class SceneAggregate : IInstanceDrawTracker
         {
             instance.AttachDrawTracker(this);
             IndexInstance(instance);
+            instance.AttachGameplaySignals(_gameplaySignals);
             instance.DispatchCreate();
         }
         catch
         {
+            instance.DetachGameplaySignals(_gameplaySignals);
             instance.DetachDrawTracker(this);
             UnindexInstance(instance.Id);
             _instances.Remove(instance.Id);
@@ -284,6 +288,7 @@ public class SceneAggregate : IInstanceDrawTracker
     {
         if (!_instances.TryGetValue(id, out var instance)) return;
         instance.DispatchDestroy();
+        instance.DetachGameplaySignals(_gameplaySignals);
         Time.ReleaseOwner(id);
         instance.DetachDrawTracker(this);
         UnindexInstance(id);
@@ -406,6 +411,10 @@ public class SceneAggregate : IInstanceDrawTracker
             if (ShouldUpdate(instance, time))
                 instance.AdvanceSpriteAnimation(DeltaFor(instance, time));
         }
+
+        // Signals published by lifecycle callbacks are delivered after End Step. Publications made
+        // by a handler enter the next Tick, preventing recursive dispatch and preserving FIFO order.
+        _gameplaySignals.DispatchPending(time.IsPaused);
 
         ApplyPendingMutations();
 
@@ -1248,6 +1257,7 @@ public class SceneAggregate : IInstanceDrawTracker
         foreach (var instance in nonPersistent)
         {
             instance.DispatchDestroy();
+            instance.DetachGameplaySignals(_gameplaySignals);
             Time.ReleaseOwner(instance.Id);
             instance.DetachDrawTracker(this);
             UnindexInstance(instance.Id);
@@ -1255,6 +1265,7 @@ public class SceneAggregate : IInstanceDrawTracker
             instance.DetachGameplayContext(_gameplay);
             RaiseEvent(new InstanceDestroyedEvent(instance.Id, instance.ObjectTypeName));
         }
+        _gameplaySignals.ClearPending();
         Time.ResetSceneState();
         ClearPendingMutations();
     }
@@ -1636,7 +1647,8 @@ public class SceneAggregate : IInstanceDrawTracker
         return depth != 0 ? depth : x.DrawSequence.CompareTo(y.DrawSequence);
     }
 
-    private sealed class SceneGameplayContext(SceneAggregate owner) : IGameplayContext
+    private sealed class SceneGameplayContext(SceneAggregate owner)
+        : IGameplayContext, IGameplaySignalContext
     {
         public GameplayTimeController Time => owner.Time;
         public SimulationClock Clock => owner.Clock;
@@ -1783,6 +1795,19 @@ public class SceneAggregate : IInstanceDrawTracker
         {
             RequireOwner(instance);
             owner.Time.ReleaseOwner(instance.Id);
+        }
+
+        public void PublishSignal<TSignal>(GameInstance publisher, in TSignal signal)
+            where TSignal : struct
+        {
+            ArgumentNullException.ThrowIfNull(publisher);
+            if (!owner._instances.TryGetValue(publisher.Id, out GameInstance? committed) ||
+                !ReferenceEquals(committed, publisher))
+            {
+                throw new InvalidOperationException(
+                    "Only a committed Instance can publish a gameplay signal.");
+            }
+            owner._gameplaySignals.Publish(publisher, in signal);
         }
 
         private static void RequireOwner(GameInstance instance)

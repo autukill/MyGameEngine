@@ -7,6 +7,7 @@ public sealed class GameOverMarker : GameInstance
 {
     public double SurvivalSeconds { get; }
     public int ShotsFired { get; }
+    public int Score { get; }
 
     public GameOverMarker(SpriteRef sprite, Vector2D position, GameOverArgs args)
     {
@@ -15,6 +16,7 @@ public sealed class GameOverMarker : GameInstance
         Color = new(1f, 0.3f, 0.2f, 1f);
         SurvivalSeconds = args.SurvivalSeconds;
         ShotsFired = args.ShotsFired;
+        Score = args.Score;
     }
 
     public override void OnStep(double deltaTime)

@@ -28,6 +28,8 @@ public sealed class Laser : GameInstance
         if (enemy is IHasGameplayHealth damageable &&
             damageable.Health.ApplyDamage(1f).BecameDepleted)
         {
+            var destroyed = new AsteroidDestroyedSignal(enemy.Position, Score: 100);
+            PublishSignal(in destroyed);
             Destroy(enemy);
         }
     }

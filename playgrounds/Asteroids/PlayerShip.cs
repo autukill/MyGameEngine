@@ -5,7 +5,9 @@ using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
-public sealed class PlayerShip : GameInstance
+public sealed class PlayerShip :
+    GameInstance,
+    IGameplaySignalHandler<AsteroidDestroyedSignal>
 {
     public static readonly PrefabRef<Laser, LaserSpawnArgs> LaserPrefab =
         new("asteroids.laser");
@@ -22,6 +24,7 @@ public sealed class PlayerShip : GameInstance
     private Vector2D _velocity;
     private double _survivalSeconds;
     private int _shotsFired;
+    private int _score;
 
     public PlayerShip(SpriteRef sprite, Vector2D position, float worldWidth, float worldHeight)
     {
@@ -32,6 +35,7 @@ public sealed class PlayerShip : GameInstance
         Collider = CollisionShape2D.Circle(24f);
         AddTag(GameTags.Player);
         AddTag(GameTags.Damageable);
+        ListenSignal<AsteroidDestroyedSignal>();
     }
 
     public override void OnStep(double deltaTime)
@@ -62,8 +66,13 @@ public sealed class PlayerShip : GameInstance
         }
 
         if (FirstCollision(GameTags.Enemy) is not null)
-            SwitchScene(GameScenes.GameOver, new GameOverArgs(_survivalSeconds, _shotsFired));
+            SwitchScene(
+                GameScenes.GameOver,
+                new GameOverArgs(_survivalSeconds, _shotsFired, _score));
     }
+
+    public void OnGameplaySignal(in AsteroidDestroyedSignal signal) =>
+        _score += signal.Score;
 
     private Vector2D Forward() => new(MathF.Sin(Rotation), -MathF.Cos(Rotation));
 
@@ -83,6 +92,7 @@ public sealed class PlayerShip : GameInstance
         writer.Write("ship.velocity", _velocity);
         writer.Write("ship.survivalSeconds", _survivalSeconds);
         writer.Write("ship.shotsFired", _shotsFired);
+        writer.Write("ship.score", _score);
         writer.Write("ship.fireBuffer", _fireBuffer);
         writer.Write("ship.fireCooldown", _fireCooldown);
         writer.Write("ship.worldWidth", _worldWidth);

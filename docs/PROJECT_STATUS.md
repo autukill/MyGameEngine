@@ -1,6 +1,6 @@
 # 项目现状
 
-更新日期：2026-08-09
+更新日期：2026-08-10
 
 项目处于 Phase 1.x：最小引擎闭环已经可运行，正在从技术 Demo 向可扩展运行时收口。当前解决方案共 47 个 .NET 项目、仓库共 238 个 C# 文件；除十二个 Feature 模块外，`Engine.Hosting` 作为开发者入口组合根。
 
@@ -74,6 +74,7 @@
 - `LogicalInputRecorder/Recording/Playback` 按模拟 Tick 冻结 Action held/edge、Axis2D 与 fixed delta；Hosting 以 `RecordLogicalInput/ReplayLogicalInput` 装配，要求 delta 逐位一致、协议匹配和完整 Tick 1 流，回放查询保持 0 B。
 - `GameplayStateWriter` 提供版本化 FNV-1a 64 显式状态协议；Scene 按稳定加入序号聚合时间、实例内建状态与自定义 contributor，`RecordGameplayState/VerifyGameplayState` 在首次分叉 Tick 抛出结构化诊断。
 - `ReplaySession` 将逻辑输入与状态轨迹保存为确定性 `.mgreplay` 二进制文件；Game/Build 身份、fixed delta、组件版本、SHA-256、受限读取和首次分叉验证形成完整开发期回放边界，Asteroids 提供 `--record-replay/--replay` 示例。
+- Scene-local `Gameplay Signal` 以结构体载荷和泛型 Handler 提供一对多玩法通知；End Step 后按发布/订阅顺序投递，暂停、失活、销毁和嵌套发布语义明确，稳态 0 B 且不使用反射。Asteroids 用一条击毁通知同时驱动玩家计分与 Spawner 统计。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
 - Hosting 第二阶段多 Camera 已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Runner `--split-cameras` 验证两台真实 Camera。
 - 多 View 效果策略已显式化：主 View 由 `UseHdr` 配置；次级 View 默认 Direct，也可独立选择 HDR + Tone Mapping 与可选 Bloom。配置报告额外 Pass/租约，工厂按输入 Surface 尺寸创建目标，次级 View 不承担未声明成本。
@@ -94,6 +95,9 @@
 - 各交互式 VisualTests 仍需人工观察；自动基线已覆盖九条高价值确定性路径，但无显示器 CI 环境尚未固化。
 - Hosting v1 仅支持单窗口；已有声明式及强类型参数 Scene 切换和无 UI 暂停策略，但尚无 Scene 栈或后台加载。
 - 多 Render View 可选择不同 Scene Layer 与 HDR/Bloom/Tone Mapping Profile；Layer 索引与 Camera 粗剔除已减少每 View 工作量，但仍独立检查、排序与重绘可见实例，Stencil 暂只属于主 View。
+- 2D Lighting 当前只有规划，没有运行时代码。路线明确先解决颜色空间，再渐进实现每 View Point Light、几何硬阴影、投射阴影和 Normal/Emission 材质；当前不能把 Spotlight Stencil 或现有 ShaderMaterial 描述成完整光照系统。
+- Text/GUI 当前只有 `OnDrawGUI`、SceneGui Surface 和 Presentation 边界，没有 FontLibrary、Glyph Atlas、Unicode Layout、RichText、IME 或控件树。中文 Text Rendering 与 FairyGUI 可选集成已分别完成路线规划；FairyGUI 现成 MonoGame Runtime 不能直接视为 Silk.NET/OpenGL 后端实现，必须先通过兼容性 Spike。
+- GameInstance 当前 Transform 是根实例的世界空间值，尚无父子 Transform、Local/World 双视图、纯挂点节点或嵌套 Prefab。Scene Graph/Transform Hierarchy 已完成设计记录：未来在扁平实例调度旁增加专用层级，空间父子不隐式替代生命周期、Layer/Depth、碰撞索引或 Yoga UI 布局树。
 
 ## 下一里程碑：声明式多 Camera/View
 
@@ -103,7 +107,7 @@
 4. 已完成 Layer 过滤、小地图式样例、显式效果成本、Scene Draw 分项诊断、Layer/Depth 有序索引、保守 Camera 可见性剔除，以及独立 Camera 跟随/Dead Zone/边界/震屏控制器。
 5. 已把静态跟随策略接入声明式 RenderView 配置，同时保留 Gameplay 运行时换目标的出口。
 6. 已建立独立多 View 稳定基准；本机 10,000 实例、双 View、剔除路径约 `0.431 ms` 且 `0 B/frame`，不足以证明跨 View 缓存值得引入，当前明确保留简单逐 View 检查。
-7. 多 Camera/View 当前里程碑闭环；Gameplay Authoring 已继续落地 Cooldown、Health/Damage、Instance Ref、确定性 Clock/Random、逻辑输入、状态 Hash 与磁盘 Replay。Replay 里程碑现已关闭，不继续推进 Checkpoint；主线返回普通玩法对象的协作与状态编排体验。
+7. 多 Camera/View 与 Replay 当前里程碑均已闭环；Gameplay Authoring 已继续落地 Scene-local 强类型 Signal，真实验证普通玩法对象的一对多协作。下一步聚焦生成策略/波次编排，不继续扩张 Replay 或 UI。
 
 ## 已知限制
 
@@ -113,4 +117,4 @@
 - Replay v1 全程保留输入帧与状态 contributor，不包含压缩、Checkpoint、状态恢复或跨版本迁移；长会话需由游戏限制录制时长。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 
-相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Gameplay Cooldown](GAMEPLAY_COOLDOWN.md)、[Gameplay Health 与 Damage](GAMEPLAY_HEALTH.md)、[强类型 Instance 引用](INSTANCE_REFERENCES.md)、[确定性 Simulation](DETERMINISTIC_SIMULATION.md)、[逻辑输入回放](LOGICAL_INPUT_REPLAY.md)、[Gameplay 状态 Hash](GAMEPLAY_STATE_HASHING.md)、[可持久化 Replay Bundle](REPLAY_BUNDLES.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Gameplay 查询性能](GAMEPLAY_QUERY_PERFORMANCE.md)、[Camera/Viewport 边界](CAMERA_VIEWPORT_STATUS.md)、[多 View 性能基准](MULTI_VIEW_PERFORMANCE.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。
+相关说明：[Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)、[Gameplay Authoring](GAMEPLAY_AUTHORING.md)、[Scene Graph / Transform Hierarchy](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)、[Gameplay Signals](GAMEPLAY_SIGNALS.md)、[Gameplay Cooldown](GAMEPLAY_COOLDOWN.md)、[Gameplay Health 与 Damage](GAMEPLAY_HEALTH.md)、[强类型 Instance 引用](INSTANCE_REFERENCES.md)、[确定性 Simulation](DETERMINISTIC_SIMULATION.md)、[逻辑输入回放](LOGICAL_INPUT_REPLAY.md)、[Gameplay 状态 Hash](GAMEPLAY_STATE_HASHING.md)、[可持久化 Replay Bundle](REPLAY_BUNDLES.md)、[Gameplay 状态机](GAMEPLAY_STATE_MACHINE.md)、[Gameplay 查询性能](GAMEPLAY_QUERY_PERFORMANCE.md)、[Camera/Viewport 边界](CAMERA_VIEWPORT_STATUS.md)、[多 View 性能基准](MULTI_VIEW_PERFORMANCE.md)、[Scene 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)、[2D Lighting 路线图](LIGHTING_2D_ROADMAP.md)、[中文 Text Rendering 路线图](TEXT_RENDERING_ROADMAP.md)、[FairyGUI 集成路线图](FAIRYGUI_INTEGRATION_ROADMAP.md)、[可选离线 Shader 编译](OFFLINE_SHADER_COMPILATION.md)、[Game SDK 与项目模板](GAME_SDK_AND_TEMPLATES.md)、[`gameengine doctor`](GAMEENGINE_DOCTOR.md)、[运行时渲染诊断](RUNTIME_RENDER_DIAGNOSTICS.md)、[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)、[Content 热重载](CONTENT_HOT_RELOAD.md)、[Shader 热重载](SHADER_HOT_RELOAD.md)、[Shader 材质参数块](SHADER_MATERIALS.md)、[声明式 Shader/Material Assets](SHADER_ASSETS.md)、[Engine Hosting](ENGINE_HOSTING.md)、[强类型 Content](STRONGLY_TYPED_CONTENT.md)、[Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[可分发内容工具链](CONTENT_PIPELINE_PACKAGES.md)、[`GameEngine.Content.targets`](GAMEENGINE_CONTENT_TARGETS.md)、[动态渲染效果](DYNAMIC_RENDER_EFFECTS.md)、[逻辑 RenderSurface](RENDER_SURFACES.md)、[Presentation](PRESENTATION.md)、[Bloom](BLOOM_EFFECT.md)、[Tone Mapping](TONE_MAPPING.md)、[Stencil 几何](STENCIL_MASK_GEOMETRY.md)、[GPU 像素回归](VISUAL_REGRESSION.md)。

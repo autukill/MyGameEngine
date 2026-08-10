@@ -7,7 +7,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 ## 当前能力
 
 - GMS 风格实例生命周期：Create、Begin/Step/End Step、Begin/Draw/End Draw、Draw GUI、Key Down/Up、Destroy。
-- Gameplay Authoring：直接变换、逻辑输入、时间原语、Health/Damage、Instance Ref、确定性 Clock/Random、可持久化 Replay、状态 Hash/首次分叉诊断、实例级生命周期与轻量 Behavior。
+- Gameplay Authoring：直接变换、逻辑输入、时间原语、Health/Damage、Instance Ref、确定性 Clock/Random、可持久化 Replay、状态 Hash/首次分叉诊断、实例级生命周期、轻量 Behavior 与 Scene-local 强类型 Signal。
 - Gameplay Motion：21 种无状态 Easing、标量/位置/颜色/最短角 Tween，以及限速和半衰期平滑追踪。
 - Gameplay Time：Gameplay/Unscaled 时间域、owner/key 暂停、单一 TimeScale；暂停冻结逻辑但继续渲染和安全帧边界。
 - Gameplay Runtime：Scene Input/Step/Draw/DrawGUI 使用可复用快照，实例规模预热后保持零托管分配，并保留确定性阶段边界。
@@ -293,7 +293,8 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 ## 下一阶段
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
-2. 确定性 Gameplay Authoring 的 Clock/Random、逻辑输入、状态 Hash 和版本化磁盘 Replay 已闭环；下一项先用真实回放评估长会话跳转成本，再决定是否引入周期 Checkpoint，Gameplay Signal 继续等待真实一对多用例。
+2. 确定性 Gameplay Authoring 的 Clock/Random、输入、状态 Hash、磁盘 Replay 与 Scene-local Gameplay Signal 已闭环；下一项聚焦生成策略/波次编排，继续减少普通玩法类的手写调度样板。
+3. Scene Graph / Transform Hierarchy 已完成设计记录，作为后续 Gameplay Authoring P1 候选；目标是提供 Local/World、挂点、Reparent 与嵌套 Prefab，同时保留扁平 Step、碰撞索引和独立渲染顺序。详见[设计思考](docs/SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
 

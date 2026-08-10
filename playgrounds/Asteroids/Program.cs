@@ -83,7 +83,7 @@ internal static class Program
                 if (smoke)
                     context.Scene.Add(new SmokeJourney(
                         GameScenes.GameOver,
-                        new GameOverArgs(3d / 60d, 0),
+                        new GameOverArgs(3d / 60d, 0, 0),
                         context.Close));
             })
             .AddScene(GameScenes.GameOver, (context, gameOver) =>

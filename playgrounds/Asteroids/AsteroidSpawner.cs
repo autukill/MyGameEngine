@@ -4,7 +4,9 @@ using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.ValueObjects;
 
-public sealed class AsteroidSpawner : GameInstance
+public sealed class AsteroidSpawner :
+    GameInstance,
+    IGameplaySignalHandler<AsteroidDestroyedSignal>
 {
     public static readonly PrefabRef<Asteroid, AsteroidSpawnArgs> AsteroidPrefab =
         new("asteroids.rock");
@@ -14,6 +16,7 @@ public sealed class AsteroidSpawner : GameInstance
     private readonly InstanceRef<PlayerShip> _target;
     private readonly float _worldWidth;
     private readonly float _worldHeight;
+    private int _destroyedAsteroids;
 
     public AsteroidSpawner(
         InstanceRef<PlayerShip> target,
@@ -23,7 +26,11 @@ public sealed class AsteroidSpawner : GameInstance
         _target = target;
         _worldWidth = worldWidth;
         _worldHeight = worldHeight;
+        ListenSignal<AsteroidDestroyedSignal>();
     }
+
+    public void OnGameplaySignal(in AsteroidDestroyedSignal signal) =>
+        _destroyedAsteroids++;
 
     public override void OnCreate() => SetAlarm(SpawnTimer, 0d);
 
@@ -61,5 +68,6 @@ public sealed class AsteroidSpawner : GameInstance
         writer.Write("spawner.random", _random.CaptureState());
         writer.Write("spawner.worldWidth", _worldWidth);
         writer.Write("spawner.worldHeight", _worldHeight);
+        writer.Write("spawner.destroyedAsteroids", _destroyedAsteroids);
     }
 }

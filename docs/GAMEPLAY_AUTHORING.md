@@ -24,6 +24,8 @@ public override void OnStep(double deltaTime)
 - `InputAxis2D()` 默认使用 WASD，返回每轴 `-1/0/1`，不会自动归一化对角线。
 - `MoveBy/RotateBy/ScaleBy` 直接更新逻辑 Transform，不创建 GPU 状态。
 
+当前这些属性仍表示根实例的世界空间变换，尚不支持父子节点、Local/World 双视图或挂点。后续不会简单把 Scene、生命周期、渲染顺序和碰撞都改成递归树，而是在 Scene 的扁平实例调度旁增加专用 `TransformHierarchy`。完整术语、矩阵组合、Reparent、销毁策略、嵌套 Prefab 和 Yoga UI 边界见 [Scene Graph 与 Transform Hierarchy 设计思考](SCENE_GRAPH_TRANSFORM_HIERARCHY.md)。
+
 需要有限时长插值、摄像机/对象平滑跟随或固定速度追踪时，使用无状态 `Easing`、`Tween` 和 `Motion`。时间参数直接接受 `OnStep` 的 `double deltaTime`，不需要 Gameplay 类每帧强转；完整选择与示例见[缓动、插值与平滑运动](EASING_TWEEN_MOTION.md)。
 
 `GameplayTimeController` 提供 `(0, 8]` 时间缩放和 owner-aware 暂停；普通实例默认使用 Gameplay 时间，解除暂停等控制器把 `TimeMode` 设为 `Unscaled`。暂停时 Gameplay Step、Alarm、动画和输入边沿冻结，Draw、帧边界提交与 Unscaled 控制器继续。详见 [Gameplay 暂停、时间缩放与回溯方向](GAMEPLAY_TIME_CONTROL.md)。
@@ -100,3 +102,7 @@ public override void OnAlarm(AlarmId alarm)
 - 声明式 Scene 切换、`SceneRef<TArgs>` 参数快照、类型安全 Prefab、Box/Circle 和区域/半径查询已经落地，详见 [Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)。
 - `FindAll<T>()` 与无 Buffer 的多结果空间查询返回独立稳定数组，适合普通低频代码；高频路径可复用 `GameplayQueryBuffer<T>`，只计数时使用 `CountInstances<T>()`。
 - 查询统计默认关闭；Hosting 性能遥测开启后按低频区间报告调用、候选、命中和耗时。当前实测未达到 Spatial Hash 引入门槛。
+
+## Scene-local Gameplay Signals
+
+当一次玩法事实需要通知多个独立对象时，使用值类型 Signal、`IGameplaySignalHandler<T>`、构造期 `ListenSignal<T>()` 和 `PublishSignal(in value)`。通知在 End Step 后、Spawn/Destroy 提交前按稳定顺序发送；嵌套发布延迟到下一 Tick，暂停、失活与销毁遵循实例生命周期，不使用全局总线或反射。完整用法和边界见 [Scene 作用域 Gameplay Signals](GAMEPLAY_SIGNALS.md)。

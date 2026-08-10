@@ -39,6 +39,7 @@ internal static class Program
         TestInstanceReferences();
         TestDeterministicSimulationPrimitives();
         TestGameplayStateHashing();
+        TestGameplaySignals();
         TestGameplayTags();
         TestGameplayBehaviors();
         TestSceneCatalogAndPrefabs();
@@ -1248,6 +1249,129 @@ internal static class Program
             $"Cooldown updates remain allocation-free after warmup ({allocated:N0} B)");
     }
 
+    private static void TestGameplaySignals()
+    {
+        Console.WriteLine("3g. Scene-scoped strongly typed gameplay signals");
+        var order = new List<string>();
+        var scene = new SceneAggregate("Signals");
+        var publisher = scene.Add(new SignalPublisher());
+        var first = scene.Add(new SignalOrderProbe("first", order));
+        var second = scene.Add(new SignalOrderProbe("second", order));
+        publisher.Emit(new PrimarySignal(1));
+        publisher.Emit(new SecondarySignal(9));
+        publisher.Emit(new PrimarySignal(3));
+        Check(scene.PendingGameplaySignalCount == 3 &&
+              first.SignalHandlerCount == 2 && second.SignalHandlerCount == 2,
+            "Publish queues typed value payloads and construction-time handlers");
+        scene.PerformStep(1d / 60d);
+        Check(order.SequenceEqual(new[]
+            {
+                "first.primary.1", "second.primary.1",
+                "first.secondary.9", "second.secondary.9",
+                "first.primary.3", "second.primary.3"
+            }) && scene.PendingGameplaySignalCount == 0,
+            "Dispatch preserves publication order then stable Scene subscription order");
+
+        var nestedOrder = new List<string>();
+        var nestedScene = new SceneAggregate("NestedSignals");
+        var nestedPublisher = nestedScene.Add(new SignalPublisher());
+        nestedScene.Add(new SignalOrderProbe("republisher", nestedOrder, republish: true));
+        nestedScene.Add(new SignalOrderProbe("observer", nestedOrder));
+        nestedPublisher.Emit(new PrimarySignal(1));
+        nestedScene.PerformStep(1d / 60d);
+        Check(nestedOrder.SequenceEqual(new[]
+              { "republisher.primary.1", "observer.primary.1" }) &&
+              nestedScene.PendingGameplaySignalCount == 1,
+            "Signals published by handlers are deferred instead of recursively dispatched");
+        nestedScene.PerformStep(1d / 60d);
+        Check(nestedOrder.SequenceEqual(new[]
+            {
+                "republisher.primary.1", "observer.primary.1",
+                "republisher.primary.2", "observer.primary.2"
+            }),
+            "Deferred nested signals arrive on the next Tick");
+
+        var pausedOrder = new List<string>();
+        var pausedScene = new SceneAggregate("PausedSignals");
+        var pausedPublisher = pausedScene.Add(new SignalPublisher());
+        var gameplayListener = pausedScene.Add(
+            new SignalOrderProbe("gameplay", pausedOrder, primaryOnly: true));
+        var unscaledListener = pausedScene.Add(
+            new SignalOrderProbe("unscaled", pausedOrder, primaryOnly: true)
+            { TimeMode = InstanceTimeMode.Unscaled });
+        gameplayListener.SetActive(false, _ => { });
+        pausedPublisher.Emit(new PrimarySignal(4));
+        pausedScene.Time.Pause(new GameplayPauseKey("signal-test"));
+        pausedScene.PerformStep(1d / 60d);
+        Check(pausedOrder.SequenceEqual(new[] { "unscaled.primary.4" }),
+            "Inactive and paused Gameplay handlers are skipped while Unscaled handlers receive");
+
+        var removedOrder = new List<string>();
+        var removedScene = new SceneAggregate("RemovedSignals");
+        var removedPublisher = removedScene.Add(new SignalPublisher());
+        var removedListener = removedScene.Add(
+            new SignalOrderProbe("removed", removedOrder, primaryOnly: true));
+        removedPublisher.Emit(new PrimarySignal(5));
+        removedScene.Destroy(removedListener.Id);
+        removedScene.PerformStep(1d / 60d);
+        Check(removedOrder.Count == 0,
+            "Destroy automatically detaches a handler before queued delivery");
+
+        var mutationScene = new SceneAggregate("SignalMutations");
+        var mutationPublisher = mutationScene.Add(new SignalPublisher());
+        mutationScene.Add(new SignalSpawningProbe());
+        mutationPublisher.Emit(new PrimarySignal(1));
+        mutationScene.PerformStep(1d / 60d);
+        Check(mutationScene.CountInstances<SignalSpawnedProbe>() == 1,
+            "Signal handlers can join Spawn requests to the current safe mutation commit");
+
+        var failureScene = new SceneAggregate("SignalFailure");
+        var failurePublisher = failureScene.Add(new SignalPublisher());
+        var failingHandler = failureScene.Add(new FailingSignalProbe());
+        failurePublisher.Emit(new PrimarySignal(7));
+        try
+        {
+            failureScene.PerformStep(1d / 60d);
+            Check(false, "Signal handler failures expose structured publisher/receiver context");
+        }
+        catch (GameplaySignalDispatchException exception)
+        {
+            Check(exception.SignalType == typeof(PrimarySignal) &&
+                  exception.PublisherId == failurePublisher.Id &&
+                  exception.HandlerId == failingHandler.Id &&
+                  exception.InnerException is InvalidOperationException,
+                "Signal handler failures expose structured publisher/receiver context");
+        }
+
+        CheckThrows<InvalidOperationException>(
+            () => _ = new MissingSignalInterfaceProbe(),
+            "Listening requires the matching strongly typed handler interface");
+        CheckThrows<InvalidOperationException>(
+            () => _ = new DuplicateSignalListenerProbe(),
+            "One Instance cannot accidentally register the same signal type twice");
+        CheckThrows<InvalidOperationException>(
+            first.ListenAfterAttach,
+            "Signal handler declarations freeze when an Instance enters a Scene");
+
+        var allocationScene = new SceneAggregate("SignalAllocation");
+        var allocationPublisher = allocationScene.Add(new SignalPublisher());
+        var allocationListener = allocationScene.Add(new CountingSignalProbe());
+        for (int i = 0; i < 64; i++)
+        {
+            allocationPublisher.Emit(new PrimarySignal(i));
+            allocationScene.PerformStep(1d / 60d);
+        }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            allocationPublisher.Emit(new PrimarySignal(i));
+            allocationScene.PerformStep(1d / 60d);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocationListener.Count == 1_088 && allocated == 0,
+            $"Warmed signal publish and dispatch remain allocation-free ({allocated:N0} B)");
+    }
+
     private static void TestGameplayBehaviors()
     {
         Console.WriteLine("5. Lightweight Gameplay Behavior composition");
@@ -1984,6 +2108,109 @@ internal static class Program
             writer.Write("probe.health", Health);
             writer.Write("probe.random", _random.CaptureState());
         }
+    }
+
+    private readonly record struct PrimarySignal(int Value);
+
+    private readonly record struct SecondarySignal(int Value);
+
+    private sealed class SignalPublisher : GameInstance
+    {
+        public void Emit(in PrimarySignal signal) => PublishSignal(in signal);
+
+        public void Emit(in SecondarySignal signal) => PublishSignal(in signal);
+    }
+
+    private sealed class SignalOrderProbe :
+        GameInstance,
+        IGameplaySignalHandler<PrimarySignal>,
+        IGameplaySignalHandler<SecondarySignal>
+    {
+        private readonly string _name;
+        private readonly List<string> _order;
+        private readonly bool _republish;
+
+        public SignalOrderProbe(
+            string name,
+            List<string> order,
+            bool republish = false,
+            bool primaryOnly = false)
+        {
+            _name = name;
+            _order = order;
+            _republish = republish;
+            ListenSignal<PrimarySignal>();
+            if (!primaryOnly)
+                ListenSignal<SecondarySignal>();
+        }
+
+        public void OnGameplaySignal(in PrimarySignal signal)
+        {
+            _order.Add($"{_name}.primary.{signal.Value}");
+            if (_republish && signal.Value == 1)
+            {
+                var next = new PrimarySignal(2);
+                PublishSignal(in next);
+            }
+        }
+
+        public void OnGameplaySignal(in SecondarySignal signal) =>
+            _order.Add($"{_name}.secondary.{signal.Value}");
+
+        public void ListenAfterAttach() => ListenSignal<PrimarySignal>();
+    }
+
+    private sealed class SignalSpawningProbe :
+        GameInstance,
+        IGameplaySignalHandler<PrimarySignal>
+    {
+        public SignalSpawningProbe() => ListenSignal<PrimarySignal>();
+
+        public void OnGameplaySignal(in PrimarySignal signal) =>
+            Spawn(new SignalSpawnedProbe());
+    }
+
+    private sealed class SignalSpawnedProbe : GameInstance;
+
+    private sealed class FailingSignalProbe :
+        GameInstance,
+        IGameplaySignalHandler<PrimarySignal>
+    {
+        public FailingSignalProbe() => ListenSignal<PrimarySignal>();
+
+        public void OnGameplaySignal(in PrimarySignal signal) =>
+            throw new InvalidOperationException("Expected signal failure.");
+    }
+
+    private sealed class MissingSignalInterfaceProbe : GameInstance
+    {
+        public MissingSignalInterfaceProbe() => ListenSignal<PrimarySignal>();
+    }
+
+    private sealed class DuplicateSignalListenerProbe :
+        GameInstance,
+        IGameplaySignalHandler<PrimarySignal>
+    {
+        public DuplicateSignalListenerProbe()
+        {
+            ListenSignal<PrimarySignal>();
+            ListenSignal<PrimarySignal>();
+        }
+
+        public void OnGameplaySignal(in PrimarySignal signal)
+        {
+        }
+    }
+
+    private sealed class CountingSignalProbe :
+        GameInstance,
+        IGameplaySignalHandler<PrimarySignal>
+    {
+        public int Count { get; private set; }
+
+        public CountingSignalProbe() => ListenSignal<PrimarySignal>();
+
+        public void OnGameplaySignal(in PrimarySignal signal) => Count++;
     }
 
     private sealed class TaggedProbe : GameInstance
