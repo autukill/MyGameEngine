@@ -69,3 +69,17 @@ dotnet run -c Release `
 AOT 模式会从本地打包结果创建仓库外游戏项目，执行 `win-x64` AOT publish，拒绝任何 `warning IL####`，检查原生产物和编译后资产，并直接运行发布程序的隐藏三帧 `--smoke`。
 
 运行时 JSON Manifest 和 Runner 诊断使用 `System.Text.Json` source-generation contexts。AssetCompiler 是发布前执行的框架依赖构建工具，不进入游戏运行闭包，也不继承游戏项目的 AOT、RID 或 self-contained 属性。
+
+## 2026-08-10 验证结论与停止点
+
+安装 Visual Studio C++ Desktop workload 后完成了真实 `win-x64` 验证：
+
+- Release solution 构建通过，0 警告、0 错误。
+- Runner 与仓库外模板项目均成功生成原生 EXE，原生库、Shader 和 `AssetsCompiled` 产物检查通过。
+- Runner 与模板游戏的隐藏三帧 `--smoke` 均正常退出，窗口、OpenGL、内容加载及 Step/Draw 生命周期运行正常。
+- `EngineWindow` 在首次使用时显式注册 GLFW Window/Input 后端并关闭 Silk.NET 的反射式首次扫描，避免 AOT 裁剪后出现 `none registered`。
+- 分发验收 24 项中 23 项通过；唯一失败项是“Native AOT publish emits no trimming or AOT warnings”。
+
+Silk.NET 2.22.0 的可达 Window/Input 自动发现与 native loader 仍产生 2 个 `IL2072` 以及 6 个 `IL3000`/`IL3002`。这些告警来自第三方程序集；实际发布目录和 smoke 已验证可运行。也验证过 Silk.NET 2.23.0，它没有消除上述问题，因此项目继续保留 2.22.0。
+
+本阶段在此停止：不加入宽泛 warning suppression，不维护 Silk.NET fork，也不再扩展 Native AOT 方案。当前发行路径可实际运行，但不宣称已经满足“零 IL 告警”兼容性契约；该验收项保留为已知上游限制，等待依赖升级或未来重新立项。

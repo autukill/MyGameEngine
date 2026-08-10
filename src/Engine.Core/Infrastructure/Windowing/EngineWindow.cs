@@ -2,7 +2,9 @@ namespace GameEngine.Core.Infrastructure.Windowing;
 
 using Silk.NET.Maths;
 using Silk.NET.Windowing;
+using Silk.NET.Windowing.Glfw;
 using Silk.NET.Input;
+using Silk.NET.Input.Glfw;
 using GameEngine.Core.Infrastructure.Graphics;
 using GameEngine.Core.Infrastructure.Input;
 using GameEngine.Core.Infrastructure.Diagnostics;
@@ -36,6 +38,13 @@ public class EngineWindow
     public event Action? OnFrameCompleted;
     public event Action<int, int>? OnResize;
     public event Action? OnClosing;
+
+    static EngineWindow()
+    {
+        GlfwWindowing.Use();
+        InputWindowExtensions.ShouldLoadFirstPartyPlatforms(false);
+        GlfwInput.RegisterPlatform();
+    }
 
     public EngineWindow(EngineWindowOptions options)
     {
