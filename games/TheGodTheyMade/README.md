@@ -31,6 +31,7 @@
 - `--scripted-regression --record-replay <file>` 与 `--scripted-regression --replay <file>` 会通过真实 Replay Bundle 逐 Tick 复现固定信仰脚本、神兽示范/搬运/奖励和 Gameplay State Hash。
 - `--record-commands <file>` 与 `--play-commands <file>` 以版本化 Gameplay Command Journal 记录/回放真实会话中被接受的降雨、水闸和神兽 Q/E 反馈；`--playtest-report <file> --tester-id <id>` 输出终局、学习轨迹与状态 Hash，供外部盲测留档。
 - `--audit-playtests <directory> --gate-audit-report <file>` 严格聚合独立测试员报告，检查完成度、问卷、4/5・3/5・4/5 理解阈值及至少两种壁画历史；未满足 Gate 时返回退出码 `2`。
+- `tools/Build-PlaytestPackage.ps1` 生成经过发布版烟测的 win-x64 自包含 ZIP、SHA-256 和 commit 身份；测试员双击包内启动器即可用唯一编号自动留存证据，无需源码、SDK 或预装 .NET。
 
 ```powershell
 dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj

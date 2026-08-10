@@ -21,6 +21,19 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        try
+        {
+            return Run(args);
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"The God They Made: {exception.Message}");
+            return 1;
+        }
+    }
+
+    private static int Run(string[] args)
+    {
         bool smoke = args.Contains("--smoke", StringComparer.Ordinal);
         bool scriptedBelief = args.Contains("--scripted-belief", StringComparer.Ordinal) ||
                               args.Contains("--scripted-regression", StringComparer.Ordinal);
@@ -30,12 +43,38 @@ internal static class Program
             throw new ArgumentException("--gate-audit-report requires --audit-playtests.");
         if (auditPlaytestsPath is not null)
             return AuditPlaytests(auditPlaytestsPath, gateAuditReportPath);
+        string? playtestSessionId = GetOptionValue(args, "--playtest");
+        bool promptForPlaytestSession = args.Contains("--playtest-prompt", StringComparer.Ordinal);
+        if (promptForPlaytestSession && playtestSessionId is not null)
+            throw new ArgumentException("Use either --playtest or --playtest-prompt, not both.");
+        if (promptForPlaytestSession)
+            playtestSessionId = PromptForPlaytestSessionId();
+        string? playtestOutputPath = GetOptionValue(args, "--playtest-output");
+        if (playtestOutputPath is not null && playtestSessionId is null)
+            throw new ArgumentException("--playtest-output requires --playtest.");
         string? recordReplayPath = GetOptionValue(args, "--record-replay");
         string? playReplayPath = GetOptionValue(args, "--replay");
         string? recordCommandsPath = GetOptionValue(args, "--record-commands");
         string? playCommandsPath = GetOptionValue(args, "--play-commands");
         string? playtestReportPath = GetOptionValue(args, "--playtest-report");
         string? testerId = GetOptionValue(args, "--tester-id");
+        if (playtestSessionId is not null)
+        {
+            ValidatePlaytestSessionId(playtestSessionId);
+            if (recordReplayPath is not null || playReplayPath is not null ||
+                recordCommandsPath is not null || playCommandsPath is not null ||
+                playtestReportPath is not null || testerId is not null)
+                throw new ArgumentException(
+                    "--playtest is a complete session preset and cannot be combined with explicit recording options.");
+            string outputDirectory = Path.GetFullPath(playtestOutputPath ??
+                                                      Path.Combine(AppContext.BaseDirectory, "PlaytestData"));
+            recordCommandsPath = Path.Combine(outputDirectory, $"{playtestSessionId}.commands.json");
+            playtestReportPath = Path.Combine(outputDirectory, $"{playtestSessionId}.report.json");
+            if (File.Exists(recordCommandsPath) || File.Exists(playtestReportPath))
+                throw new IOException(
+                    $"Playtest session '{playtestSessionId}' already exists. Use a new tester id; evidence is never overwritten.");
+            testerId = playtestSessionId;
+        }
         if (recordReplayPath is not null && playReplayPath is not null)
             throw new ArgumentException("Use either --record-replay or --replay, not both.");
         if ((recordReplayPath is not null || playReplayPath is not null) && !scriptedBelief)
@@ -202,6 +241,44 @@ internal static class Program
             Console.WriteLine($"Gate audit saved: {Path.GetFullPath(outputPath)}");
         }
         return result.Passed ? 0 : 2;
+    }
+
+    private static void ValidatePlaytestSessionId(string value)
+    {
+        if (value.Length is < 1 or > 32 || !IsAsciiLetterOrDigit(value[0]))
+            throw new ArgumentException(
+                "Playtest tester id must be 1..32 ASCII characters and begin with a letter or digit.",
+                nameof(value));
+        for (int i = 1; i < value.Length; i++)
+        {
+            char character = value[i];
+            if (!IsAsciiLetterOrDigit(character) && character is not '-' and not '_')
+                throw new ArgumentException(
+                    "Playtest tester id may contain only ASCII letters, digits, '-' and '_'.",
+                    nameof(value));
+        }
+    }
+
+    private static bool IsAsciiLetterOrDigit(char value) =>
+        value is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9';
+
+    private static string PromptForPlaytestSessionId()
+    {
+        while (true)
+        {
+            Console.Write("Tester id: ");
+            string? value = Console.ReadLine();
+            if (value is null) throw new EndOfStreamException("No tester id was provided.");
+            try
+            {
+                ValidatePlaytestSessionId(value);
+                return value;
+            }
+            catch (ArgumentException exception)
+            {
+                Console.Error.WriteLine(exception.Message);
+            }
+        }
     }
 
     private static string? GetOptionValue(string[] args, string option)

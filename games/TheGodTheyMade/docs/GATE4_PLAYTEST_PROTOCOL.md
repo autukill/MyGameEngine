@@ -19,6 +19,18 @@ dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade
 
 测试员不应预先解释钟声、信仰公式、神兽 Q 表、湿遗迹或葬礼的设计答案。可以说明基本操作，但不能提示“正确路线”。
 
+## 分发盲测包
+
+主持人在干净工作区中生成 Windows x64 自包含压缩包：
+
+```powershell
+powershell -File games/TheGodTheyMade/tools/Build-PlaytestPackage.ps1
+```
+
+输出位于 `artifacts/playtest-package`，包含 ZIP、对应 SHA-256、`BUILD_INFO.txt`、完整 .NET 运行时、编译后内容包、`Start-Playtest.cmd` 和无剧透操作说明。构建脚本会运行发布版隐藏窗口烟测；工作区有未提交差异时默认拒绝打包，避免 commit 身份与二进制不一致。`-AllowDirty` 只用于本机探针，不能用于正式外部证据。
+
+测试员无需源码、SDK 或预装 .NET：解压后双击 `Start-Playtest.cmd`，输入主持人分配的唯一编号。游戏以 `--playtest` 预设自动把命令流和主报告写入同目录的 `PlaytestData`；相同编号已有任一证据文件时会拒绝覆盖。主持人回收整个 `PlaytestData`，核对压缩包 SHA-256 和 `BUILD_INFO.txt`，再完成访谈问卷。
+
 ## 每位玩家记录
 
 1. 是否能在不读内部数值的情况下解释至少一条村民信仰来自哪些实际事件。
@@ -35,6 +47,12 @@ dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade
 
 ```powershell
 dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj -- --record-commands artifacts/playtests/tester-01.commands.json --playtest-report artifacts/playtests/tester-01.report.json --tester-id tester-01
+```
+
+仓库内主持人也可用等价预设简化启动：
+
+```powershell
+dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj -- --playtest tester-01 --playtest-output artifacts/playtests
 ```
 
 会话结束后，`.commands.json` 包含固定 Tick 的降雨落点、水闸操作及被神兽学习系统接受的 Q/E 嘉许或制止；`.report.json` 包含终局、田地、信仰、壁画、神兽解释轨迹和四组状态 Hash，并预留七项人工问卷。报告中的问卷默认是 `null`，主持人必须根据测试员回答补录，程序不会推测玩家理解。

@@ -20,5 +20,13 @@
                       ReferenceOutputAssembly="false"
                       GlobalPropertiesToRemove="PublishAot;PublishTrimmed;PublishSingleFile;SelfContained;RuntimeIdentifier;RuntimeIdentifiers" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="PlaytestKit\Start-Playtest.cmd"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="Start-Playtest.cmd" />
+    <None Update="PlaytestKit\PLAYTEST_README.txt"
+          CopyToPublishDirectory="PreserveNewest"
+          TargetPath="PLAYTEST_README.txt" />
+  </ItemGroup>
   <Import Project="..\..\..\..\build\GameEngine.Content.targets" />
 </Project>
