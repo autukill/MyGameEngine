@@ -26,12 +26,26 @@ internal static class Program
                               args.Contains("--scripted-regression", StringComparer.Ordinal);
         string? recordReplayPath = GetOptionValue(args, "--record-replay");
         string? playReplayPath = GetOptionValue(args, "--replay");
+        string? recordCommandsPath = GetOptionValue(args, "--record-commands");
+        string? playCommandsPath = GetOptionValue(args, "--play-commands");
+        string? playtestReportPath = GetOptionValue(args, "--playtest-report");
+        string? testerId = GetOptionValue(args, "--tester-id");
         if (recordReplayPath is not null && playReplayPath is not null)
             throw new ArgumentException("Use either --record-replay or --replay, not both.");
         if ((recordReplayPath is not null || playReplayPath is not null) && !scriptedBelief)
             throw new ArgumentException(
                 "Replay v1 cannot encode dynamic pointer world positions. " +
                 "Use --scripted-regression with --record-replay/--replay.");
+        if (recordCommandsPath is not null && playCommandsPath is not null)
+            throw new ArgumentException("Use either --record-commands or --play-commands, not both.");
+        if ((recordReplayPath is not null || playReplayPath is not null) &&
+            (recordCommandsPath is not null || playCommandsPath is not null))
+            throw new ArgumentException("Replay Bundle and Gameplay Command Journal cannot be combined.");
+        MingzhongCommandJournal commandJournal = recordCommandsPath is not null
+            ? MingzhongCommandJournal.Record()
+            : playCommandsPath is not null
+                ? MingzhongCommandJournal.Play(MingzhongCommandRecordingFormat.Read(playCommandsPath))
+                : MingzhongCommandJournal.Disabled();
         var replayIdentity = new ReplayIdentity("the-god-they-made.mingzhong", "gate-4");
         ReplaySession? replay = recordReplayPath is not null
             ? ReplaySession.Record(replayIdentity)
@@ -45,6 +59,10 @@ internal static class Program
             IsVisible = !smoke,
             VSync = !smoke
         }).WithFixedUpdateRate(60d);
+        MingzhongWorldSimulation? sessionWorld = null;
+        BeliefSimulation? sessionBeliefs = null;
+        FamiliarLearning? sessionFamiliar = null;
+        MingzhongIslandScenario? sessionScenario = null;
 
         GameApplicationBuilder builder = GameApplication
             .Create(options)
@@ -72,6 +90,10 @@ internal static class Program
                 var beliefSimulation = new BeliefSimulation(MingzhongVillage.Roster);
                 var familiarLearning = new FamiliarLearning(0x4D494E475A484F4EUL);
                 var islandScenario = new MingzhongIslandScenario();
+                sessionWorld = worldSimulation;
+                sessionBeliefs = beliefSimulation;
+                sessionFamiliar = familiarLearning;
+                sessionScenario = islandScenario;
                 var world = new MingzhongWorldInstance(
                     context.TileMaps.Get(GameAssets.TileMaps.MingzhongWorld),
                     context.TileMapRenderer,
@@ -84,6 +106,7 @@ internal static class Program
                     beliefSimulation,
                     familiarLearning,
                     islandScenario,
+                    commandJournal,
                     context.Close,
                     smoke,
                     scriptedBelief,
@@ -129,6 +152,28 @@ internal static class Program
         {
             replay!.Save(recordReplayPath);
             Console.WriteLine($"Replay saved: {Path.GetFullPath(recordReplayPath)}");
+        }
+        if (recordCommandsPath is not null)
+        {
+            MingzhongCommandRecordingFormat.Write(
+                recordCommandsPath,
+                commandJournal.Snapshot(sessionWorld!.Tick));
+            Console.WriteLine($"Gameplay commands saved: {Path.GetFullPath(recordCommandsPath)}");
+        }
+        if (playtestReportPath is not null)
+        {
+            string reportTesterId = string.IsNullOrWhiteSpace(testerId)
+                ? Path.GetFileNameWithoutExtension(playtestReportPath)
+                : testerId;
+            PlaytestReportWriter.Write(
+                playtestReportPath,
+                reportTesterId,
+                sessionWorld!,
+                sessionBeliefs!,
+                sessionFamiliar!,
+                sessionScenario!,
+                commandJournal);
+            Console.WriteLine($"Playtest report saved: {Path.GetFullPath(playtestReportPath)}");
         }
     }
 

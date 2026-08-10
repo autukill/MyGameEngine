@@ -59,6 +59,10 @@ internal static class Program
         Run("Island no-input route remains completable", IslandNoInputRouteCompletes);
         Run("Wet ruin and funeral choice produce distinct mural", IslandChoicesProduceDistinctMural);
         Run("Island chapter deterministic and stable after completion", IslandChapterDeterministicAndStable);
+        Run("Gameplay command recording validates protocol", GameplayCommandRecordingValidatesProtocol);
+        Run("Gameplay command journal reproduces world", GameplayCommandJournalReproducesWorld);
+        Run("Gameplay command journal reproduces familiar feedback", GameplayCommandJournalReproducesFamiliarFeedback);
+        Run("Gameplay command playback rejects missed or divergent command", GameplayCommandPlaybackRejectsDivergence);
         Console.WriteLine($"TheGodTheyMade Simulation: {_passed} checks passed.");
     }
 
@@ -867,6 +871,126 @@ internal static class Program
         FamiliarLearning Familiar,
         MingzhongIslandScenario Scenario,
         ulong Hash);
+
+    private static void GameplayCommandRecordingValidatesProtocol()
+    {
+        ExpectThrows<ArgumentException>(() => new MingzhongCommandRecording(
+            5,
+            new[] { MingzhongCommand.Rain(6, new GridCell(1, 1)) }));
+        ExpectThrows<ArgumentException>(() => new MingzhongCommandRecording(
+            10,
+            new[]
+            {
+                MingzhongCommand.Rain(5, new GridCell(1, 1)),
+                MingzhongCommand.OpenGate(4)
+            }));
+        ExpectThrows<ArgumentException>(() => new MingzhongCommandRecording(
+            10,
+            new[] { MingzhongCommand.Rain(5, new GridCell(1, 1), 0) }));
+        var valid = new MingzhongCommandRecording(
+            20,
+            new[]
+            {
+                MingzhongCommand.Rain(2, new GridCell(29, 4)),
+                MingzhongCommand.OpenGate(2)
+            });
+        Check(valid.SchemaVersion == 1 && valid.Count == 2 && valid.EndTick == 20,
+            "Command recording should retain its explicit protocol and terminal tick.");
+    }
+
+    private static void GameplayCommandJournalReproducesWorld()
+    {
+        var recordedWorld = NewWorld();
+        MingzhongCommandJournal recorder = MingzhongCommandJournal.Record();
+        for (int i = 0; i < 400; i++)
+        {
+            if (recordedWorld.Tick == 2)
+            {
+                MingzhongCommand rain = MingzhongCommand.Rain(2, new GridCell(29, 4));
+                Check(recordedWorld.TryApply(rain), "Fixture rain should be accepted.");
+                recorder.RecordAccepted(rain);
+                MingzhongCommand gate = MingzhongCommand.OpenGate(2);
+                Check(recordedWorld.TryApply(gate), "Fixture gate command should be accepted.");
+                recorder.RecordAccepted(gate);
+            }
+            recordedWorld.AdvanceTick();
+        }
+
+        MingzhongCommandRecording recording = recorder.Snapshot(recordedWorld.Tick);
+        var replayedWorld = NewWorld();
+        var replayedFamiliar = new FamiliarLearning(0xC0FFEEUL);
+        MingzhongCommandJournal playback = MingzhongCommandJournal.Play(recording);
+        while (replayedWorld.Tick < recording.EndTick)
+        {
+            playback.ApplyCurrentTick(replayedWorld, replayedFamiliar);
+            replayedWorld.AdvanceTick();
+        }
+        Check(playback.IsPlaybackComplete && playback.PlaybackCursor == 2,
+            "Playback should consume both same-tick commands exactly once.");
+        Check(recordedWorld.ComputeStateHash() == replayedWorld.ComputeStateHash(),
+            "Final gameplay commands should reproduce the observable world without mouse pixels.");
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++) playback.ApplyCurrentTick(replayedWorld, replayedFamiliar);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated == 0, $"Completed command playback should allocate 0 B, allocated {allocated} B.");
+    }
+
+    private static void GameplayCommandPlaybackRejectsDivergence()
+    {
+        var missedWorld = NewWorld();
+        var missed = MingzhongCommandJournal.Play(new MingzhongCommandRecording(
+            10,
+            new[] { MingzhongCommand.OpenGate(2) }));
+        missedWorld.AdvanceTick();
+        missedWorld.AdvanceTick();
+        missedWorld.AdvanceTick();
+        var missedFamiliar = new FamiliarLearning(1);
+        ExpectThrows<InvalidOperationException>(() => missed.ApplyCurrentTick(missedWorld, missedFamiliar));
+
+        var divergentWorld = NewWorld();
+        divergentWorld.TryApply(MingzhongCommand.OpenGate(0));
+        var divergent = MingzhongCommandJournal.Play(new MingzhongCommandRecording(
+            1,
+            new[] { MingzhongCommand.OpenGate(0) }));
+        var divergentFamiliar = new FamiliarLearning(2);
+        ExpectThrows<InvalidOperationException>(() => divergent.ApplyCurrentTick(divergentWorld, divergentFamiliar));
+    }
+
+    private static void GameplayCommandJournalReproducesFamiliarFeedback()
+    {
+        var recordedFamiliar = new FamiliarLearning(0x515151UL);
+        var replayedFamiliar = new FamiliarLearning(0x515151UL);
+        recordedFamiliar.Demonstrate(FamiliarSituation.DryCropHoldingWater, FamiliarAction.PourWater, 0);
+        replayedFamiliar.Demonstrate(FamiliarSituation.DryCropHoldingWater, FamiliarAction.PourWater, 0);
+        Check(recordedFamiliar.TryChoose(
+                  FamiliarSituation.DryCropHoldingWater,
+                  FamiliarActionMask.PourWater,
+                  0,
+                  out _), "Recorded familiar should choose the demonstrated action.");
+        Check(replayedFamiliar.TryChoose(
+                  FamiliarSituation.DryCropHoldingWater,
+                  FamiliarActionMask.PourWater,
+                  0,
+                  out _), "Replayed familiar should begin from the same decision state.");
+
+        MingzhongCommand feedback = MingzhongCommand.PraiseFamiliar(1);
+        Check(recordedFamiliar.Reward(
+                  FamiliarRewardReason.PlayerPraise,
+                  FamiliarSituation.IdleVillage,
+                  ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
+                  feedback.Tick), "Fixture praise should be accepted.");
+        var recorder = MingzhongCommandJournal.Record();
+        recorder.RecordAccepted(feedback);
+
+        var replayedWorld = NewWorld();
+        replayedWorld.AdvanceTick();
+        MingzhongCommandJournal playback = MingzhongCommandJournal.Play(recorder.Snapshot(1));
+        Check(playback.ApplyCurrentTick(replayedWorld, replayedFamiliar) == 1,
+            "Playback should apply the recorded familiar feedback exactly once.");
+        Check(recordedFamiliar.ComputeStateHash() == replayedFamiliar.ComputeStateHash(),
+            "Familiar praise should reproduce the learned Q state and explanation trace.");
+    }
 
     private static void Run(string name, Action test)
     {

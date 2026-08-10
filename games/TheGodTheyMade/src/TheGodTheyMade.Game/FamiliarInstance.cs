@@ -78,18 +78,6 @@ internal sealed class FamiliarInstance : GameInstance
             }
         }
 
-        if (ActionPressed(GameInputs.PraiseFamiliar))
-            _learning.Reward(
-                FamiliarRewardReason.PlayerPraise,
-                FamiliarSituation.IdleVillage,
-                ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
-                _tick);
-        if (ActionPressed(GameInputs.StopFamiliar))
-            _learning.Reward(
-                FamiliarRewardReason.PlayerStop,
-                FamiliarSituation.IdleVillage,
-                ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
-                _tick);
         _tick++;
     }
 

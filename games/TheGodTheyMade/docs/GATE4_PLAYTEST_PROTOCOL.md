@@ -29,6 +29,24 @@ dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade
 6. 是否能用自己的话复述三联壁画，而不是只报告资源数字。
 7. 首次困惑、错误理解、卡住位置、退出原因和完成时间。
 
+## 盲测证据留档
+
+真实玩家会话使用 Gameplay Command Journal 记录被模拟接受的最终世界命令，而不是屏幕像素轨迹：
+
+```powershell
+dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj -- --record-commands artifacts/playtests/tester-01.commands.json --playtest-report artifacts/playtests/tester-01.report.json --tester-id tester-01
+```
+
+会话结束后，`.commands.json` 包含固定 Tick 的降雨落点、水闸操作及被神兽学习系统接受的 Q/E 嘉许或制止；`.report.json` 包含终局、田地、信仰、壁画、神兽解释轨迹和四组状态 Hash，并预留七项人工问卷。报告中的问卷默认是 `null`，主持人必须根据测试员回答补录，程序不会推测玩家理解。
+
+同一命令流可再次运行，验证动态世界结果而不依赖窗口坐标：
+
+```powershell
+dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj -- --play-commands artifacts/playtests/tester-01.commands.json --playtest-report artifacts/playtests/tester-01.replay.report.json --tester-id tester-01-replay
+```
+
+回放若遇到错过 Tick 或命令被拒绝会立即失败。命令流只证明最终 Gameplay 命令与模拟结果可复现，不记录镜头移动、鼠标像素路径、犹豫过程或玩家口述；这些仍由观察表和可选屏幕录像补充。
+
 自动确定性基线使用不依赖原始鼠标像素的固定命令脚本保存 Replay Bundle：
 
 ```powershell
@@ -36,7 +54,7 @@ dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade
 dotnet run --project games/TheGodTheyMade/src/TheGodTheyMade.Game/TheGodTheyMade.Game.csproj -- --smoke --scripted-regression --replay artifacts/regression.mgreplay
 ```
 
-当前 Replay v1 记录逻辑 Action/Axis 和 Gameplay State Hash，不记录原始鼠标位置；因此真实 Pointer 盲测另外记录观察表和可选屏幕录像，不能声称已生成完整交互 Replay。Pointer 最终命令的固定脚本已有自动回归。若真实长会话必须复现动态世界落点，下一边界应是版本化 Gameplay Command Stream，而不是把鼠标像素塞入逻辑按键协议。
+Replay v1 记录逻辑 Action/Axis 和 Gameplay State Hash，不记录原始鼠标位置；它继续用于固定脚本的引擎集成回归。真实 Pointer 盲测改用上述版本化 Gameplay Command Journal 复现动态世界落点，并另外保留观察表和可选屏幕录像。两者职责不同，不能把命令流声称为完整交互录像。
 
 ## Gate 通过条件
 

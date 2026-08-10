@@ -43,6 +43,7 @@ internal sealed class MingzhongWorldInstance : GameInstance
     private readonly BeliefSimulation _beliefs;
     private readonly FamiliarLearning _familiar;
     private readonly MingzhongIslandScenario _scenario;
+    private readonly MingzhongCommandJournal _commandJournal;
     private readonly bool _smoke;
     private readonly bool _scriptedBelief;
     private readonly bool _suppressRawInput;
@@ -64,6 +65,7 @@ internal sealed class MingzhongWorldInstance : GameInstance
         BeliefSimulation beliefs,
         FamiliarLearning familiar,
         MingzhongIslandScenario scenario,
+        MingzhongCommandJournal commandJournal,
         Action close,
         bool smoke,
         bool scriptedBelief,
@@ -79,10 +81,12 @@ internal sealed class MingzhongWorldInstance : GameInstance
         _beliefs = beliefs;
         _familiar = familiar;
         _scenario = scenario;
+        _commandJournal = commandJournal;
         _close = close;
         _smoke = smoke;
         _scriptedBelief = scriptedBelief;
-        _suppressRawInput = scriptedBelief || replayPlayback;
+        _suppressRawInput = scriptedBelief || replayPlayback ||
+                            commandJournal.Mode == MingzhongCommandJournalMode.Playback;
         ViewCulling = InstanceViewCullingMode.AlwaysVisible;
     }
 
@@ -115,6 +119,14 @@ internal sealed class MingzhongWorldInstance : GameInstance
             _previousPrimaryDown = primaryDown;
         }
 
+        _commandJournal.ApplyCurrentTick(_world, _familiar);
+        if (_commandJournal.Mode != MingzhongCommandJournalMode.Playback)
+        {
+            if (ActionPressed(GameInputs.PraiseFamiliar))
+                ApplyFamiliarFeedback(MingzhongCommand.PraiseFamiliar(_world.Tick));
+            if (ActionPressed(GameInputs.StopFamiliar))
+                ApplyFamiliarFeedback(MingzhongCommand.StopFamiliar(_world.Tick));
+        }
         if (_scriptedBelief && _world.Tick == 10)
             _world.TryApply(MingzhongCommand.RingBell(_world.Tick));
         if (_scriptedBelief && _world.Tick == 20)
@@ -130,6 +142,9 @@ internal sealed class MingzhongWorldInstance : GameInstance
         _steps++;
         if (_smoke && !_scriptedBelief && _steps >= 4) _close();
         if (_scriptedBelief && _world.Tick >= MingzhongVillage.TicksPerSecond) _close();
+        if (_commandJournal.Mode == MingzhongCommandJournalMode.Playback &&
+            _world.Tick >= _commandJournal.PlaybackEndTick)
+            _close();
     }
 
     public override void OnDraw(ISpriteBatch batch)
@@ -227,12 +242,30 @@ internal sealed class MingzhongWorldInstance : GameInstance
         GridCell cell = WorldToCell(world);
         if (GateBlocked && cell == MingzhongNavigation.GateBoulder)
         {
-            if (_world.TryApply(MingzhongCommand.OpenGate(_world.Tick)))
+            MingzhongCommand command = MingzhongCommand.OpenGate(_world.Tick);
+            if (_world.TryApply(command))
+            {
+                _commandJournal.RecordAccepted(command);
                 _navigation.SetBlocked(MingzhongNavigation.GateBoulder, false);
+            }
             return;
         }
 
-        _world.TryApply(MingzhongCommand.Rain(_world.Tick, cell));
+        MingzhongCommand rain = MingzhongCommand.Rain(_world.Tick, cell);
+        if (_world.TryApply(rain)) _commandJournal.RecordAccepted(rain);
+    }
+
+    private void ApplyFamiliarFeedback(in MingzhongCommand command)
+    {
+        FamiliarRewardReason reason = command.Kind == MingzhongCommandKind.PraiseFamiliar
+            ? FamiliarRewardReason.PlayerPraise
+            : FamiliarRewardReason.PlayerStop;
+        if (_familiar.Reward(
+                reason,
+                FamiliarSituation.IdleVillage,
+                ApeFamiliarBody.GetLegalActions(FamiliarSituation.IdleVillage),
+                command.Tick))
+            _commandJournal.RecordAccepted(command);
     }
 
     private void ConstrainCamera()

@@ -27,7 +27,9 @@ public enum MingzhongCommandKind
 {
     InvokeRain,
     OpenGate,
-    RingBell
+    RingBell,
+    PraiseFamiliar,
+    StopFamiliar
 }
 
 public readonly record struct MingzhongCommand(
@@ -44,6 +46,12 @@ public readonly record struct MingzhongCommand(
 
     public static MingzhongCommand RingBell(long tick) =>
         new(tick, MingzhongCommandKind.RingBell, MingzhongVillage.Bell, 0);
+
+    public static MingzhongCommand PraiseFamiliar(long tick) =>
+        new(tick, MingzhongCommandKind.PraiseFamiliar, default, 0);
+
+    public static MingzhongCommand StopFamiliar(long tick) =>
+        new(tick, MingzhongCommandKind.StopFamiliar, default, 0);
 }
 
 public readonly record struct FieldSnapshot(
@@ -113,6 +121,9 @@ public sealed class MingzhongWorldSimulation
     public int FieldCount => _fields.Length;
     public int ObservationCount => _globalCount;
     public ReadOnlySpan<WorldObservation> Observations => _globalLog.AsSpan(0, _globalCount);
+    public int AcceptedRainCommandCount { get; private set; }
+    public long? FirstRainTick { get; private set; }
+    public long? GateOpenedTick { get; private set; }
 
     public bool IsCellCoveredByRain(GridCell cell) =>
         IsRaining && DistanceSquared(_rainCenter, cell) <= _rainRadius * _rainRadius;
@@ -212,6 +223,9 @@ public sealed class MingzhongWorldSimulation
         Add(ref hash, (ulong)Canal, prime);
         Add(ref hash, (ulong)_rainTicksRemaining, prime);
         Add(ref hash, _nextEventId, prime);
+        Add(ref hash, (ulong)AcceptedRainCommandCount, prime);
+        Add(ref hash, FirstRainTick is null ? ulong.MaxValue : unchecked((ulong)FirstRainTick.Value), prime);
+        Add(ref hash, GateOpenedTick is null ? ulong.MaxValue : unchecked((ulong)GateOpenedTick.Value), prime);
         for (int i = 0; i < _fields.Length; i++)
         {
             Add(ref hash, _fields[i].Moisture, prime);
@@ -231,6 +245,8 @@ public sealed class MingzhongWorldSimulation
     {
         if (GodIntent <= 0 || IsRaining || radius is 0 or > 24) return false;
         GodIntent--;
+        AcceptedRainCommandCount++;
+        FirstRainTick ??= Tick;
         _intentRecoveryProgress = 0;
         _rainCenter = target;
         _rainRadius = radius;
@@ -243,6 +259,7 @@ public sealed class MingzhongWorldSimulation
     {
         if (Gate == GateState.Open) return false;
         Gate = GateState.Open;
+        GateOpenedTick = Tick;
         Publish(ObservationKind.GateOpened, "gate.mingzhong", null, MingzhongVillage.Gate);
         return true;
     }
