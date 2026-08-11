@@ -16,6 +16,7 @@ public sealed class ViewportController
     private float _observedZoom;
 
     internal bool UserInteractionStarted { get; private set; }
+    internal int ActivePointerCount { get; private set; }
     internal bool DragActive { get; set; }
     internal bool DragReleased { get; set; }
     internal Vector2 ReleasedVelocity { get; set; }
@@ -49,10 +50,17 @@ public sealed class ViewportController
             throw new ArgumentOutOfRangeException(nameof(deltaTime));
         DetectExternalCameraChange();
         UserInteractionStarted = false;
+        ActivePointerCount = 0;
         DragActive = false;
         DragReleased = false;
         ReleasedVelocity = Vector2.Zero;
         ZoomAnchor = null;
+        ReadOnlySpan<ViewportPointer> pointers = input.Pointers;
+        for (int i = 0; i < pointers.Length; i++)
+        {
+            if (pointers[i].IsDown && (pointers[i].IsInside || pointers[i].IsCaptured))
+                ActivePointerCount++;
+        }
         Plugins.Update(in input, deltaTime);
         DetectExternalCameraChange();
     }

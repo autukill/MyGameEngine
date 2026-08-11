@@ -2,6 +2,8 @@ namespace ViewportNavigation.Tests;
 
 using System.Numerics;
 using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Core.Domain.Input;
+using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ViewportNavigation;
 
@@ -12,9 +14,11 @@ internal static class Program
     private static int Main()
     {
         Run("Viewport geometry and revision", GeometryAndRevision);
+        Run("Unified pointer provider compatibility", PointerProviderCompatibility);
         Run("Plugin manager order and lifecycle", PluginManagerLifecycle);
         Run("Drag and frame-rate-independent deceleration", DragAndDeceleration);
         Run("Drag threshold and axis", DragThresholdAndAxis);
+        Run("Unified multi-pointer pinch and drag handoff", PinchBehavior);
         Run("Wheel anchor, smoothing, and reverse", WheelBehavior);
         Run("ClampZoom scale and visible-size constraints", ClampZoomBehavior);
         Run("Clamp bounds and underflow", ClampBehavior);
@@ -27,6 +31,18 @@ internal static class Program
             ? "=== All ViewportNavigation tests passed ==="
             : $"=== {_failures} ViewportNavigation test(s) FAILED ===");
         return _failures == 0 ? 0 : 1;
+    }
+
+    private static void PointerProviderCompatibility()
+    {
+        IInputProvider provider = new MouseOnlyInputProvider();
+        Check(provider.PointerCount == 1, "Legacy mouse providers expose one unified pointer");
+        PointerContact pointer = provider.GetPointer(0);
+        Check(pointer.Id == PointerId.Mouse && pointer.Kind == PointerKind.Mouse &&
+              pointer.IsDown && pointer.IsPrimary,
+            "The default adapter preserves mouse identity, position, and pressed state");
+        Near(new Vector2((float)pointer.Position.X, (float)pointer.Position.Y),
+            new Vector2(120f, 80f));
     }
 
     private static void GeometryAndRevision()
@@ -105,7 +121,7 @@ internal static class Program
         viewport.Plugins.Add(decelerate);
 
         const double dt = 1d / 60d;
-        viewport.Update(Frame(100f, 100f, down: true), dt);
+        viewport.Update(Frame(100f, 100f, down: true, pressed: true), dt);
         viewport.Update(Frame(160f, 100f, down: true), dt);
         Near(viewport.Position.X, -60f);
         viewport.Update(Frame(160f, 100f, down: false), dt);
@@ -140,11 +156,48 @@ internal static class Program
         var viewport = CreateViewport();
         viewport.Plugins.Add(new ViewportDragPlugin(
             new ViewportDragOptions(ViewportAxis.Horizontal, 10f)));
-        viewport.Update(Frame(100f, 100f, true), 1d / 60d);
+        viewport.Update(Frame(100f, 100f, true, pressed: true), 1d / 60d);
         viewport.Update(Frame(105f, 105f, true), 1d / 60d);
         Near(viewport.Position, Vector2.Zero);
         viewport.Update(Frame(120f, 140f, true), 1d / 60d);
         Near(viewport.Position, new Vector2(-15f, 0f));
+    }
+
+    private static void PinchBehavior()
+    {
+        var viewport = CreateViewport();
+        viewport.Plugins.Add(new ViewportDragPlugin(ViewportDragOptions.Default));
+        var pinch = new ViewportPinchPlugin(ViewportPinchOptions.Default);
+        viewport.Plugins.Add(pinch);
+
+        ViewportPointer[] started =
+        [
+            Touch(1, 200f, 200f, pressed: true),
+            Touch(2, 400f, 200f, pressed: true),
+        ];
+        viewport.Update(new ViewportInputFrame(started, Vector2.Zero, false, 0f), 1d / 60d);
+        Check(pinch.IsPinching, "Two routed touch contacts begin Pinch");
+
+        viewport.Camera.TryViewportToWorld(new Vector2(300f, 200f), out Vector2 before);
+        ViewportPointer[] expanded =
+        [
+            Touch(1, 150f, 220f),
+            Touch(2, 450f, 220f),
+        ];
+        viewport.Update(new ViewportInputFrame(expanded, Vector2.Zero, false, 0f), 1d / 60d);
+        Near(viewport.Zoom, 1.5f);
+        viewport.Camera.TryViewportToWorld(new Vector2(300f, 220f), out Vector2 after);
+        Near(before, after, 0.001f);
+
+        ViewportPointer[] oneRemaining = [Touch(1, 170f, 220f)];
+        viewport.Update(new ViewportInputFrame(oneRemaining, Vector2.Zero, false, 0f), 1d / 60d);
+        Check(!pinch.IsPinching, "Pinch ends when either captured contact disappears");
+        viewport.Update(new ViewportInputFrame(oneRemaining, Vector2.Zero, false, 0f), 1d / 60d);
+        float beforeDrag = viewport.Position.X;
+        ViewportPointer[] dragged = [Touch(1, 200f, 220f)];
+        viewport.Update(new ViewportInputFrame(dragged, Vector2.Zero, false, 0f), 1d / 60d);
+        Check(viewport.Position.X < beforeDrag,
+            "The remaining touch resumes Drag without requiring a synthetic release");
     }
 
     private static void WheelBehavior()
@@ -153,7 +206,7 @@ internal static class Program
         viewport.Plugins.Add(new ViewportWheelPlugin(ViewportWheelOptions.Default));
         Vector2 anchor = new(240f, 180f);
         viewport.Camera.TryViewportToWorld(anchor, out Vector2 before);
-        viewport.Update(new ViewportInputFrame(anchor, true, false, 1f), 1d / 60d);
+        viewport.Update(ScrollFrame(anchor, 1f), 1d / 60d);
         viewport.Camera.TryViewportToWorld(anchor, out Vector2 after);
         Near(viewport.Zoom, 1.1f);
         Near(before, after, 0.001f);
@@ -161,16 +214,16 @@ internal static class Program
         var smooth = CreateViewport();
         smooth.Plugins.Add(new ViewportWheelPlugin(
             new ViewportWheelOptions(0.1f, smoothFrames: 4)));
-        smooth.Update(new ViewportInputFrame(anchor, true, false, 1f), 1d / 60d);
+        smooth.Update(ScrollFrame(anchor, 1f), 1d / 60d);
         Check(smooth.Zoom > 1f && smooth.Zoom < 1.1f, "Smooth wheel uses intermediate zoom");
         for (int i = 0; i < 3; i++)
-            smooth.Update(new ViewportInputFrame(anchor, true, false, 0f), 1d / 60d);
+            smooth.Update(ScrollFrame(anchor, 0f), 1d / 60d);
         Near(smooth.Zoom, 1.1f);
 
         var reverse = CreateViewport();
         reverse.Plugins.Add(new ViewportWheelPlugin(
             new ViewportWheelOptions(reverse: true)));
-        reverse.Update(new ViewportInputFrame(anchor, true, false, 1f), 1d / 60d);
+        reverse.Update(ScrollFrame(anchor, 1f), 1d / 60d);
         Check(reverse.Zoom < 1f, "Reverse wheel flips zoom direction");
     }
 
@@ -229,6 +282,7 @@ internal static class Program
     {
         ViewportNavigationConfiguration configuration = new ViewportNavigationBuilder()
             .Drag()
+            .Pinch()
             .Wheel(new ViewportWheelOptions(smoothFrames: 3))
             .Decelerate()
             .ClampZoom(new ViewportClampZoomOptions(maxWidth: 12_000f, maxHeight: 12_000f))
@@ -236,8 +290,9 @@ internal static class Program
             .Build();
         ViewportController viewport = configuration.CreateController(
             new Camera2D(new Vector2(1_200f, 800f)));
-        Check(viewport.Plugins.Count == 5 &&
+        Check(viewport.Plugins.Count == 6 &&
               viewport.Plugins.Get<ViewportDragPlugin>(ViewportPluginKeys.Drag) is not null &&
+              viewport.Plugins.Get<ViewportPinchPlugin>(ViewportPluginKeys.Pinch) is not null &&
               viewport.Plugins.Get<ViewportClampPlugin>(ViewportPluginKeys.Clamp) is not null,
             "Builder creates the desktop golden plugin chain");
         Near(viewport.Zoom, 1f);
@@ -246,6 +301,7 @@ internal static class Program
     private static void Validation()
     {
         Throws<ArgumentOutOfRangeException>(() => new ViewportWheelOptions(percent: 0f));
+        Throws<ArgumentOutOfRangeException>(() => new ViewportPinchOptions(zoomSpeed: 0f));
         Throws<ArgumentOutOfRangeException>(() => new ViewportDecelerateOptions(friction: 1f));
         Throws<ArgumentException>(() => new ViewportClampZoomOptions(
             minWidth: 100f, maxWidth: 50f));
@@ -278,13 +334,76 @@ internal static class Program
             allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         }
         Check(allocated == 0, $"Stable Viewport updates allocate 0 B, actual {allocated:N0} B");
+
+        var touchViewport = CreateViewport();
+        touchViewport.Plugins.Add(new ViewportPinchPlugin(ViewportPinchOptions.Default));
+        Span<ViewportPointer> touches = stackalloc ViewportPointer[2];
+        touches[0] = Touch(1, 200f, 200f, pressed: true);
+        touches[1] = Touch(2, 400f, 200f, pressed: true);
+        var start = new ViewportInputFrame(touches, Vector2.Zero, false, 0f);
+        touchViewport.Update(in start, 1d / 60d);
+        for (int i = 0; i < 256; i++)
+        {
+            float edge = (i & 1) == 0 ? 400f : 401f;
+            touches[0] = Touch(1, 200f, 200f);
+            touches[1] = Touch(2, edge, 200f);
+            var frame = new ViewportInputFrame(touches, Vector2.Zero, false, 0f);
+            touchViewport.Update(in frame, 1d / 60d);
+        }
+        before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 10_000; i++)
+        {
+            float edge = (i & 1) == 0 ? 400f : 401f;
+            touches[0] = Touch(1, 200f, 200f);
+            touches[1] = Touch(2, edge, 200f);
+            var frame = new ViewportInputFrame(touches, Vector2.Zero, false, 0f);
+            touchViewport.Update(in frame, 1d / 60d);
+        }
+        allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated == 0,
+            $"Stable multi-pointer Pinch updates allocate 0 B, actual {allocated:N0} B");
     }
 
     private static ViewportController CreateViewport(float width = 800f, float height = 600f) =>
         new(new Camera2D(new Vector2(width, height)));
 
-    private static ViewportInputFrame Frame(float x, float y, bool down) =>
-        new(new Vector2(x, y), true, down, 0f);
+    private static ViewportInputFrame Frame(
+        float x,
+        float y,
+        bool down,
+        bool pressed = false)
+    {
+        ViewportPointer[] pointers =
+        [
+            new ViewportPointer(
+                PointerId.Mouse,
+                PointerKind.Mouse,
+                new Vector2(x, y),
+                isInside: true,
+                isCaptured: down,
+                down,
+                isPrimary: true,
+                wasPressed: pressed),
+        ];
+        return new ViewportInputFrame(pointers, new Vector2(x, y), true, 0f);
+    }
+
+    private static ViewportInputFrame ScrollFrame(Vector2 position, float delta) =>
+        new(ReadOnlySpan<ViewportPointer>.Empty, position, true, delta);
+
+    private static ViewportPointer Touch(
+        long id,
+        float x,
+        float y,
+        bool pressed = false) => new(
+            new PointerId(id),
+            PointerKind.Touch,
+            new Vector2(x, y),
+            isInside: true,
+            isCaptured: true,
+            isDown: true,
+            isPrimary: id == 1,
+            wasPressed: pressed);
 
     private static void Run(string name, Action test)
     {
@@ -331,5 +450,13 @@ internal static class Program
             ViewportController controller,
             in ViewportInputFrame input,
             double deltaTime) => log.Add(Key);
+    }
+
+    private sealed class MouseOnlyInputProvider : IInputProvider
+    {
+        public Vector2D MousePosition => new(120, 80);
+        public float MouseScrollDelta => 0f;
+        public bool IsKeyDown(InputKey key) => false;
+        public bool IsMouseButtonDown(MouseButton button) => button == MouseButton.Left;
     }
 }

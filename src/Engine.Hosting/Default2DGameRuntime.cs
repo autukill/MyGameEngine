@@ -33,6 +33,7 @@ using GameEngine.Features.TransformHierarchy.Gameplay;
 internal sealed class Default2DGameRuntime : IDisposable
 {
     private const string StencilWhiteTextureName = "__engine.hosting.stencil-white";
+    private const int MaximumViewportPointers = 16;
 
     private readonly EngineWindow _window;
     private readonly GameApplicationPlan _plan;
@@ -71,9 +72,9 @@ internal sealed class Default2DGameRuntime : IDisposable
     private LogicalInputPlayback? _inputPlayback;
     private GameplayStateRecorder? _stateRecorder;
     private GameplayStateVerifier? _stateVerifier;
-    private bool _viewportPrimaryDown;
-    private RenderViewRef? _viewportCapturedView;
-    private ViewportSlotRef? _viewportCapturedSlot;
+    private readonly HashSet<PointerId> _viewportDownPointers = [];
+    private readonly Dictionary<PointerId, ViewportPointerCapture> _viewportPointerCaptures = [];
+    private readonly List<PointerId> _viewportReleasedPointers = [];
     private bool _disposed;
 
     public Default2DGameContext Context { get; private set; } = null!;
@@ -147,40 +148,106 @@ internal sealed class Default2DGameRuntime : IDisposable
         }
         if (!anyNavigation) return;
 
-        var mouse = _window.Input.MousePosition;
-        bool hasTopmost = Context.TryScreenToView(mouse, out ViewportHit topmost);
-        bool primaryDown = _window.Input.IsMouseButtonDown(
-            GameEngine.Core.Domain.Input.MouseButton.Left);
-        bool pressed = primaryDown && !_viewportPrimaryDown;
-        if (pressed && hasTopmost)
+        IInputProvider pointerInput = _window.Input;
+        int pointerCount = pointerInput.PointerCount;
+        if (pointerCount < 0 || pointerCount > MaximumViewportPointers)
+            throw new InvalidOperationException(
+                $"Viewport navigation supports between 0 and {MaximumViewportPointers} pointers.");
+        Span<PointerContact> contacts = stackalloc PointerContact[pointerCount];
+        Span<bool> wasPressed = stackalloc bool[pointerCount];
+        for (int i = 0; i < pointerCount; i++)
         {
-            _viewportCapturedView = topmost.View;
-            _viewportCapturedSlot = topmost.Slot;
+            PointerContact contact = pointerInput.GetPointer(i);
+            for (int j = 0; j < i; j++)
+            {
+                if (contacts[j].Id == contact.Id)
+                    throw new InvalidOperationException(
+                        $"Input provider returned duplicate pointer '{contact.Id}'.");
+            }
+            contacts[i] = contact;
+            if (!contact.IsDown) continue;
+            wasPressed[i] = _viewportDownPointers.Add(contact.Id);
+            if (!wasPressed[i] ||
+                !Context.TryScreenToView(contact.Position, out ViewportHit pressedHit) ||
+                Context.GetRenderView(pressedHit.View).Navigation is null)
+            {
+                continue;
+            }
+            _viewportPointerCaptures[contact.Id] = new ViewportPointerCapture(
+                pressedHit.View,
+                pressedHit.Slot);
         }
+
+        _viewportReleasedPointers.Clear();
+        foreach (PointerId down in _viewportDownPointers)
+        {
+            if (!ContainsDownPointer(contacts, down)) _viewportReleasedPointers.Add(down);
+        }
+        for (int i = 0; i < _viewportReleasedPointers.Count; i++)
+            _viewportDownPointers.Remove(_viewportReleasedPointers[i]);
+
+        var mouse = _window.Input.MousePosition;
+        bool hasScrollTarget = Context.TryScreenToView(mouse, out ViewportHit scrollHit);
         float scroll = _window.Input.MouseScrollDelta;
+        Span<GameEngine.Features.ViewportNavigation.ViewportPointer> routedPointers =
+            stackalloc GameEngine.Features.ViewportNavigation.ViewportPointer[pointerCount];
         for (int i = 0; i < _renderViews.Count; i++)
         {
             RenderView view = _renderViews[i];
             if (view.Navigation is not { } navigation) continue;
-            bool inside = hasTopmost && topmost.View == view.Ref;
-            var viewPosition = inside
-                ? topmost.ViewPosition
-                : default;
-            if (_viewportCapturedView == view.Ref && _viewportCapturedSlot is { } capturedSlot)
-                Context.MapScreenToViewportPosition(mouse, capturedSlot, out viewPosition);
+            for (int pointerIndex = 0; pointerIndex < pointerCount; pointerIndex++)
+            {
+                PointerContact contact = contacts[pointerIndex];
+                bool captured = _viewportPointerCaptures.TryGetValue(
+                    contact.Id,
+                    out ViewportPointerCapture capture) && capture.View == view.Ref;
+                bool hasHit = Context.TryScreenToView(contact.Position, out ViewportHit hit);
+                bool inside = hasHit && hit.View == view.Ref &&
+                    (!_viewportPointerCaptures.TryGetValue(contact.Id, out ViewportPointerCapture owner) ||
+                     owner.View == view.Ref);
+                Vector2D position = inside ? hit.ViewPosition : default;
+                if (captured)
+                    Context.MapScreenToViewportPosition(contact.Position, capture.Slot, out position);
+                routedPointers[pointerIndex] = new GameEngine.Features.ViewportNavigation.ViewportPointer(
+                    contact.Id,
+                    contact.Kind,
+                    new Vector2((float)position.X, (float)position.Y),
+                    inside,
+                    captured,
+                    contact.IsDown,
+                    contact.IsPrimary,
+                    wasPressed[pointerIndex]);
+            }
+
+            bool scrollInside = hasScrollTarget && scrollHit.View == view.Ref;
+            Vector2D scrollPosition = scrollInside ? scrollHit.ViewPosition : default;
             var input = new GameEngine.Features.ViewportNavigation.ViewportInputFrame(
-                new System.Numerics.Vector2((float)viewPosition.X, (float)viewPosition.Y),
-                inside,
-                primaryDown,
-                inside ? scroll : 0f);
+                routedPointers,
+                new Vector2((float)scrollPosition.X, (float)scrollPosition.Y),
+                scrollInside,
+                scrollInside ? scroll : 0f);
             navigation.Update(in input, deltaTime);
         }
-        if (!primaryDown)
+
+        for (int i = 0; i < pointerCount; i++)
         {
-            _viewportCapturedView = null;
-            _viewportCapturedSlot = null;
+            if (contacts[i].IsDown) continue;
+            _viewportDownPointers.Remove(contacts[i].Id);
+            _viewportPointerCaptures.Remove(contacts[i].Id);
         }
-        _viewportPrimaryDown = primaryDown;
+        for (int i = 0; i < _viewportReleasedPointers.Count; i++)
+            _viewportPointerCaptures.Remove(_viewportReleasedPointers[i]);
+    }
+
+    private static bool ContainsDownPointer(
+        ReadOnlySpan<PointerContact> contacts,
+        PointerId id)
+    {
+        for (int i = 0; i < contacts.Length; i++)
+        {
+            if (contacts[i].Id == id && contacts[i].IsDown) return true;
+        }
+        return false;
     }
 
     public void Draw() => _pipeline.Execute(new RenderPassContext(
@@ -236,6 +303,10 @@ internal sealed class Default2DGameRuntime : IDisposable
             }
         }
     }
+
+    private readonly record struct ViewportPointerCapture(
+        RenderViewRef View,
+        ViewportSlotRef Slot);
 
     private void Initialize()
     {

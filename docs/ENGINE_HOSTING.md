@@ -142,6 +142,7 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 .UseDefault2DRenderer(renderer => renderer
     .UseInteractiveViewport(viewport => viewport
         .Drag()
+        .Pinch()
         .Wheel()
         .Decelerate()
         .ClampZoom(new ViewportClampZoomOptions(maxWidth: 12_000, maxHeight: 12_000))
@@ -154,7 +155,7 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 
 Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后执行。Context 提供：
 
-- `Scene`、主 `Camera`、`RenderViews/GetRenderView/GetCameraFollow` 和当前 `Window`。
+- `Scene`、主 `Camera`、`RenderViews/GetRenderView/GetCameraFollow/GetViewportNavigation` 和当前 `Window`。
 - `Viewports`、`TryScreenToView/TryScreenToWorld` 与 `CaptureViewportDiagnostics()`，用于布局感知的输入和诊断。
 - `Textures`、`Sprites`、`Animations`、共享 `TextRuntime` 与可选 `Content` 包租约。
 - `SceneAudio` 默认追踪并在 Scene 结束时停止 SFX/音乐；`Audio` 保留为显式跨 Scene 的全局入口。

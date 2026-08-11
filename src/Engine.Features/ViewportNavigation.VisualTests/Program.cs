@@ -26,6 +26,7 @@ internal static class Program
     private static SceneAggregate _scene = null!;
     private static bool _smoke;
     private static int _smokeSteps;
+    private static bool _pointerDown;
 
     private static void Main(string[] args)
     {
@@ -55,6 +56,7 @@ internal static class Program
         _camera = new Camera2D(new Vector2(_window.Width, _window.Height));
         _viewport = new ViewportNavigationBuilder()
             .Drag()
+            .Pinch()
             .Wheel(new ViewportWheelOptions(smoothFrames: 6))
             .Decelerate()
             .ClampZoom(new ViewportClampZoomOptions(
@@ -77,12 +79,24 @@ internal static class Program
         Vector2D mouse = _window.Input.MousePosition;
         bool inside = mouse.X >= 0 && mouse.Y >= 0 &&
                       mouse.X < _window.Width && mouse.Y < _window.Height;
-        var input = new ViewportInputFrame(
+        bool pointerDown = _window.Input.IsMouseButtonDown(MouseButton.Left);
+        Span<ViewportPointer> pointers = stackalloc ViewportPointer[1];
+        pointers[0] = new ViewportPointer(
+            PointerId.Mouse,
+            PointerKind.Mouse,
             new Vector2((float)mouse.X, (float)mouse.Y),
             inside,
-            _window.Input.IsMouseButtonDown(MouseButton.Left),
+            isCaptured: pointerDown,
+            pointerDown,
+            isPrimary: true,
+            wasPressed: pointerDown && !_pointerDown);
+        var input = new ViewportInputFrame(
+            pointers,
+            new Vector2((float)mouse.X, (float)mouse.Y),
+            inside,
             _window.Input.MouseScrollDelta);
         _viewport.Update(in input, deltaTime);
+        _pointerDown = pointerDown;
         _camera.Update(deltaTime);
         _scene.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
         _scene.PerformStep(deltaTime);

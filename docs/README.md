@@ -28,7 +28,7 @@
 - [Gameplay 空间查询基准](GAMEPLAY_QUERY_PERFORMANCE.md)：线性扫描测量方法、当前基线和 Spatial Hash 引入条件。
 - [Camera 与 Viewport 当前边界](CAMERA_VIEWPORT_STATUS.md)：单主视图现状、底层多视图能力和声明式 View 后续边界。
 - [Camera 跟随、Dead Zone、边界与震屏](CAMERA_FOLLOWING.md)：每 View 独立控制器、平滑参数、世界约束和可叠加震屏请求。
-- [Interactive Viewport](INTERACTIVE_VIEWPORT.md)：类 pixi-viewport 的 Drag/Wheel/Decelerate/ClampZoom/Clamp、每 RenderView 输入路由、Snapshot 与 Chunk Streaming 边界。
+- [Interactive Viewport](INTERACTIVE_VIEWPORT.md)：统一 Mouse/Touch/Pen Pointer，以及 Pinch/Drag/Wheel/Decelerate/ClampZoom/Clamp、每 RenderView 输入路由、Snapshot 与 Chunk Streaming 边界。
 - [SceneAggregate 生命周期性能](SCENE_LIFECYCLE_PERFORMANCE.md)：可复用快照、零稳态帧分配、阶段可见性与 Release 基准。
 - [Gameplay 强类型状态机](GAMEPLAY_STATE_MACHINE.md)：Enter/Step/Exit、确定性切换、时间域继承和零稳态分配边界。
 - [Sprite 碰撞 Authoring 后续需求](SPRITE_COLLISION_REQUIREMENTS.md)：逐帧多区域、Polygon/Alpha Mask、查询分层与动画帧一致性；当前明确延后。

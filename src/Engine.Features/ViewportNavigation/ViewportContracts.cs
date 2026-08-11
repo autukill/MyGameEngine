@@ -2,6 +2,7 @@ namespace GameEngine.Features.ViewportNavigation;
 
 using System.Numerics;
 using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Core.Domain.Input;
 
 public enum ViewportAxis
 {
@@ -29,36 +30,106 @@ public enum ViewportChangeKind
     Programmatic = 0,
     Resize = 1,
     Drag = 2,
-    Wheel = 3,
-    Decelerate = 4,
-    ClampZoom = 5,
-    Clamp = 6,
+    Pinch = 3,
+    Wheel = 4,
+    Decelerate = 5,
+    ClampZoom = 6,
+    Clamp = 7,
 }
 
-/// <summary>One input sample in Render View pixel coordinates.</summary>
-public readonly record struct ViewportInputFrame
+/// <summary>One pointer mapped into Render View pixel coordinates.</summary>
+public readonly record struct ViewportPointer
 {
-    public static ViewportInputFrame Empty { get; } = new(Vector2.Zero, false, false, 0f);
+    public PointerId Id { get; }
+    public PointerKind Kind { get; }
+    public Vector2 Position { get; }
+    public bool IsInside { get; }
+    public bool IsCaptured { get; }
+    public bool IsDown { get; }
+    public bool IsPrimary { get; }
+    public bool WasPressed { get; }
 
-    public Vector2 PointerPosition { get; }
-    public bool IsPointerInside { get; }
-    public bool PrimaryDown { get; }
+    public ViewportPointer(
+        PointerId id,
+        PointerKind kind,
+        Vector2 position,
+        bool isInside,
+        bool isCaptured,
+        bool isDown,
+        bool isPrimary = false,
+        bool wasPressed = false)
+    {
+        if (!Enum.IsDefined(kind)) throw new ArgumentOutOfRangeException(nameof(kind));
+        if (!float.IsFinite(position.X) || !float.IsFinite(position.Y))
+            throw new ArgumentOutOfRangeException(nameof(position));
+        if (wasPressed && !isDown)
+            throw new ArgumentException("A newly pressed pointer must be down.", nameof(wasPressed));
+        Id = id;
+        Kind = kind;
+        Position = position;
+        IsInside = isInside;
+        IsCaptured = isCaptured;
+        IsDown = isDown;
+        IsPrimary = isPrimary;
+        WasPressed = wasPressed;
+    }
+}
+
+/// <summary>
+/// Allocation-free multi-pointer input sample in Render View pixel coordinates. The span is valid
+/// only for the synchronous <see cref="ViewportController.Update"/> call.
+/// </summary>
+public readonly ref struct ViewportInputFrame
+{
+    private readonly ReadOnlySpan<ViewportPointer> _pointers;
+
+    public static ViewportInputFrame Empty => new(
+        ReadOnlySpan<ViewportPointer>.Empty,
+        Vector2.Zero,
+        false,
+        0f);
+
+    public ReadOnlySpan<ViewportPointer> Pointers => _pointers;
+    public int PointerCount => _pointers.Length;
+    public Vector2 ScrollPosition { get; }
+    public bool IsScrollInside { get; }
     public float ScrollDelta { get; }
 
     public ViewportInputFrame(
-        Vector2 pointerPosition,
-        bool isPointerInside,
-        bool primaryDown,
+        ReadOnlySpan<ViewportPointer> pointers,
+        Vector2 scrollPosition,
+        bool isScrollInside,
         float scrollDelta)
     {
-        if (!float.IsFinite(pointerPosition.X) || !float.IsFinite(pointerPosition.Y))
-            throw new ArgumentOutOfRangeException(nameof(pointerPosition));
+        if (!float.IsFinite(scrollPosition.X) || !float.IsFinite(scrollPosition.Y))
+            throw new ArgumentOutOfRangeException(nameof(scrollPosition));
         if (!float.IsFinite(scrollDelta))
             throw new ArgumentOutOfRangeException(nameof(scrollDelta));
-        PointerPosition = pointerPosition;
-        IsPointerInside = isPointerInside;
-        PrimaryDown = primaryDown;
+        for (int i = 0; i < pointers.Length; i++)
+        {
+            for (int j = i + 1; j < pointers.Length; j++)
+            {
+                if (pointers[i].Id == pointers[j].Id)
+                    throw new ArgumentException(
+                        $"Pointer '{pointers[i].Id}' appears more than once.", nameof(pointers));
+            }
+        }
+        _pointers = pointers;
+        ScrollPosition = scrollPosition;
+        IsScrollInside = isScrollInside;
         ScrollDelta = scrollDelta;
+    }
+
+    public bool TryGetPointer(PointerId id, out ViewportPointer pointer)
+    {
+        for (int i = 0; i < _pointers.Length; i++)
+        {
+            if (_pointers[i].Id != id) continue;
+            pointer = _pointers[i];
+            return true;
+        }
+        pointer = default;
+        return false;
     }
 }
 
@@ -124,6 +195,36 @@ public readonly record struct ViewportWheelOptions
         SmoothFrames = smoothFrames;
         InterruptOnPointerDown = interruptOnPointerDown;
         Reverse = reverse;
+    }
+}
+
+public readonly record struct ViewportPinchOptions
+{
+    public static ViewportPinchOptions Default => new(1f, 1f, true, 2f);
+
+    public float ZoomSpeed { get; }
+    public float PanFactor { get; }
+    public bool EnablePan { get; }
+    public float MinimumDistancePixels { get; }
+
+    public ViewportPinchOptions() : this(1f, 1f, true, 2f) { }
+
+    public ViewportPinchOptions(
+        float zoomSpeed = 1f,
+        float panFactor = 1f,
+        bool enablePan = true,
+        float minimumDistancePixels = 2f)
+    {
+        if (!float.IsFinite(zoomSpeed) || zoomSpeed <= 0f || zoomSpeed > 8f)
+            throw new ArgumentOutOfRangeException(nameof(zoomSpeed));
+        if (!float.IsFinite(panFactor) || panFactor < 0f || panFactor > 8f)
+            throw new ArgumentOutOfRangeException(nameof(panFactor));
+        if (!float.IsFinite(minimumDistancePixels) || minimumDistancePixels <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(minimumDistancePixels));
+        ZoomSpeed = zoomSpeed;
+        PanFactor = panFactor;
+        EnablePan = enablePan;
+        MinimumDistancePixels = minimumDistancePixels;
     }
 }
 

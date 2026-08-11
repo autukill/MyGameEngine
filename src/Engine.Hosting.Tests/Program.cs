@@ -166,6 +166,7 @@ internal static class Program
                     ViewportRect.LeftHalf,
                     navigation: viewport => viewport
                         .Drag()
+                        .Pinch()
                         .Wheel(new ViewportWheelOptions(smoothFrames: 4))
                         .Decelerate()
                         .ClampZoom(new ViewportClampZoomOptions(
@@ -180,6 +181,7 @@ internal static class Program
             interactiveViewport.Renderer.RenderViews![0].Navigation;
         Check(navigation is not null &&
               navigation.Drag == ViewportDragOptions.Default &&
+              navigation.Pinch == ViewportPinchOptions.Default &&
               navigation.Wheel?.SmoothFrames == 4 &&
               navigation.Decelerate == ViewportDecelerateOptions.Default &&
               navigation.ClampZoom?.MaxWidth == 12_000f &&
@@ -190,6 +192,7 @@ internal static class Program
         var singleInteractiveViewport = GameApplication.Create()
             .UseDefault2DRenderer(renderer => renderer.UseInteractiveViewport(viewport => viewport
                 .Drag()
+                .Pinch()
                 .Wheel()
                 .Decelerate()
                 .Clamp(new ViewportClampOptions(
@@ -198,6 +201,7 @@ internal static class Program
             .BuildPlan();
         Check(singleInteractiveViewport.Renderer.RenderViews is null &&
               singleInteractiveViewport.Renderer.MainNavigation?.Drag is not null &&
+              singleInteractiveViewport.Renderer.MainNavigation?.Pinch is not null &&
               singleInteractiveViewport.Renderer.MainNavigation?.Clamp is not null,
             "One main Camera enables interactive Viewport navigation without fake multi-View setup");
     }
@@ -570,6 +574,9 @@ internal static class Program
         CheckThrows<InvalidOperationException>(
             () => playback.IsKeyDown(InputKey.Space),
             "Replay mode rejects physical key queries instead of silently diverging");
+        CheckThrows<InvalidOperationException>(
+            () => _ = playback.PointerCount,
+            "Replay mode rejects raw Pointer queries instead of silently diverging");
         CheckThrows<InvalidOperationException>(
             () => recorder.BeginStep(4, map, physical),
             "Recorder rejects a non-contiguous simulation Tick");

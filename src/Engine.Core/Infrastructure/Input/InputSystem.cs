@@ -97,6 +97,20 @@ public sealed class InputSystem : IInputProvider, IDisposable
     public bool IsMouseButtonDown(DomainMouseButton button) =>
         _mouse is not null && _mouse.IsButtonPressed(ToSilkButton(button));
 
+    public int PointerCount => _mouse is null ? 0 : 1;
+
+    public PointerContact GetPointer(int index)
+    {
+        if (_mouse is null || index != 0)
+            throw new ArgumentOutOfRangeException(nameof(index));
+        return new PointerContact(
+            PointerId.Mouse,
+            PointerKind.Mouse,
+            _mousePosition,
+            IsMouseButtonDown(DomainMouseButton.Left),
+            isPrimary: true);
+    }
+
     // ============ 枚举映射 ============
 
     private static InputKey ToInputKey(SilkKey key) => key switch

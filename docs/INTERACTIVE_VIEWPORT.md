@@ -1,6 +1,6 @@
 # Interactive Viewport 使用与实现边界
 
-`Engine.Features.ViewportNavigation` 为每台 `Camera2D` 提供可组合的地图浏览行为。第一阶段以 pixi-viewport 的成熟功能形状为参考，完成桌面端最常用的黄金组合：拖拽、鼠标锚点滚轮缩放、惯性、缩放限制和世界边界限制。
+`Engine.Features.ViewportNavigation` 为每台 `Camera2D` 提供可组合的地图浏览行为。当前以 pixi-viewport 的成熟功能形状为参考，完成拖拽、双指 Pinch/平移、鼠标锚点滚轮缩放、惯性、缩放限制和世界边界限制。
 
 它不加载地图、不创建 Sprite，也不拥有 Texture。Chunk Streaming、LOD 和资源生命周期是读取 `ViewportSnapshot` 的后续独立消费者。
 
@@ -20,6 +20,7 @@ GameApplication.Create(windowOptions)
     .UseDefault2DRenderer(renderer => renderer
         .UseInteractiveViewport(viewport => viewport
             .Drag()
+            .Pinch()
             .Wheel(new ViewportWheelOptions(smoothFrames: 6))
             .Decelerate()
             .ClampZoom(new ViewportClampZoomOptions(
@@ -47,23 +48,32 @@ Viewport 导航属于表现层交互，直接采样窗口指针，不进入 Game
 renderer.UseRenderViews(views => views
     .ConfigureMain(
         ViewportRect.LeftHalf,
-        navigation: viewport => viewport.Drag().Wheel().Decelerate())
+        navigation: viewport => viewport.Drag().Pinch().Wheel().Decelerate())
     .Add(
         "editor.preview",
         ViewportRect.RightHalf,
         navigation: viewport => viewport
             .Drag()
+            .Pinch()
             .Wheel()
             .Clamp(new ViewportClampOptions(world))));
 ```
 
 同一 Render View 不能同时声明 `CameraFollowController` 和 Interactive Viewport，因为两者都会拥有 Camera 位置。组合根会在创建窗口前拒绝这种冲突。
 
+## 统一 Pointer 输入边界
+
+`IInputProvider` 的 `PointerCount/GetPointer(index)` 是平台无关边界。`PointerContact` 包含稳定 `PointerId`、`PointerKind.Mouse/Touch/Pen`、屏幕位置、按下状态和 Primary 标记。已有只实现 Mouse API 的 Provider 不需要修改；默认接口实现会把左键映射为 `PointerId.Mouse`。当前 Silk.NET 桌面后端显式提供这一 Mouse Pointer，未来 Android/触控窗口后端直接返回多个 Touch Contact，Viewport 与 Pinch 不需要再修改。
+
+Provider 可以在释放帧保留 `IsDown=false` 的 Contact，也可以立即移除 Contact；Hosting 会比较稳定 ID 并把两种形状都解释为释放。Pointer 按下时捕获到最上层命中的 Viewport 槽位，离开槽位或与其他 View 重叠后仍使用原槽位坐标，直到释放。不同 Pointer 可以同时被不同 Render View 捕获，不会误组成跨 View Pinch。
+
 ## 核心语义
 
 - `ViewportController` 只拥有导航状态和插件，不拥有 Scene、RenderTarget 或地图内容。
 - `Center`、`MoveCenter`、`MoveCorner`、`FitWidth`、`FitHeight`、`FitWorld` 和 `SetZoomAt` 使用世界/Render View 像素坐标。
 - `SetZoomAt` 保证缩放前后锚点下的世界位置不变；滚轮默认使用鼠标位置。
+- `IInputProvider.PointerCount/GetPointer` 统一 Mouse、Touch 与 Pen；旧鼠标 Provider 通过默认接口实现自动暴露一个稳定 `PointerId.Mouse`，Hosting 当前为平台后端路由最多 16 个并发 Pointer。
+- Pinch 使用同一 Render View 捕获的两个 Pointer；双指中心平移与距离缩放可以组合，任一 Pointer 消失时结束，剩余 Pointer 可平滑接回 Drag。
 - `Revision` 只在 Camera 空间发生变化时递增；稳定帧不会递增。
 - `CaptureSnapshot()` 返回可见世界 AABB、中心、Zoom、Render View 尺寸和 Revision，是未来剔除、LOD 与 Chunk Streaming 的稳定边界。
 - Camera 旋转继续可用；Snapshot 返回旋转视图的保守世界 AABB。
@@ -110,7 +120,7 @@ Input → ViewportController → Camera2D
 | Decelerate | 已实现 |
 | ClampZoom | 已实现 |
 | Clamp 与 Underflow | 已实现 |
-| Pinch | 等待统一多 Pointer 输入，不提供假实现 |
+| 统一 Mouse/Touch/Pen Pointer 与 Pinch | 已实现；桌面 Silk 后端当前提供 Mouse，Android/触控后端可直接提供多 Pointer |
 | Bounce、Animate、Snap、SnapZoom、MouseEdges | 下一 Viewport 阶段 |
 | Follow | 现有 `CameraFollowController` 已覆盖玩法跟随；后续统一中断语义 |
 | Chunk Streaming、LOD | 独立后续切片，不属于 Viewport |

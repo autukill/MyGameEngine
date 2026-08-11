@@ -28,4 +28,22 @@ public interface IInputProvider
 
     /// <summary>鼠标按键是否按住</summary>
     bool IsMouseButtonDown(MouseButton button);
+
+    /// <summary>
+    /// Number of currently known mouse, touch, and pen contacts. Existing mouse-only providers
+    /// automatically expose one stable primary mouse pointer.
+    /// </summary>
+    int PointerCount => 1;
+
+    /// <summary>Returns one pointer by stable frame-local index without allocating.</summary>
+    PointerContact GetPointer(int index)
+    {
+        if (index != 0) throw new ArgumentOutOfRangeException(nameof(index));
+        return new PointerContact(
+            PointerId.Mouse,
+            PointerKind.Mouse,
+            MousePosition,
+            IsMouseButtonDown(MouseButton.Left),
+            isPrimary: true);
+    }
 }

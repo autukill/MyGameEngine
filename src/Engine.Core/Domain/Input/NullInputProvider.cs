@@ -14,4 +14,7 @@ internal sealed class NullInputProvider : IInputProvider
     public Vector2D MousePosition => Vector2D.Zero;
     public float MouseScrollDelta => 0f;
     public bool IsMouseButtonDown(MouseButton button) => false;
+    public int PointerCount => 0;
+    public PointerContact GetPointer(int index) =>
+        throw new ArgumentOutOfRangeException(nameof(index));
 }

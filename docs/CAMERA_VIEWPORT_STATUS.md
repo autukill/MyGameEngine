@@ -104,7 +104,7 @@ second.Camera.Zoom = 0.75f;
 
 ### Interactive Viewport 第一阶段（已完成）
 
-`Engine.Features.ViewportNavigation` 已把地图浏览行为从游戏手写 Camera 逻辑中拆出。主 Camera 可通过 `UseInteractiveViewport` 声明 Drag、鼠标锚点 Wheel、帧率无关 Decelerate、ClampZoom 和带 Underflow 的世界 Clamp；多 Render View 可分别声明自己的插件链。Hosting 在 Scene Step 前按最上层命中 View 路由鼠标与滚轮，Resize 后重新执行缩放和边界约束。
+`Engine.Features.ViewportNavigation` 已把地图浏览行为从游戏手写 Camera 逻辑中拆出。主 Camera 可通过 `UseInteractiveViewport` 声明 Drag、双指 Pinch、鼠标锚点 Wheel、帧率无关 Decelerate、ClampZoom 和带 Underflow 的世界 Clamp；多 Render View 可分别声明自己的插件链。Hosting 在 Scene Step 前按最上层命中 View 路由 Mouse/Touch/Pen Pointer 与滚轮，按 PointerId 独立捕获，Resize 后重新执行缩放和边界约束。
 
 `ViewportSnapshot` 固定可见世界 AABB、中心、Zoom、Render Size 与 Revision，作为未来 Chunk Streaming/LOD 的只读消费边界。Viewport 本身不加载 Chunk、不拥有 Texture。完整用法和功能覆盖见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)。
 
@@ -121,6 +121,6 @@ second.Camera.Zoom = 0.75f;
 - 次级 View 的 Stencil；HDR、Bloom 和 Tone Mapping 已可独立声明。
 - 跨 View 可见性缓存或通用空间索引；当前 Layer 候选已索引并逐 View 粗剔除，但各 View 仍独立检查、排序并绘制可见实例。
 - 多窗口与多个默认 framebuffer 终端。
-- Pinch 所需的统一多 Pointer 输入、Bounce/Animate/Snap/SnapZoom/MouseEdges；当前没有假实现。
+- Bounce/Animate/Snap/SnapZoom/MouseEdges；统一多 Pointer 与 Pinch 已完成。
 - 跨窗口鼠标捕获与编辑器 Dock。
 - Chunk Streaming、异步 IO、LOD 和显存预算；它们将作为 ViewportSnapshot 的独立消费者。

@@ -195,6 +195,8 @@ public sealed class LogicalInputRecorder : IInputProvider, ILogicalInputProvider
     public Vector2D MousePosition => throw RawInputNotReplayable();
     public float MouseScrollDelta => throw RawInputNotReplayable();
     public bool IsMouseButtonDown(MouseButton button) => throw RawInputNotReplayable();
+    public int PointerCount => throw RawInputNotReplayable();
+    public PointerContact GetPointer(int index) => throw RawInputNotReplayable();
 
     internal static InvalidOperationException RawInputNotReplayable() => new(
         "Physical Key/Mouse input is not available during logical input recording or playback. " +
@@ -257,6 +259,9 @@ public sealed class LogicalInputPlayback : IInputProvider, ILogicalInputProvider
     public Vector2D MousePosition => throw LogicalInputRecorder.RawInputNotReplayable();
     public float MouseScrollDelta => throw LogicalInputRecorder.RawInputNotReplayable();
     public bool IsMouseButtonDown(MouseButton button) =>
+        throw LogicalInputRecorder.RawInputNotReplayable();
+    public int PointerCount => throw LogicalInputRecorder.RawInputNotReplayable();
+    public PointerContact GetPointer(int index) =>
         throw LogicalInputRecorder.RawInputNotReplayable();
 }
 
