@@ -6,7 +6,7 @@ using GameEngine.Features.Tilemaps.Domain;
 internal static class TileWorldArchiveFormat
 {
     public static ReadOnlySpan<byte> Magic => "MGWORLD\0"u8;
-    public const int Version = 1;
+    public const int Version = 2;
     public const int HashLength = 32;
     public const int EntryLength = 4 + 4 + 4 + 4 + 8 + 4 + HashLength;
     public const int MaximumStringBytes = 16 * 1024;

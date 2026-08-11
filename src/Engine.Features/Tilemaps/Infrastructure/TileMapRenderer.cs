@@ -103,7 +103,8 @@ public sealed class TileMapRenderer(TileSetLibrary tileSets)
                             Vector2 center = origin + new Vector2(
                                 ((float)chunkCellX + localX + 0.5f) * size.X,
                                 ((float)chunkCellY + localY + 0.5f) * size.Y);
-                            GetTransform(cell.Transform, out Vector2 scale, out float rotation);
+                            TileTransformOperations.GetScaleAndRotation(
+                                cell.Transform, out Vector2 scale, out float rotation);
                             batch.DrawSpriteCommand(new SpriteDrawCommand(
                                 definition.Sprite,
                                 definition.SubImage,
@@ -126,24 +127,6 @@ public sealed class TileMapRenderer(TileSetLibrary tileSets)
             visitedCells,
             drawnTiles,
             unknownTiles);
-    }
-
-    internal static void GetTransform(
-        TileTransform transform,
-        out Vector2 scale,
-        out float rotation)
-    {
-        scale = new Vector2(
-            (transform & TileTransform.FlipX) != 0 ? -1f : 1f,
-            (transform & TileTransform.FlipY) != 0 ? -1f : 1f);
-        TileTransform rotationBits = transform & (TileTransform.Rotate90 | TileTransform.Rotate180);
-        rotation = rotationBits switch
-        {
-            TileTransform.Rotate90 => MathF.PI * 0.5f,
-            TileTransform.Rotate180 => MathF.PI,
-            TileTransform.Rotate270 => MathF.PI * 1.5f,
-            _ => 0f
-        };
     }
 
     private static int FloorToInt(float value)

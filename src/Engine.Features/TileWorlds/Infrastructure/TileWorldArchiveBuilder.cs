@@ -1,5 +1,6 @@
 namespace GameEngine.Features.TileWorlds.Infrastructure;
 
+using System.Numerics;
 using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.Tilemaps.Infrastructure;
 using GameEngine.Features.TileWorlds.Domain;
@@ -10,25 +11,37 @@ public static class TileWorldArchiveBuilder
         TileMap map,
         TileSetLibrary tileSets,
         TileWorldChunkBounds bounds,
-        int declaredLodCount = 1)
+        int declaredLodCount = 1,
+        TileWorldRasterSettings? rasterSettings = null)
     {
         ArgumentNullException.ThrowIfNull(map);
         ArgumentNullException.ThrowIfNull(tileSets);
         if (declaredLodCount is <= 0 or > 8)
             throw new ArgumentOutOfRangeException(nameof(declaredLodCount));
 
+        Vector2? commonTileSize = null;
+        foreach (TileLayer layer in map.Layers)
+        {
+            TileSet tileSet = tileSets.Get(layer.TileSet);
+            if (commonTileSize is { } known && known != tileSet.TileSize)
+                throw new InvalidDataException("TileWorld requires one common Tile size across all layers.");
+            commonTileSize = tileSet.TileSize;
+        }
+
         var metadata = new TileWorldMetadata(
             map.Name,
             map.ChunkWidth,
             map.ChunkHeight,
+            commonTileSize ?? throw new InvalidDataException("TileWorld requires at least one TileSet."),
             bounds,
             declaredLodCount,
+            rasterSettings ?? new TileWorldRasterSettings(
+                512, 512, 2, TileWorldRasterSampling.Smooth),
             map.Layers.Select(layer => new TileWorldLayerMetadata(
                 layer.Name, layer.TileSet, layer.Depth, layer.Offset, layer.Visible)));
         var coordinates = new SortedSet<TileChunkCoordinate>();
         foreach (TileLayer layer in map.Layers)
         {
-            _ = tileSets.Get(layer.TileSet);
             for (int i = 0; i < layer.AllocatedChunkCount; i++)
             {
                 TileChunkCoordinate coordinate = layer.GetAllocatedChunk(i).Key;

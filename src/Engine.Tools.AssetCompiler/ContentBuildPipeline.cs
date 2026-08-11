@@ -13,13 +13,15 @@ using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.Tilemaps.Infrastructure;
 using GameEngine.Features.TileWorlds.Domain;
 using GameEngine.Features.TileWorlds.Infrastructure;
+using GameEngine.Features.TextureAssets.Domain;
+using GameEngine.Features.TextureAssets.Infrastructure;
 
 /// <summary>
 /// Builds a complete content dependency graph into an owned, fingerprinted runtime packages root.
 /// </summary>
 public sealed class ContentBuildPipeline
 {
-    public const string CompilerVersion = "7";
+    public const string CompilerVersion = "8";
     public const string MetadataFileName = ".mygame-assets.json";
     private const string OwnerName = "MyGameEngine.AssetCompiler";
     private const int MetadataSchemaVersion = 1;
@@ -47,6 +49,7 @@ public sealed class ContentBuildPipeline
         public int PassthroughFrameCount { get; init; }
         public int TileWorldCount { get; init; }
         public int TileWorldChunkCount { get; init; }
+        public int TileWorldRasterChunkCount { get; init; }
         public List<OutputFileHash> Outputs { get; init; } = [];
         public List<PackageBuildMetadata> Packages { get; init; } = [];
     }
@@ -63,6 +66,7 @@ public sealed class ContentBuildPipeline
         public int PassthroughFrameCount { get; init; }
         public int TileWorldCount { get; init; }
         public int TileWorldChunkCount { get; init; }
+        public int TileWorldRasterChunkCount { get; init; }
         public List<OutputFileHash> Outputs { get; init; } = [];
     }
 
@@ -72,9 +76,15 @@ public sealed class ContentBuildPipeline
     };
 
     private readonly ContentAssetCompiler _packageCompiler;
+    private readonly IImageDecoder _imageDecoder;
 
-    public ContentBuildPipeline(ContentAssetCompiler? packageCompiler = null) =>
+    public ContentBuildPipeline(
+        ContentAssetCompiler? packageCompiler = null,
+        IImageDecoder? imageDecoder = null)
+    {
         _packageCompiler = packageCompiler ?? new ContentAssetCompiler();
+        _imageDecoder = imageDecoder ?? new SkiaImageDecoder();
+    }
 
     public ContentBuildResult Build(ContentBuildRequest request)
     {
@@ -150,6 +160,7 @@ public sealed class ContentBuildPipeline
         int passthroughFrames = 0;
         int tileWorlds = 0;
         int tileWorldChunks = 0;
+        int tileWorldRasterChunks = 0;
         int builtPackages = 0;
         int reusedPackages = 0;
         var packageMetadata = new List<PackageBuildMetadata>(graph.Length);
@@ -173,6 +184,7 @@ public sealed class ContentBuildPipeline
                     passthroughFrames += cachedPackage.PassthroughFrameCount;
                     tileWorlds += cachedPackage.TileWorldCount;
                     tileWorldChunks += cachedPackage.TileWorldChunkCount;
+                    tileWorldRasterChunks += cachedPackage.TileWorldRasterChunkCount;
                     reusedPackages++;
                     continue;
                 }
@@ -182,6 +194,7 @@ public sealed class ContentBuildPipeline
                 int packagePassthroughFrames = 0;
                 int packageTileWorlds = 0;
                 int packageTileWorldChunks = 0;
+                int packageTileWorldRasterChunks = 0;
                 if (node.Manifest.Atlas is null)
                 {
                     CopyRawPackage(staging, node);
@@ -212,13 +225,15 @@ public sealed class ContentBuildPipeline
                     }
                 }
 
-                (packageTileWorlds, packageTileWorldChunks) = CompileTileWorlds(staging, node);
+                (packageTileWorlds, packageTileWorldChunks, packageTileWorldRasterChunks) =
+                    CompileTileWorlds(staging, node);
 
                 atlasPages += packageAtlasPages;
                 packedFrames += packagePackedFrames;
                 passthroughFrames += packagePassthroughFrames;
                 tileWorlds += packageTileWorlds;
                 tileWorldChunks += packageTileWorldChunks;
+                tileWorldRasterChunks += packageTileWorldRasterChunks;
                 packageMetadata.Add(new PackageBuildMetadata
                 {
                     Id = node.Manifest.Id,
@@ -229,6 +244,7 @@ public sealed class ContentBuildPipeline
                     PassthroughFrameCount = packagePassthroughFrames,
                     TileWorldCount = packageTileWorlds,
                     TileWorldChunkCount = packageTileWorldChunks,
+                    TileWorldRasterChunkCount = packageTileWorldRasterChunks,
                     Outputs = HashPackageOutput(staging, node)
                 });
                 builtPackages++;
@@ -254,6 +270,7 @@ public sealed class ContentBuildPipeline
                 PassthroughFrameCount = passthroughFrames,
                 TileWorldCount = tileWorlds,
                 TileWorldChunkCount = tileWorldChunks,
+                TileWorldRasterChunkCount = tileWorldRasterChunks,
                 Outputs = HashOutputFiles(staging),
                 Packages = packageMetadata
                     .OrderBy(item => item.Manifest, StringComparer.Ordinal)
@@ -274,7 +291,8 @@ public sealed class ContentBuildPipeline
                 packedFrames,
                 passthroughFrames,
                 tileWorlds,
-                tileWorldChunks);
+                tileWorldChunks,
+                tileWorldRasterChunks);
         }
         catch
         {
@@ -308,7 +326,8 @@ public sealed class ContentBuildPipeline
             metadata?.PackedFrameCount ?? 0,
             metadata?.PassthroughFrameCount ?? 0,
             metadata?.TileWorldCount ?? 0,
-            metadata?.TileWorldChunkCount ?? 0);
+            metadata?.TileWorldChunkCount ?? 0,
+            metadata?.TileWorldRasterChunkCount ?? 0);
 
     private static GraphNode ReadGraph(
         string packagesRoot,
@@ -519,6 +538,27 @@ public sealed class ContentBuildPipeline
             }
             foreach (TileWorldAssetDefinition definition in consumer.Manifest.TileWorlds)
             {
+                TileWorldAssetBuildDefinition build = definition.Build
+                    ?? throw new InvalidDataException(
+                        $"Source TileWorld '{definition.Name}' requires build settings.");
+                if (build.LodCount > 1 && build.Encoding != AtlasPageEncoding.WebpLossless)
+                    throw new InvalidDataException(
+                        $"TileWorld '{definition.Name}' visual LODs require webpLossless encoding.");
+                try
+                {
+                    _ = new TileWorldRasterSettings(
+                        build.RasterChunkSize.Width,
+                        build.RasterChunkSize.Height,
+                        build.Gutter,
+                        build.Sampling == TextureSampler.PixelArt
+                            ? TileWorldRasterSampling.PixelArt
+                            : TileWorldRasterSampling.Smooth);
+                }
+                catch (ArgumentOutOfRangeException exception)
+                {
+                    throw new InvalidDataException(
+                        $"TileWorld '{definition.Name}' has invalid raster build settings.", exception);
+                }
                 string path = ResolveUnderRoot(consumer.PackageDirectory, definition.Path, "TileWorld source");
                 using var stream = File.OpenRead(path);
                 TileMap map = TileMapManifestParser.Parse(stream);
@@ -729,13 +769,20 @@ public sealed class ContentBuildPipeline
         }
     }
 
-    private static (int WorldCount, int ChunkCount) CompileTileWorlds(string staging, GraphNode node)
+    private (int WorldCount, int ChunkCount, int RasterChunkCount) CompileTileWorlds(
+        string staging,
+        GraphNode node)
     {
-        if (node.Manifest.TileWorlds.Count == 0) return (0, 0);
+        if (node.Manifest.TileWorlds.Count == 0) return (0, 0, 0);
         var tileSets = new TileSetLibrary();
         AddVisibleTileSets(node, tileSets, new HashSet<string>(PathComparer));
+        TileWorldRasterSpriteSource? rasterSource = node.Manifest.TileWorlds.Any(world =>
+            world.Build?.LodCount > 1)
+            ? CreateRasterSource(node)
+            : null;
         string relativeDirectory = Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
         int chunks = 0;
+        int rasterChunkCount = 0;
         foreach (TileWorldAssetDefinition definition in node.Manifest.TileWorlds)
         {
             TileWorldAssetBuildDefinition buildDefinition = definition.Build
@@ -743,8 +790,37 @@ public sealed class ContentBuildPipeline
             string source = ResolveUnderRoot(node.PackageDirectory, definition.Path, "TileWorld source");
             using var sourceStream = File.OpenRead(source);
             TileMap map = TileMapManifestParser.Parse(sourceStream);
-            TileWorldArchiveBuild archive = TileWorldArchiveBuilder.BuildLod0(
-                map, tileSets, buildDefinition.Bounds, buildDefinition.LodCount);
+            var rasterSettings = new TileWorldRasterSettings(
+                buildDefinition.RasterChunkSize.Width,
+                buildDefinition.RasterChunkSize.Height,
+                buildDefinition.Gutter,
+                buildDefinition.Sampling == TextureSampler.PixelArt
+                    ? TileWorldRasterSampling.PixelArt
+                    : TileWorldRasterSampling.Smooth);
+            TileWorldArchiveBuild lod0 = TileWorldArchiveBuilder.BuildLod0(
+                map,
+                tileSets,
+                buildDefinition.Bounds,
+                buildDefinition.LodCount,
+                rasterSettings);
+            var rasterChunks = new List<TileWorldRasterChunkData>();
+            if (buildDefinition.LodCount > 1)
+            {
+                foreach (TileWorldRasterChunkImage image in TileWorldRasterizer.RasterizeLodLevels(
+                             map, tileSets, lod0.Metadata, rasterSource!))
+                {
+                    rasterChunks.Add(new TileWorldRasterChunkData(
+                        image.Key,
+                        image.Layers.Select(layer => new TileWorldRasterLayerData(
+                            layer.LayerIndex,
+                            layer.Width,
+                            layer.Height,
+                            layer.Gutter,
+                            TileWorldRasterEncoding.WebpLossless,
+                            TileWorldLosslessWebpEncoder.Encode(layer)))));
+                }
+            }
+            var archive = new TileWorldArchiveBuild(lod0.Metadata, lod0.Chunks, rasterChunks);
             string compiledRelative = ContentAssetCompiler.CompiledTileWorldPath(definition.Path);
             string output = ResolveOutputPath(staging, Path.Combine(relativeDirectory, compiledRelative));
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
@@ -753,11 +829,50 @@ public sealed class ContentBuildPipeline
                     $"TileWorld output path '{compiledRelative}' is already produced by another asset.");
             using var destination = File.Create(output);
             TileWorldArchiveWriter.Write(destination, archive);
-            chunks += archive.Chunks.Count;
+            chunks += archive.TotalChunkCount;
+            rasterChunkCount += archive.RasterChunks.Count;
         }
         RewriteCompiledTileWorldManifest(
             ResolveOutputPath(staging, node.RelativeManifestPath), node.Manifest.TileWorlds);
-        return (node.Manifest.TileWorlds.Count, chunks);
+        return (node.Manifest.TileWorlds.Count, chunks, rasterChunkCount);
+    }
+
+    private TileWorldRasterSpriteSource CreateRasterSource(GraphNode node)
+    {
+        var textures = new Dictionary<string, TileWorldRasterTextureInput>(StringComparer.Ordinal);
+        var sprites = new Dictionary<string, SpriteAssetDefinition>(StringComparer.Ordinal);
+        AddVisibleRasterAssets(
+            node,
+            textures,
+            sprites,
+            new HashSet<string>(PathComparer));
+        return new TileWorldRasterSpriteSource(sprites, textures, _imageDecoder);
+    }
+
+    private static void AddVisibleRasterAssets(
+        GraphNode node,
+        Dictionary<string, TileWorldRasterTextureInput> textures,
+        Dictionary<string, SpriteAssetDefinition> sprites,
+        HashSet<string> visited)
+    {
+        if (!visited.Add(node.ManifestPath)) return;
+        foreach (GraphNode dependency in node.Dependencies)
+            AddVisibleRasterAssets(dependency, textures, sprites, visited);
+        foreach (TextureAssetDefinition definition in node.Manifest.Textures)
+        {
+            string path = ResolveUnderRoot(node.PackageDirectory, definition.Path, "Texture");
+            if (!textures.TryAdd(
+                    definition.Name,
+                    new TileWorldRasterTextureInput(definition, path)))
+                throw new InvalidDataException(
+                    $"Texture '{definition.Name}' appears more than once in the TileWorld dependency closure.");
+        }
+        foreach (SpriteAssetDefinition definition in node.Manifest.Sprites)
+        {
+            if (!sprites.TryAdd(definition.Name, definition))
+                throw new InvalidDataException(
+                    $"Sprite '{definition.Name}' appears more than once in the TileWorld dependency closure.");
+        }
     }
 
     private static void AddVisibleTileSets(

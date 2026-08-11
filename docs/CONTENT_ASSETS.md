@@ -378,7 +378,7 @@ Resolve manifest under packagesRoot
 
 ## 生命周期与所有权
 
-`TextureLibrary` 拥有 GPU Texture；`SpriteLibrary` 保存逻辑帧映射；`AnimationLibrary` 和 `AudioLibrary` 保存逻辑 Clip；`TileSetLibrary/TileMapLibrary` 保存整体驻留世界资源；`TileWorldLibrary` 保存借用归档的位置和小型索引元数据；`LoadedContentPackage` 是外部租约。大型地图格式见 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)。
+`TextureLibrary` 拥有 GPU Texture；`SpriteLibrary` 保存逻辑帧映射；`AnimationLibrary` 和 `AudioLibrary` 保存逻辑 Clip；`TileSetLibrary/TileMapLibrary` 保存整体驻留世界资源；`TileWorldLibrary` 保存借用归档的位置和小型索引元数据。`.mgworld` v2 同时容纳权威 LOD0 Tile/碰撞与逐 Layer LOD1+ 无损 WebP，但当前 Package Load 只打开归档，不会把视觉 LOD 立即上传到 GPU；`LoadedContentPackage` 是外部租约。大型地图格式见 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)。
 
 ```text
 Load root package

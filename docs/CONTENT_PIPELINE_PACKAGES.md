@@ -146,7 +146,7 @@ Fingerprint 使用确定性 SHA-256 输入流；字符串字段带长度前缀�
 
 ## Atlas 编译与标准输出
 
-没有 `atlas` 配置的 Package 原样复制普通 Manifest 资源；TileWorld source 始终由完整 `ContentBuildPipeline` 编译为 `.mgworld` 并重写清单，而不会复制进运行时输出。启用 Atlas 时，`ContentAssetCompiler`：
+没有 `atlas` 配置的 Package 原样复制普通 Manifest 资源；TileWorld source 始终由完整 `ContentBuildPipeline` 编译为 `.mgworld` 并重写清单，而不会复制进运行时输出。编译器从原始 Sprite 帧生成权威 LOD0 与逐 Layer LOD1+ exact 无损 WebP；这一步独立于源 Texture 最终是否被 Atlas 替换。CLI 分别输出 `TileWorld Chunks` 总数与 `TileWorld Raster Chunks` 数量。启用 Atlas 时，`ContentAssetCompiler`：
 
 1. 把 `single/grid/frames` 全部规范化为 `(TextureName, PixelRectI)` 帧。
 2. 延迟解码图片，只解码被选中并实际引用的来源；相同 Texture/Rect 只裁剪一次。

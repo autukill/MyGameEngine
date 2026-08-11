@@ -5,9 +5,23 @@ using System.Text;
 using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.TileWorlds.Domain;
 
-public sealed record TileWorldArchiveBuild(
-    TileWorldMetadata Metadata,
-    IReadOnlyList<TileWorldChunkData> Chunks);
+public sealed class TileWorldArchiveBuild
+{
+    public TileWorldArchiveBuild(
+        TileWorldMetadata metadata,
+        IReadOnlyList<TileWorldChunkData> chunks,
+        IReadOnlyList<TileWorldRasterChunkData>? rasterChunks = null)
+    {
+        Metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
+        Chunks = chunks ?? throw new ArgumentNullException(nameof(chunks));
+        RasterChunks = rasterChunks ?? [];
+    }
+
+    public TileWorldMetadata Metadata { get; }
+    public IReadOnlyList<TileWorldChunkData> Chunks { get; }
+    public IReadOnlyList<TileWorldRasterChunkData> RasterChunks { get; }
+    public int TotalChunkCount => checked(Chunks.Count + RasterChunks.Count);
+}
 
 public static class TileWorldArchiveWriter
 {
@@ -25,8 +39,9 @@ public static class TileWorldArchiveWriter
             throw new ArgumentException("TileWorld destination must be writable and seekable.", nameof(destination));
 
         EncodedChunk[] chunks = build.Chunks
-            .OrderBy(chunk => chunk.Key)
             .Select(chunk => EncodeChunk(build.Metadata, chunk))
+            .Concat(build.RasterChunks.Select(chunk => EncodeRasterChunk(build.Metadata, chunk)))
+            .OrderBy(chunk => chunk.Key)
             .ToArray();
         if (chunks.Length > TileWorldArchiveFormat.MaximumChunks)
             throw new InvalidDataException("TileWorld contains too many Chunk payloads.");
@@ -36,7 +51,7 @@ public static class TileWorldArchiveWriter
         {
             if (chunk.Key.Level >= build.Metadata.DeclaredLodCount)
                 throw new InvalidDataException($"Chunk '{chunk.Key}' exceeds declared LOD count.");
-            if (!build.Metadata.Bounds.Contains(chunk.Key.X, chunk.Key.Y) && chunk.Key.Level == 0)
+            if (!build.Metadata.GetChunkBounds(chunk.Key.Level).Contains(chunk.Key.X, chunk.Key.Y))
                 throw new InvalidDataException($"Chunk '{chunk.Key}' is outside TileWorld bounds.");
         }
 
@@ -46,11 +61,17 @@ public static class TileWorldArchiveWriter
         WriteString(index, build.Metadata.Name);
         TileWorldArchiveFormat.WriteInt32(index, build.Metadata.ChunkWidth);
         TileWorldArchiveFormat.WriteInt32(index, build.Metadata.ChunkHeight);
+        TileWorldArchiveFormat.WriteUInt32(index, BitConverter.SingleToUInt32Bits(build.Metadata.TileSize.X));
+        TileWorldArchiveFormat.WriteUInt32(index, BitConverter.SingleToUInt32Bits(build.Metadata.TileSize.Y));
         TileWorldArchiveFormat.WriteInt32(index, build.Metadata.Bounds.MinX);
         TileWorldArchiveFormat.WriteInt32(index, build.Metadata.Bounds.MinY);
         TileWorldArchiveFormat.WriteInt32(index, build.Metadata.Bounds.MaxX);
         TileWorldArchiveFormat.WriteInt32(index, build.Metadata.Bounds.MaxY);
         TileWorldArchiveFormat.WriteInt32(index, build.Metadata.DeclaredLodCount);
+        TileWorldArchiveFormat.WriteInt32(index, build.Metadata.RasterSettings.Width);
+        TileWorldArchiveFormat.WriteInt32(index, build.Metadata.RasterSettings.Height);
+        TileWorldArchiveFormat.WriteInt32(index, build.Metadata.RasterSettings.Gutter);
+        TileWorldArchiveFormat.WriteInt32(index, (int)build.Metadata.RasterSettings.Sampling);
         TileWorldArchiveFormat.WriteInt32(index, build.Metadata.Layers.Count);
         foreach (TileWorldLayerMetadata layer in build.Metadata.Layers)
         {
@@ -86,7 +107,7 @@ public static class TileWorldArchiveWriter
     private static EncodedChunk EncodeChunk(TileWorldMetadata metadata, TileWorldChunkData chunk)
     {
         if (chunk.Key.Level != 0)
-            throw new NotSupportedException("TileWorld archive v1 currently writes authoritative LOD0 chunks only.");
+            throw new NotSupportedException("Authoritative Tile payloads are only valid at LOD0.");
         using var payload = new MemoryStream();
         TileWorldArchiveFormat.WriteInt32(payload, chunk.Layers.Count);
         int expectedCells = checked(metadata.ChunkWidth * metadata.ChunkHeight);
@@ -119,6 +140,58 @@ public static class TileWorldArchiveWriter
             TileWorldChunkPayloadKind.AuthoritativeTiles,
             bytes,
             SHA256.HashData(bytes));
+    }
+
+    private static EncodedChunk EncodeRasterChunk(
+        TileWorldMetadata metadata,
+        TileWorldRasterChunkData chunk)
+    {
+        if (chunk.Key.Level <= 0)
+            throw new InvalidDataException("Raster Chunk levels must be greater than zero.");
+        long payloadLength = 4;
+        foreach (TileWorldRasterLayerData layer in chunk.Layers)
+        {
+            payloadLength = checked(payloadLength + 24L + layer.EncodedBytes.Length);
+            if (payloadLength > TileWorldArchiveFormat.MaximumPayloadBytes)
+                throw new InvalidDataException("TileWorld Raster Chunk payload exceeds the format limit.");
+        }
+        using var payload = new MemoryStream((int)payloadLength);
+        TileWorldArchiveFormat.WriteInt32(payload, chunk.Layers.Count);
+        foreach (TileWorldRasterLayerData layer in chunk.Layers.OrderBy(layer => layer.LayerIndex))
+        {
+            if ((uint)layer.LayerIndex >= (uint)metadata.Layers.Count ||
+                !metadata.Layers[layer.LayerIndex].Visible)
+                throw new InvalidDataException("Raster Chunk references an unknown or invisible layer.");
+            if (layer.Width != metadata.RasterSettings.Width ||
+                layer.Height != metadata.RasterSettings.Height ||
+                layer.Gutter != metadata.RasterSettings.Gutter)
+                throw new InvalidDataException("Raster Chunk dimensions do not match TileWorld metadata.");
+            ValidateEncodedRaster(layer);
+            TileWorldArchiveFormat.WriteInt32(payload, layer.LayerIndex);
+            TileWorldArchiveFormat.WriteInt32(payload, (int)layer.Encoding);
+            TileWorldArchiveFormat.WriteInt32(payload, layer.Width);
+            TileWorldArchiveFormat.WriteInt32(payload, layer.Height);
+            TileWorldArchiveFormat.WriteInt32(payload, layer.Gutter);
+            TileWorldArchiveFormat.WriteInt32(payload, layer.EncodedBytes.Length);
+            payload.Write(layer.EncodedBytes);
+        }
+        if (payload.Length > TileWorldArchiveFormat.MaximumPayloadBytes)
+            throw new InvalidDataException("TileWorld Raster Chunk payload exceeds the format limit.");
+        byte[] bytes = payload.ToArray();
+        return new EncodedChunk(
+            chunk.Key,
+            TileWorldChunkPayloadKind.RasterLayers,
+            bytes,
+            SHA256.HashData(bytes));
+    }
+
+    private static void ValidateEncodedRaster(TileWorldRasterLayerData layer)
+    {
+        if (layer.Encoding != TileWorldRasterEncoding.WebpLossless ||
+            layer.EncodedBytes.Length < 12 ||
+            !layer.EncodedBytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) ||
+            !layer.EncodedBytes.AsSpan(8, 4).SequenceEqual("WEBP"u8))
+            throw new InvalidDataException("Raster layer is not a WebP payload.");
     }
 
     private static void WriteRuns(Stream stream, ReadOnlySpan<TileCell> cells)

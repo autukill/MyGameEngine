@@ -39,6 +39,7 @@ internal static class Program
             Console.WriteLine($"Passthrough frames: {result.PassthroughFrameCount}");
             Console.WriteLine($"TileWorlds: {result.TileWorldCount}");
             Console.WriteLine($"TileWorld Chunks: {result.TileWorldChunkCount}");
+            Console.WriteLine($"TileWorld Raster Chunks: {result.TileWorldRasterChunkCount}");
             Console.WriteLine($"Fingerprint: {result.InputFingerprint}");
             return result.Status == ContentBuildStatus.Stale ? 3 : 0;
         }

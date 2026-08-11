@@ -41,12 +41,20 @@ public sealed class TileWorldArchiveReader : IDisposable
             string name = ReadString(stream);
             int chunkWidth = TileWorldArchiveFormat.ReadInt32(stream);
             int chunkHeight = TileWorldArchiveFormat.ReadInt32(stream);
+            var tileSize = new Vector2(
+                BitConverter.UInt32BitsToSingle(TileWorldArchiveFormat.ReadUInt32(stream)),
+                BitConverter.UInt32BitsToSingle(TileWorldArchiveFormat.ReadUInt32(stream)));
             var bounds = new TileWorldChunkBounds(
                 TileWorldArchiveFormat.ReadInt32(stream),
                 TileWorldArchiveFormat.ReadInt32(stream),
                 TileWorldArchiveFormat.ReadInt32(stream),
                 TileWorldArchiveFormat.ReadInt32(stream));
             int lodCount = TileWorldArchiveFormat.ReadInt32(stream);
+            var rasterSettings = new TileWorldRasterSettings(
+                TileWorldArchiveFormat.ReadInt32(stream),
+                TileWorldArchiveFormat.ReadInt32(stream),
+                TileWorldArchiveFormat.ReadInt32(stream),
+                ReadRasterSampling(stream));
             int layerCount = TileWorldArchiveFormat.ReadInt32(stream);
             if (layerCount is <= 0 or > TileWorldArchiveFormat.MaximumLayers)
                 throw new InvalidDataException("TileWorld layer count exceeds the format limit.");
@@ -64,7 +72,8 @@ public sealed class TileWorldArchiveReader : IDisposable
                 layers[i] = new TileWorldLayerMetadata(
                     layerName, new TileSetRef(tileSetName), depth, new Vector2(offsetX, offsetY), visible == 1);
             }
-            Metadata = new TileWorldMetadata(name, chunkWidth, chunkHeight, bounds, lodCount, layers);
+            Metadata = new TileWorldMetadata(
+                name, chunkWidth, chunkHeight, tileSize, bounds, lodCount, rasterSettings, layers);
             int chunkCount = TileWorldArchiveFormat.ReadInt32(stream);
             if (chunkCount is < 0 or > TileWorldArchiveFormat.MaximumChunks)
                 throw new InvalidDataException("TileWorld Chunk count exceeds the format limit.");
@@ -91,8 +100,10 @@ public sealed class TileWorldArchiveReader : IDisposable
                     throw new InvalidDataException($"TileWorld Chunk key '{key}' has an invalid level.");
                 if (previousKey is { } ordered && ordered.CompareTo(key) >= 0)
                     throw new InvalidDataException("TileWorld Chunk index is not in deterministic key order.");
-                if (key.Level == 0 && !bounds.Contains(key.X, key.Y))
+                if (!Metadata.GetChunkBounds(key.Level).Contains(key.X, key.Y))
                     throw new InvalidDataException($"TileWorld Chunk key '{key}' is outside world bounds.");
+                if ((key.Level == 0) != (kind == TileWorldChunkPayloadKind.AuthoritativeTiles))
+                    throw new InvalidDataException($"TileWorld Chunk '{key}' has an invalid payload kind for its level.");
                 if (length < 0 || length > TileWorldArchiveFormat.MaximumPayloadBytes ||
                     offset < indexEnd || offset < previousEnd || checked(offset + length) > stream.Length)
                     throw new InvalidDataException($"TileWorld Chunk '{key}' has invalid payload bounds.");
@@ -139,6 +150,40 @@ public sealed class TileWorldArchiveReader : IDisposable
         if (entry.Kind != TileWorldChunkPayloadKind.AuthoritativeTiles)
             throw new InvalidOperationException(
                 $"TileWorld Chunk '{key}' is '{entry.Kind}' and cannot be read as authoritative Tile data.");
+        byte[] payload = ReadAndValidatePayload(key, entry);
+        try
+        {
+            return DecodeChunk(key, payload);
+        }
+        catch (Exception exception) when (
+            exception is EndOfStreamException or OverflowException or ArgumentException)
+        {
+            throw new InvalidDataException($"TileWorld Chunk '{key}' is malformed or truncated.", exception);
+        }
+    }
+
+    public TileWorldRasterChunkData ReadRasterChunk(TileWorldChunkKey key)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_entries.TryGetValue(key, out Entry? entry))
+            throw new KeyNotFoundException($"TileWorld Chunk '{key}' does not exist.");
+        if (entry.Kind != TileWorldChunkPayloadKind.RasterLayers)
+            throw new InvalidOperationException(
+                $"TileWorld Chunk '{key}' is '{entry.Kind}' and cannot be read as raster data.");
+        byte[] payload = ReadAndValidatePayload(key, entry);
+        try
+        {
+            return DecodeRasterChunk(key, payload);
+        }
+        catch (Exception exception) when (
+            exception is EndOfStreamException or OverflowException or ArgumentException)
+        {
+            throw new InvalidDataException($"TileWorld Raster Chunk '{key}' is malformed or truncated.", exception);
+        }
+    }
+
+    private byte[] ReadAndValidatePayload(TileWorldChunkKey key, Entry entry)
+    {
         byte[] payload = new byte[entry.Length];
         try
         {
@@ -154,15 +199,7 @@ public sealed class TileWorldArchiveReader : IDisposable
         }
         if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(payload), entry.Hash))
             throw new InvalidDataException($"TileWorld Chunk '{key}' failed its integrity check.");
-        try
-        {
-            return DecodeChunk(key, payload);
-        }
-        catch (Exception exception) when (
-            exception is EndOfStreamException or OverflowException or ArgumentException)
-        {
-            throw new InvalidDataException($"TileWorld Chunk '{key}' is malformed or truncated.", exception);
-        }
+        return payload;
     }
 
     public void Dispose()
@@ -209,6 +246,56 @@ public sealed class TileWorldArchiveReader : IDisposable
         if (stream.Position != stream.Length)
             throw new InvalidDataException("TileWorld Chunk payload contains trailing data.");
         return new TileWorldChunkData(key, layers);
+    }
+
+    private TileWorldRasterChunkData DecodeRasterChunk(TileWorldChunkKey key, byte[] payload)
+    {
+        using var stream = new MemoryStream(payload, writable: false);
+        int layerCount = TileWorldArchiveFormat.ReadInt32(stream);
+        if (layerCount is <= 0 || layerCount > Metadata.Layers.Count)
+            throw new InvalidDataException("TileWorld Raster Chunk layer count is invalid.");
+        var layers = new TileWorldRasterLayerData[layerCount];
+        var seen = new HashSet<int>();
+        for (int i = 0; i < layers.Length; i++)
+        {
+            int layerIndex = TileWorldArchiveFormat.ReadInt32(stream);
+            if ((uint)layerIndex >= (uint)Metadata.Layers.Count ||
+                !Metadata.Layers[layerIndex].Visible || !seen.Add(layerIndex))
+                throw new InvalidDataException("TileWorld Raster Chunk references an invalid layer.");
+            int encodingValue = TileWorldArchiveFormat.ReadInt32(stream);
+            if (!Enum.IsDefined((TileWorldRasterEncoding)encodingValue))
+                throw new InvalidDataException("TileWorld Raster Chunk has an unknown encoding.");
+            var encoding = (TileWorldRasterEncoding)encodingValue;
+            int width = TileWorldArchiveFormat.ReadInt32(stream);
+            int height = TileWorldArchiveFormat.ReadInt32(stream);
+            int gutter = TileWorldArchiveFormat.ReadInt32(stream);
+            int length = TileWorldArchiveFormat.ReadInt32(stream);
+            if (width != Metadata.RasterSettings.Width ||
+                height != Metadata.RasterSettings.Height ||
+                gutter != Metadata.RasterSettings.Gutter ||
+                length is <= 0 or > TileWorldArchiveFormat.MaximumPayloadBytes ||
+                length > stream.Length - stream.Position)
+                throw new InvalidDataException("TileWorld Raster layer metadata is invalid.");
+            byte[] bytes = new byte[length];
+            stream.ReadExactly(bytes);
+            if (encoding != TileWorldRasterEncoding.WebpLossless || bytes.Length < 12 ||
+                !bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) ||
+                !bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8))
+                throw new InvalidDataException("TileWorld Raster layer is not a WebP payload.");
+            layers[i] = new TileWorldRasterLayerData(
+                layerIndex, width, height, gutter, encoding, bytes);
+        }
+        if (stream.Position != stream.Length)
+            throw new InvalidDataException("TileWorld Raster Chunk payload contains trailing data.");
+        return new TileWorldRasterChunkData(key, layers);
+    }
+
+    private static TileWorldRasterSampling ReadRasterSampling(Stream stream)
+    {
+        int value = TileWorldArchiveFormat.ReadInt32(stream);
+        if (!Enum.IsDefined((TileWorldRasterSampling)value))
+            throw new InvalidDataException("TileWorld raster sampling is invalid.");
+        return (TileWorldRasterSampling)value;
     }
 
     private static TileCell[] ReadRuns(Stream stream, int expectedCells)

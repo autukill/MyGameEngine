@@ -32,4 +32,5 @@ public sealed record ContentBuildResult(
     int PackedFrameCount,
     int PassthroughFrameCount,
     int TileWorldCount = 0,
-    int TileWorldChunkCount = 0);
+    int TileWorldChunkCount = 0,
+    int TileWorldRasterChunkCount = 0);

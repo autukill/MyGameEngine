@@ -1,5 +1,6 @@
 namespace GameEngine.Features.Tilemaps.Domain;
 
+using System.Numerics;
 using GameEngine.Core.Domain.ValueObjects;
 
 [Flags]
@@ -17,6 +18,31 @@ public enum TileCollisionKind : byte
 {
     None,
     Solid
+}
+
+public static class TileTransformOperations
+{
+    public static void GetScaleAndRotation(
+        TileTransform transform,
+        out Vector2 scale,
+        out float rotationRadians)
+    {
+        const TileTransform valid = TileTransform.FlipX | TileTransform.FlipY |
+                                    TileTransform.Rotate90 | TileTransform.Rotate180;
+        if ((transform & ~valid) != 0)
+            throw new ArgumentOutOfRangeException(nameof(transform));
+
+        scale = new Vector2(
+            (transform & TileTransform.FlipX) != 0 ? -1f : 1f,
+            (transform & TileTransform.FlipY) != 0 ? -1f : 1f);
+        rotationRadians = (transform & (TileTransform.Rotate90 | TileTransform.Rotate180)) switch
+        {
+            TileTransform.Rotate90 => MathF.PI * 0.5f,
+            TileTransform.Rotate180 => MathF.PI,
+            TileTransform.Rotate270 => MathF.PI * 1.5f,
+            _ => 0f
+        };
+    }
 }
 
 public readonly record struct TileCell(TileId Tile, TileTransform Transform = TileTransform.None)

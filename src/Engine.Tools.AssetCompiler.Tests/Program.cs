@@ -35,10 +35,11 @@ internal static class Program
 
     private static void VerifyTileWorldCompilation()
     {
-        Console.WriteLine("5. Deterministic offline TileWorld LOD0 compilation");
+        Console.WriteLine("5. Deterministic offline TileWorld LOD0 + visual LOD compilation");
         string workspace = Directory.CreateTempSubdirectory("mygame-tileworld-").FullName;
         string source = Path.Combine(workspace, "source");
         string output = Path.Combine(workspace, "compiled");
+        string secondOutput = Path.Combine(workspace, "compiled-second");
         Directory.CreateDirectory(source);
         try
         {
@@ -50,12 +51,20 @@ internal static class Program
                 source, "assets.json", output, ContentBuildMode.Incremental));
             ContentBuildResult cached = pipeline.Build(new ContentBuildRequest(
                 source, "assets.json", output, ContentBuildMode.Incremental));
+            ContentBuildResult repeated = pipeline.Build(new ContentBuildRequest(
+                source, "assets.json", secondOutput, ContentBuildMode.Rebuild));
 
             string archivePath = Path.Combine(output, "world.mgworld");
             string compiledManifest = File.ReadAllText(Path.Combine(output, "assets.json"));
-            Check(first.TileWorldCount == 1 && first.TileWorldChunkCount == 2 &&
-                  cached.Status == ContentBuildStatus.UpToDate && File.Exists(archivePath),
-                "Pipeline compiles two sparse LOD0 Chunks and reuses an unchanged package");
+            Check(first.TileWorldCount == 1 && first.TileWorldChunkCount == 6 &&
+                  first.TileWorldRasterChunkCount == 4 &&
+                  cached.Status == ContentBuildStatus.UpToDate &&
+                  cached.TileWorldRasterChunkCount == 4 && File.Exists(archivePath),
+                "Pipeline compiles sparse LOD0 and power-of-two visual LOD Chunks and reuses an unchanged package");
+            Check(repeated.TileWorldRasterChunkCount == 4 &&
+                  File.ReadAllBytes(archivePath).SequenceEqual(
+                      File.ReadAllBytes(Path.Combine(secondOutput, "world.mgworld"))),
+                "Repeated visual LOD builds produce a byte-identical TileWorld archive");
             Check(compiledManifest.Contains("world.mgworld", StringComparison.Ordinal) &&
                   !compiledManifest.Contains("\"build\"", StringComparison.Ordinal) &&
                   !File.Exists(Path.Combine(output, "world.tilemap.json")),
@@ -65,10 +74,27 @@ internal static class Program
             {
                 Check(archive.Metadata.Name == "compiler.world" &&
                       archive.Metadata.DeclaredLodCount == 3 &&
+                      archive.Metadata.RasterSettings == new TileWorldRasterSettings(
+                          256, 256, 2, TileWorldRasterSampling.PixelArt) &&
                       archive.Contains(new TileWorldChunkKey(0, -1, 0)) &&
                       archive.ReadChunk(new TileWorldChunkKey(0, 0, 0))
                           .Layers[0].CollisionRects.Length == 1,
                     "Compiled archive is runtime-readable and retains authoritative collision");
+                TileWorldRasterChunkData raster = archive.ReadRasterChunk(
+                    new TileWorldChunkKey(1, 0, 0));
+                TileWorldRasterLayerData rasterLayer = raster.Layers.Single();
+                DecodedImage decoded = new SkiaImageDecoder().Decode(
+                    new MemoryStream(rasterLayer.EncodedBytes, writable: false));
+                int greenPixel = ((2 + 32) * decoded.Width + 2 + 32) * 4;
+                int transparentPixel = ((2 + 160) * decoded.Width + 2 + 160) * 4;
+                Check(rasterLayer.Encoding == TileWorldRasterEncoding.WebpLossless &&
+                      decoded.Width == 260 && decoded.Height == 260 &&
+                      decoded.RgbaPixels[greenPixel] == 0 &&
+                      decoded.RgbaPixels[greenPixel + 1] == 128 &&
+                      decoded.RgbaPixels[greenPixel + 2] == 0 &&
+                      decoded.RgbaPixels[greenPixel + 3] == 255 &&
+                      decoded.RgbaPixels[transparentPixel + 3] == 0,
+                    "Visual LOD stores a real lossless WebP with exact RGBA and transparent empty area");
             }
 
             var backend = new FakeTextureBackend();
@@ -81,7 +107,7 @@ internal static class Program
                     TileWorldRef world = package.GetTileWorld("compiler.world");
                     using TileWorldArchiveReader archive = manager.TileWorlds.Open(world);
                     Check(world == new TileWorldRef("compiler.world") &&
-                          manager.TileWorlds.Count == 1 && archive.ChunkCount == 2,
+                          manager.TileWorlds.Count == 1 && archive.ChunkCount == 6,
                         "Content package exposes a borrowed TileWorld archive through a logical ref");
                 }
                 Check(manager.TileWorlds.Count == 0,
@@ -103,8 +129,19 @@ internal static class Program
             ContentBuildResult changed = pipeline.Build(new ContentBuildRequest(
                 source, "assets.json", output, ContentBuildMode.Incremental));
             Check(changed.Status == ContentBuildStatus.Built &&
-                  changed.InputFingerprint != firstFingerprint && changed.TileWorldChunkCount == 2,
+                  changed.InputFingerprint != firstFingerprint &&
+                  changed.TileWorldChunkCount == 6 && changed.TileWorldRasterChunkCount == 4,
                 "A TileWorld source edit invalidates its owning package fingerprint");
+
+            byte[] validArchive = File.ReadAllBytes(archivePath);
+            File.WriteAllText(
+                Path.Combine(source, "assets.json"),
+                TileWorldPackageManifest.Replace("webpLossless", "png", StringComparison.Ordinal));
+            CheckThrows<InvalidDataException>(() => pipeline.Build(new ContentBuildRequest(
+                    source, "assets.json", output, ContentBuildMode.Rebuild)),
+                "Visual TileWorld LODs reject non-WebP encoding before replacing valid output");
+            Check(File.ReadAllBytes(archivePath).SequenceEqual(validArchive),
+                "Rejected visual LOD configuration preserves the previous valid archive");
         }
         finally
         {
@@ -743,6 +780,12 @@ internal static class Program
           "schemaVersion": 1,
           "id": "compiler.tileworld.assets",
           "dependencies": [],
+          "atlas": {
+            "maxPageSize": { "width": 4, "height": 4 },
+            "padding": 0,
+            "extrude": 0,
+            "textures": ["compiler.world.texture"]
+          },
           "textures": [
             { "name": "compiler.world.texture", "path": "tile.png", "sampling": "pixelArt" }
           ],
