@@ -2,7 +2,6 @@ namespace BubbleTa.Game;
 
 using BubbleTa.Game.Content;
 using BubbleTa.Game.Home;
-using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Hosting;
 
@@ -18,8 +17,11 @@ internal static class Program {
 
         using var game = GameApplication
             .Create( options )
-            .UseDefault2DRenderer( renderer => renderer.UseContent( GameAssets.Packages.Root ) )
-            .AddScene( GameScenes.Home, context => HomeSceneDefinition.Configure( context, smoke ) )
+            .UseDefault2DRenderer( renderer => renderer.UseContentCatalog() )
+            .AddScene(
+                GameScenes.Home,
+                GameAssets.Packages.BubbletaHome,
+                context => HomeSceneDefinition.Configure( context, smoke ) )
             .AddScene( GameScenes.WorldMap, context => WorldMapPlaceholderScene.Configure( context, smoke ) )
             .StartScene( GameScenes.Home )
             .Build();

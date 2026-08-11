@@ -48,6 +48,7 @@ games/BubbleTa/
 - [项目结构与模块约定](docs/PROJECT_STRUCTURE.md)：物理目录、解决方案分组、依赖方向和模块晋升门槛。
 - [旧工程 Room 与场景迁移](docs/LEGACY_SCENES.md)：六个旧 Room、主要流程及 MyGameEngine Scene 边界建议。
 - [HomeScene 实现说明](docs/HOME_SCENE.md)：运行方式、坐标系统、动画迁移、交互与资产发布 Gate。
+- [WorldMapScene 考古与渐进规格](docs/WORLD_MAP_SCENE.md)：旧纵向地图结构、相机交互、岛屿虚拟化和现代职责边界。
 
 ## 运行与验证
 

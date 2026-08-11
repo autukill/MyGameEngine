@@ -50,6 +50,8 @@ Room 预放置 34 个实例，包括：
 
 ## `rm_world`：纵向世界地图
 
+完整的对象、相机、五段岛屿、可见性与渐进重建分析见 [WorldMapScene 考古与渐进规格](WORLD_MAP_SCENE.md)。
+
 Room 高达 16100 像素，只预放置 `obj_world_control`，再由它动态创建：
 
 - 0 到 4 组岛屿容器及其云层。

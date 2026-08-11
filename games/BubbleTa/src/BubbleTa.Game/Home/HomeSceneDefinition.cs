@@ -7,6 +7,9 @@ using GameEngine.Hosting;
 
 internal static class HomeSceneDefinition {
     public static void Configure( Default2DGameContext context, bool smoke ) {
+        if ( context.Content?.Id != GameAssets.Packages.BubbletaHome.Id )
+            throw new InvalidOperationException(
+                "BubbleTa HomeScene requires its scene-scoped Home content package." );
         context.Camera.Position = new Vector2(
             HomeSceneLayout.CameraPosition.X,
             HomeSceneLayout.CameraPosition.Y );
@@ -87,15 +90,13 @@ internal static class HomeSceneDefinition {
 
 internal static class WorldMapPlaceholderScene {
     public static void Configure( Default2DGameContext context, bool smoke ) {
+        if ( context.Content is not null )
+            throw new InvalidOperationException(
+                "The package-free WorldMap placeholder must not retain Home content." );
         context.Camera.Position = Vector2.Zero;
         context.Camera.Zoom = 1f;
         context.Scene.Background = BackgroundConfig.FromColor(
             new Vector4( .035f, .12f, .24f, 1f ) );
-        context.Scene.Add( new StaticHomeSpriteInstance(
-            GameAssets.Sprites.BubbletaHomeWorldEnter,
-            new Vector2D( 360f, 640f ),
-            Vector2D.One,
-            0 ) );
         context.Scene.Add( new WorldMapPlaceholderController( () => context.Scenes.SwitchTo( GameScenes.Home ) ) );
         if ( smoke ) context.Scene.Add( new WorldMapSmokeProbe( context.Close ) );
     }

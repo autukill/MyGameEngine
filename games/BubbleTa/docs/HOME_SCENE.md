@@ -20,7 +20,7 @@
 3. 生成运行时内容包和强类型 `GameAssets` 常量；
 4. 将女主九帧光效注册为约 9.2 FPS 的多帧 Sprite。
 
-运行时代码只使用 `SpriteRef` 和生成的资源名称，不读取旧 GameMaker 工程，也不持有源 WebP 路径。当前根租约仍会同步加载完整依赖图；子包边界只是为未来 Scene 级加载与释放预留条件，本切片没有改变内容生命周期。
+运行时代码只使用 `SpriteRef` 和生成的资源名称，不读取旧 GameMaker 工程，也不持有源 WebP 路径。BubbleTa 现通过 `UseContentCatalog()` 与带包参数的 `AddScene` 声明 Home 租约：配置 Home 前加载 `bubbleta.home`，离开 Home 后释放其 Sprite 与两页 Atlas，返回时重新装配。顶层聚合根仍负责离线编译与强类型引用生成，但不再作为运行期常驻租约。详细语义见 [Scene 级 Content 生命周期](../../../docs/SCENE_CONTENT_LIFECYCLE.md)。
 
 迁移时每张 WebP 都以 libwebp lossless + exact 模式编码，并重新解码验证完整 RGBA 与原 PNG 逐像素相同，包括 alpha 为 0 的隐藏 RGB。源图片由 991,320 bytes 降到 577,636 bytes；两张编译 Atlas 页面由 1,052,090 bytes 降到 639,206 bytes。WebP 只减少仓库和发布包体积，上传 GPU 后仍解码为 RGBA8，不减少显存。
 
