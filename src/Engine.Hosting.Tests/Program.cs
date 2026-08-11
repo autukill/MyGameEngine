@@ -13,6 +13,7 @@ using GameEngine.Features.Bloom.Domain;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
+using GameEngine.Features.Audio;
 using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.Replay.Application;
@@ -32,6 +33,7 @@ internal static class Program
         Console.WriteLine("=== Engine Hosting Smoke Test ===\n");
         TestBuilderPlans();
         TestBuilderValidation();
+        TestSceneAudioScope();
         TestLogicalInputMap();
         TestLogicalInputRecordingAndPlayback();
         TestGameplayCooldown();
@@ -156,6 +158,45 @@ internal static class Program
         Check(RenderViewLayoutBuilder.ResolveRenderSize(
                   ViewportRect.RightHalf, 0.5f, 801, 601) == (200, 301),
             "Render View size combines shared-edge Viewport rounding and RenderScale deterministically");
+    }
+
+    private static void TestSceneAudioScope()
+    {
+        Console.WriteLine("1c. Scene-scoped audio ownership");
+        var library = new AudioLibrary();
+        AudioClipRef hit = library.Register(
+            "scene.hit", "memory://scene-hit", new AudioClipMetadata(TimeSpan.FromSeconds(1), 1, 48_000));
+        AudioClipRef music = library.Register(
+            "scene.music", "memory://scene-music", new AudioClipMetadata(TimeSpan.FromMinutes(2), 2, 48_000));
+        using var backend = new SceneAudioTestBackend();
+        using var audio = new AudioRuntime(library, backend, maxVoices: 4);
+        var scope = new SceneAudioScope(audio);
+
+        AudioPlayOptions sfx = AudioPlayOptions.Sfx;
+        AudioVoiceRef hitVoice = scope.Play(hit, in sfx);
+        AudioVoiceRef musicVoice = scope.PlayMusic(music);
+        Check(scope.Enabled && scope.TrackedVoiceCount == 2 &&
+              audio.TryGetSnapshot(musicVoice, out AudioVoiceSnapshot musicSnapshot) &&
+              musicSnapshot.Bus == AudioBusRef.Music && musicSnapshot.Loop && musicSnapshot.Priority == 100,
+            "SceneAudio tracks SFX and provides a high-priority looping Music convenience path");
+
+        backend.CompleteOldest();
+        audio.Update();
+        scope.PruneCompleted();
+        Check(scope.TrackedVoiceCount == 1 && !scope.IsPlaying(hitVoice),
+            "Completed one-shot Voices are pruned without growing the Scene scope forever");
+
+        AudioVoiceRef globalVoice = audio.Play(hit, in sfx);
+        scope.StopAll();
+        Check(scope.TrackedVoiceCount == 0 && !audio.IsPlaying(musicVoice) && audio.IsPlaying(globalVoice),
+            "Ending a Scene stops only scoped Voices and preserves deliberately global playback");
+        scope.StopAll();
+        Check(audio.IsPlaying(globalVoice), "SceneAudio StopAll is idempotent");
+
+        var disabled = new SceneAudioScope(audio: null);
+        Check(!disabled.Enabled, "SceneAudio exposes whether Hosting audio is enabled");
+        CheckThrows<InvalidOperationException>(() => disabled.Play(hit, in sfx),
+            "SceneAudio playback gives the same explicit UseAudio diagnostic when disabled");
     }
 
     private static void TestBuilderValidation()
@@ -2547,5 +2588,33 @@ internal static class Program
         public void DeleteTexture(uint handle)
         {
         }
+    }
+
+    private sealed class SceneAudioTestBackend : IAudioBackend
+    {
+        private readonly List<AudioBackendVoice> _playing = [];
+        private long _next;
+
+        public AudioBackendVoice Play(in AudioClipDescriptor clip, in AudioVoiceMix mix)
+        {
+            var voice = new AudioBackendVoice(++_next);
+            _playing.Add(voice);
+            return voice;
+        }
+
+        public void SetMix(AudioBackendVoice voice, in AudioVoiceMix mix)
+        {
+        }
+
+        public bool IsPlaying(AudioBackendVoice voice) => _playing.Contains(voice);
+
+        public void Stop(AudioBackendVoice voice) => _playing.Remove(voice);
+
+        public void CompleteOldest()
+        {
+            if (_playing.Count > 0) _playing.RemoveAt(0);
+        }
+
+        public void Dispose() => _playing.Clear();
     }
 }

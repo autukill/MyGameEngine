@@ -41,6 +41,8 @@ public sealed class Default2DGameContext
     public bool AudioEnabled => _audio is not null;
     public AudioRuntime Audio => _audio ?? throw new InvalidOperationException(
         "Audio is not enabled. Call GameApplicationBuilder.UseAudio before Build.");
+    /// <summary>Playback automatically stopped when the active Scene ends.</summary>
+    public SceneAudioScope SceneAudio { get; }
     /// <summary>Scene-scoped parent/child transforms and lightweight gameplay attachments.</summary>
     public SceneTransformRuntime Transforms { get; }
     public TextRuntime Text { get; }
@@ -67,6 +69,7 @@ public sealed class Default2DGameContext
         AnimationLibrary animations,
         AudioLibrary audioClips,
         AudioRuntime? audio,
+        SceneAudioScope sceneAudio,
         TileSetLibrary tileSets,
         TileMapLibrary tileMaps,
         TileMapRenderer tilemapRenderer,
@@ -97,6 +100,7 @@ public sealed class Default2DGameContext
         TileMaps = tileMaps ?? throw new ArgumentNullException(nameof(tileMaps));
         TileMapRenderer = tilemapRenderer ?? throw new ArgumentNullException(nameof(tilemapRenderer));
         _audio = audio;
+        SceneAudio = sceneAudio ?? throw new ArgumentNullException(nameof(sceneAudio));
         Transforms = transforms ?? throw new ArgumentNullException(nameof(transforms));
         Text = text ?? throw new ArgumentNullException(nameof(text));
         Shaders = shaders;

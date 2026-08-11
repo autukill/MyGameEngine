@@ -46,6 +46,7 @@ internal sealed class Default2DGameRuntime : IDisposable
     private AnimationLibrary _animations = null!;
     private AudioLibrary _audioClips = null!;
     private AudioRuntime? _audio;
+    private SceneAudioScope _sceneAudio = null!;
     private SceneTransformRuntime _transforms = null!;
     private ShaderLibrary _shaders = null!;
     private SceneAggregate? _scene;
@@ -118,6 +119,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _scene.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
         _scene.PerformStep(deltaTime);
         _audio?.Update();
+        _sceneAudio.PruneCompleted();
         for (int i = 0; i < _renderViews.Count; i++)
             _renderViews[i].Camera.Update(deltaTime);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
@@ -166,6 +168,7 @@ internal sealed class Default2DGameRuntime : IDisposable
         try
         {
             _scene?.End();
+            _sceneAudio?.StopAll();
         }
         finally
         {
@@ -234,6 +237,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                 audioOptions.MaxVoices,
                 ownsBackend: true));
         }
+        _sceneAudio = new SceneAudioScope(_audio);
         _transforms = _resources.Add(new SceneTransformRuntime());
         _shaders = _resources.Add(new ShaderLibrary(gl));
         _batch.SpriteResolver = _sprites;
@@ -450,6 +454,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _animations,
             _audioClips,
             _audio,
+            _sceneAudio,
             _tileSets,
             _tileMaps,
             _tileMapRenderer,
@@ -512,6 +517,7 @@ internal sealed class Default2DGameRuntime : IDisposable
         try
         {
             _scene!.TransitionTo(next.Scene.Name);
+            _sceneAudio.StopAll();
             _builder.ApplyEvents(_scene.DrainUncommittedEvents());
 
             if (_plan.Renderer.ContentCatalogOnly)
