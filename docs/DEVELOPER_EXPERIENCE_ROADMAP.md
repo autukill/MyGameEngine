@@ -121,7 +121,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 - `UseInteractiveViewport` 为单主 Camera 提供黄金入口；`UseRenderViews` 可让每个 View 独立声明，CameraFollow 所有权冲突在装配期拒绝。
 - Hosting 在 Scene Step 前按最上层 View 路由输入，Resize 后重新约束；核心稳定更新 0 B，真实 OpenGL 隐藏 smoke 通过。
 
-统一多 Pointer/Pinch、Bounce/Animate/Snap/SnapZoom/MouseEdges 和独立 `WorldChunkStreamer` 已完成。离线 TileWorld 第一阶段也已完成：声明式 `tileWorlds`、权威 LOD0 RLE/碰撞、确定性 `.mgworld`、Chunk 完整性验证、Content 租约和强类型引用已经闭环。下一步固定为 LOD1+ 分层 WebP 烘焙，再接运行时 LOD 选择与 Content lease Adapter。Chunk、异步 IO、Texture lease 和显存预算不进入 Viewport 项目。完整用法见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)、[World Chunk Streaming](WORLD_CHUNK_STREAMING.md) 与 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)。
+统一多 Pointer/Pinch、Bounce/Animate/Snap/SnapZoom/MouseEdges 和独立 `WorldChunkStreamer` 已完成。离线 TileWorld 第一阶段也已完成：声明式 `tileWorlds`、权威 LOD0 RLE/碰撞、确定性 `.mgworld`、Chunk 完整性验证、Content 租约和强类型引用已经闭环。下一步固定为 LOD1+ 分层无损 WebP 烘焙，再接运行时 LOD 选择与 Content lease Adapter；随后补全常驻 Preview/Fallback Surface，最后才提供既有 WebP 切片导入。历史 ZL Editor 的 `12000×12000`、400 张详细切片和一张 Preview 将作为真实验收样本，不作为公共 API 特例。Chunk、异步 IO、Texture lease 和显存预算不进入 Viewport 项目。完整用法见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)、[World Chunk Streaming](WORLD_CHUNK_STREAMING.md) 与 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)。
 
 ## 候选视觉主线：2D Lighting（已规划，尚未实施）
 
@@ -158,7 +158,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | P1 | Tilemap/World Authoring | 关卡生产、Chunk、碰撞和未来静态光照遮挡的共同基础 |
 | 已完成接入 | 原生中文 Text Rendering | 真实 Font、中文/单词多行、对齐、Ellipsis、复用 Buffer、Hosting 与 World/SceneGui 已闭环；Shaping 后续 Spike |
 | 已完成接入 | Audio 短音效与 Streaming Music | 声明式 WAV/OGG、OpenAL 四 Buffer 队列、强类型 Clip、SceneAudio 所有权与诊断已闭环 |
-| 当前主线 | 大世界 Authoring | Viewport、Chunk Streaming 与 TileWorld LOD0 归档已完成；下一步生成 LOD1+ 分层 WebP |
+| 当前主线 | 大世界 Authoring | Viewport、Chunk Streaming 与 TileWorld LOD0 归档已完成；依次推进 LOD1+ 分层无损 WebP、运行时 LOD/Loader、Preview 保底和既有切片导入 |
 | 已完成调研 | Yoga/RmlUi/FairyGUI Compatibility Spike | 已建立候选顺序、适配面和 Go/No-Go 门槛 |
 | P2 | RichText、彩色文字、Typewriter、Sprite Emoji | 建立在原生 Text Layout 上 |
 | P2 | Gamepad/Rebinding、Save Game | Logical Input 与显式状态协议已有基础 |
@@ -167,7 +167,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | P3 | 彩色 Font Emoji、AnimatedImage、FairyGUI 高级组件 | 由真实产品需求和资产驱动 |
 | P3 | Lighting 软阴影/高级材质、完整物理/导航 | 由性能数据和真实玩法驱动 |
 
-Transform Scene/Prefab、Text 多行/Layout Buffer、Audio 短音效/流式音乐与 Tilemap/World Authoring 第一阶段已完成。大地图开发体验已经推进到 `Interactive Viewport → World Chunk Streaming → TileWorld LOD0 离线归档`；当前下一步是 LOD1+ 分层视觉烘焙，随后才做运行时层级切换。Lighting 0/1 暂列其后。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
+Transform Scene/Prefab、Text 多行/Layout Buffer、Audio 短音效/流式音乐与 Tilemap/World Authoring 第一阶段已完成。大地图开发体验已经推进到 `Interactive Viewport → World Chunk Streaming → TileWorld LOD0 离线归档`；当前下一步是 LOD1+ 分层无损 WebP 烘焙，然后依次完成运行时层级切换、Preview 保底和既有切片导入。Lighting 0/1 暂列其后。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
 
 ## 设计约束
 

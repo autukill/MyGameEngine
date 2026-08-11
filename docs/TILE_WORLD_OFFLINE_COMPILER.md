@@ -114,6 +114,36 @@ Viewport 不知道 `.mgworld`、Tile 或 GPU；归档 Reader 也不知道 Camera
 - 当前源 TileMap 仍整体解析；超大型导入格式和前向解析临时索引后续按真实地图规模补充。
 - 尚无 Tiled 导入、无限程序化地图、视觉 LOD 淡化或 GPU 显存预算。
 
+## 真实地图案例与固定推进顺序
+
+历史 ZL Editor 的 `packages/shared-public/assets/map` 提供了一份很有价值的真实验收样本：世界为
+`12000×12000`，包含 `20×20` 张 `600×600` 的 `tile_{row}_{column}.webp` 详细切片，以及一张
+`2040×2040` 的 `preview.webp`。旧运行时让 Preview 铺满整个世界并始终位于底层；详细 Chunk
+按 Viewport 可见范围加载后覆盖其对应区域，离开保留范围后再卸载。因此加载、取消、失败或快速
+移动期间都不会出现空白世界。
+
+这个结构应被解释为“常驻全图保底层 + 按需详细层”，而不是把 401 张图片声明成普通 Texture
+并随 Content Package 一次性上传。`preview.webp` 的稳定语义是 `Fallback Surface`：只提供视觉
+连续性，不参与 Tile、碰撞或 Gameplay 查询。详细 WebP 也只是视觉数据；权威世界状态仍应由
+LOD0 Tile/Collision 或游戏自己的空间数据提供。
+
+该目录目前不能直接作为 TileWorld 编译输入。为避免一个历史文件命名约定反过来塑造公共 API，
+后续固定按以下顺序推进：
+
+1. **生成式 LOD1+**：先从权威 TileMap 和 TileSet 确定性烘焙逐 Layer、逐层级的无损 WebP
+   Chunk，保留 Layer Depth、透明边缘和 Gutter；构建阶段验证像素、索引和重复构建字节一致。
+2. **运行时 LOD**：再实现 `TileWorldChunkLoader`、Zoom 选择、滞回、替换完整性和旧层级保留，
+   接到现有 `WorldChunkStreamer<TLease>`；Viewport 仍只提供观察范围和 Zoom。
+3. **Fallback Surface**：让低清全图或最粗层级先驻留，详细 Chunk 只有完整可用后才覆盖；失败、
+   取消和卸载时自然露出保底层，而不是显示透明空洞。
+4. **既有切片导入**：最后增加离线 `preTiledRaster` 适配，验证行列、尺寸、缺片、路径安全与
+   Preview 世界范围，把 `tile_{row}_{column}.webp` 规范化进同一归档索引。运行时不扫描目录，
+   也不解析文件名。
+
+这样既能让新项目得到由权威内容确定性生成的标准产物，也能在边界稳定后无损接纳已有大地图。
+ZL 样本将用于验收 Preview 常驻、400 个详细 Chunk 的按需驻留、快速缩放/移动、加载取消、资源
+回收和画面无空洞，而不作为第一阶段 API 的特例。
+
 验证命令：
 
 ```powershell
