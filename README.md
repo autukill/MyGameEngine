@@ -146,7 +146,7 @@ Tilemaps + TileWorlds + TextureAssets + WorldStreaming → TileWorldStreaming
 Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/ViewportNavigation/Content/TileWorldStreaming/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 84 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 85 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -216,6 +216,7 @@ dotnet run --project src/Engine.Features/ViewportNavigation.Tests/ViewportNaviga
 dotnet run --project src/Engine.Features/WorldStreaming.Tests/WorldStreaming.Tests.csproj
 dotnet run --project src/Engine.Features/TileWorlds.Tests/TileWorlds.Tests.csproj
 dotnet run --project src/Engine.Features/TileWorldStreaming.Tests/TileWorldStreaming.Tests.csproj
+dotnet run --project src/Engine.Features/TileWorldStreaming.VisualTests/TileWorldStreaming.VisualTests.csproj -c Release
 dotnet run --project src/Engine.Features/Presentation.Tests/Presentation.Tests.csproj
 dotnet run --project src/Engine.Features/RenderPipeline.Tests/RenderPipeline.Tests.csproj
 dotnet run --project src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csproj

@@ -158,7 +158,14 @@ GPU 预算和跨 View 共享应由真实 12000×12000 样本测量后决定。
 
 ```powershell
 dotnet run --project src/Engine.Features/TileWorldStreaming.Tests/TileWorldStreaming.Tests.csproj -c Release
+dotnet run --project src/Engine.Features/TileWorldStreaming.VisualTests/TileWorldStreaming.VisualTests.csproj -c Release
 ```
 
 无窗口测试覆盖密度阈值、双向滞回、稀疏空 Chunk、权威 LOD0、后台准备/GPU 提交边界、上传失败
 回滚、最粗层常驻、完整替换和按世界区域裁取 Fallback。
+
+VisualTests 不提交真实地图资源，而是在临时目录生成一个 `4×4` 的小型 `.mgworld v3`、LOD1/LOD2
+无损 WebP Chunk 和独立 Preview Surface。运行后可通过拖拽/滚轮观察 Viewport，通过 `Q/W/E`
+直接切换 LOD2/LOD1/LOD0，`Space` 暂停或恢复自动巡游，`R` 重建 Session 并重放
+Preview → Raster LOD → LOD0 的异步接管过程，`ESC` 退出。窗口标题与顶部状态条会显示当前来源、
+待切换 Level、Preview 常驻数和 Fallback Draw 数；`--smoke` 使用隐藏窗口自动验证完整 GPU 路径。

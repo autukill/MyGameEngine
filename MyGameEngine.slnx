@@ -91,6 +91,7 @@
   </Folder>
   <Folder Name="/Engine.Features/TileWorldStreaming/">
     <Project Path="src/Engine.Features/TileWorldStreaming.Tests/TileWorldStreaming.Tests.csproj" />
+    <Project Path="src/Engine.Features/TileWorldStreaming.VisualTests/TileWorldStreaming.VisualTests.csproj" />
     <Project Path="src/Engine.Features/TileWorldStreaming/TileWorldStreaming.csproj" />
   </Folder>
   <Folder Name="/Engine.Features/ToneMapping/">

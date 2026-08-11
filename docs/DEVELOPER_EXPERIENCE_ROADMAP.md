@@ -121,7 +121,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 - `UseInteractiveViewport` 为单主 Camera 提供黄金入口；`UseRenderViews` 可让每个 View 独立声明，CameraFollow 所有权冲突在装配期拒绝。
 - Hosting 在 Scene Step 前按最上层 View 路由输入，Resize 后重新约束；核心稳定更新 0 B，真实 OpenGL 隐藏 smoke 通过。
 
-统一多 Pointer/Pinch、Bounce/Animate/Snap/SnapZoom/MouseEdges 和独立 `WorldChunkStreamer` 已完成。TileWorld 已贯通声明式清单、权威 LOD0、逐 Layer LOD1+ exact 无损 WebP、运行时 Zoom/滞回、后台解码、主线程 Texture Lease、完整替换、最粗生成 LOD 回退与逐 Layer Preview/Fallback Surface。下一步是既有 WebP 切片的离线导入适配器。历史 ZL Editor 的 `12000×12000`、400 张详细切片和一张 Preview 只作为未来真实验收样本，不导入当前功能切片，也不作为公共 API 特例。Chunk、异步 IO、Texture lease 和显存预算不进入 Viewport 项目。完整用法见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)、[World Chunk Streaming](WORLD_CHUNK_STREAMING.md)、[TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md) 与 [TileWorld 运行时流式加载](TILE_WORLD_RUNTIME_STREAMING.md)。
+统一多 Pointer/Pinch、Bounce/Animate/Snap/SnapZoom/MouseEdges 和独立 `WorldChunkStreamer` 已完成。TileWorld 已贯通声明式清单、权威 LOD0、逐 Layer LOD1+ exact 无损 WebP、运行时 Zoom/滞回、后台解码、主线程 Texture Lease、完整替换、最粗生成 LOD 回退与逐 Layer Preview/Fallback Surface，并由小型临时合成世界的 VisualTests 覆盖完整视觉接管链。下一步是既有 WebP 切片的离线导入适配器。历史 ZL Editor 的 `12000×12000`、400 张详细切片和一张 Preview 只作为未来真实验收样本，不导入当前功能切片，也不作为公共 API 特例。Chunk、异步 IO、Texture lease 和显存预算不进入 Viewport 项目。完整用法见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)、[World Chunk Streaming](WORLD_CHUNK_STREAMING.md)、[TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md) 与 [TileWorld 运行时流式加载](TILE_WORLD_RUNTIME_STREAMING.md)。
 
 ## 候选视觉主线：2D Lighting（已规划，尚未实施）
 
