@@ -124,7 +124,10 @@ public sealed class TileWorldStreamingSession : IDisposable
 
         Accumulate(_fallback.Update(viewport, _textures, ref uploadBudget),
             ref started, ref completed, ref unloaded, ref failures);
-        if (!ReferenceEquals(_active, _fallback))
+        // When zoom selects another LOD, keep the current level frozen as a visual bridge. Updating
+        // it with the new Viewport can make a detailed level expand across the whole zoomed-out
+        // world before the coarse candidate takes over, defeating both the residency cap and LOD.
+        if (!ReferenceEquals(_active, _fallback) && _desiredLevel == _active.Level)
             Accumulate(_active.Update(viewport, _textures, ref uploadBudget),
                 ref started, ref completed, ref unloaded, ref failures);
 

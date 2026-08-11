@@ -32,6 +32,8 @@ internal static class Program
         Run("GPU uploads obey deterministic per-update budgets", () => VerifyUploadBudget(fixture));
         await RunAsync("LOD replacement retires blocked work without joining", () =>
             VerifyNonBlockingLodRetirement(fixture));
+        Run("Zoom-out freezes detailed residency until coarse LOD takes over", () =>
+            VerifyZoomOutDoesNotExpandDetailedResidency(fixture));
         Run("Session retains coarse fallback until detailed coverage is complete", () => VerifySession(fixture));
         Console.WriteLine(_failures == 0
             ? "=== All TileWorldStreaming smoke tests passed ==="
@@ -192,6 +194,41 @@ internal static class Program
         TileWorldStreamingUpdateResult countLimited = countSession.Update(view);
         Check(countLimited.TexturesUploaded == 1 && countTextures.Count == 1,
             "Texture-count budget should stop additional uploads even when byte capacity remains");
+    }
+
+    private static void VerifyZoomOutDoesNotExpandDetailedResidency(WorldFixture fixture)
+    {
+        var decoder = new FakeDecoder();
+        var backend = new FakeTextureBackend();
+        using var textures = new TextureLibrary(backend, decoder);
+        var options = new TileWorldStreamingOptions(
+            new TileWorldLodSelectionOptions(1f, 0.1f),
+            new WorldChunkStreamingOptions(
+                preloadMarginChunks: 0,
+                retainMarginChunks: 0,
+                maximumConcurrentLoads: 1,
+                maximumTrackedChunks: 2,
+                retryFailedOnViewportChange: true,
+                maximumLoadsStartedPerUpdate: 1),
+            TileWorldChunkLoadMode.Inline,
+            new TileWorldTextureUploadBudget(4, 1_024 * 1_024));
+        using var session = new TileWorldStreamingSession(
+            fixture.Descriptor,
+            fixture.TileSets,
+            textures,
+            decoder,
+            options);
+
+        ViewportSnapshot detailed = Snapshot(0f, 0f, 4f, 4f, 1f, 500);
+        for (int step = 0; step < 8 && session.ActiveLevel != 0; step++)
+            session.Update(detailed);
+        Check(session.ActiveLevel == 0,
+            "Detailed Viewport should promote LOD0 before testing the zoom-out transition.");
+
+        ViewportSnapshot panorama = Snapshot(0f, 0f, 16f, 4f, 0.1f, 501);
+        TileWorldStreamingUpdateResult result = session.Update(panorama);
+        Check(result.DesiredLevel == 2 && session.ActiveLevel == 2,
+            "Coarsest LOD should take over without expanding LOD0 beyond its tracked-chunk cap.");
     }
 
     private static async Task VerifyNonBlockingLodRetirement(WorldFixture fixture)

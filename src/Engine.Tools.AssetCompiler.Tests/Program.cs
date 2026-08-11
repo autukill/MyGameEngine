@@ -209,6 +209,7 @@ internal static class Program
                     new TileWorldChunkKey(1, 0, 0));
                 TileWorldFallbackSurfaceData preview = archive.ReadFallbackSurface(0);
                 Check(first.TileWorldChunkCount == 5 && first.TileWorldRasterChunkCount == 5 &&
+                      !archive.HasAuthoritativeChunks && archive.AuthoritativeChunkCount == 0 &&
                       archive.Metadata.BaseChunkWorldSize == new System.Numerics.Vector2(600f, 600f) &&
                       archive.Metadata.DeclaredLodCount == 2 &&
                       lod0.Layers[0].Encoding == TileWorldRasterEncoding.Webp &&
@@ -216,6 +217,16 @@ internal static class Program
                       lod1.Layers[0].Encoding == TileWorldRasterEncoding.WebpLossless &&
                       preview.Encoding == TileWorldRasterEncoding.Webp,
                     "Importer preserves original WebP LOD0, embeds Preview, and generates a coarser lossless LOD");
+            }
+            var backend = new FakeTextureBackend();
+            using (var textures = new TextureLibrary(backend))
+            {
+                var sprites = new SpriteLibrary(textures);
+                using var manager = new ContentPackageManager(textures, sprites, output);
+                using LoadedContentPackage package = manager.Load("assets.json");
+                Check(package.GetTileWorld("compiler.pretiled") ==
+                      new TileWorldRef("compiler.pretiled"),
+                    "Raster-only TileWorld loads without a synthetic Gameplay TileSet");
             }
 
             string fingerprint = first.InputFingerprint;

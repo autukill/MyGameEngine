@@ -66,6 +66,10 @@ GameInstance/Scene Controller 在 `OnCreate` 创建，在 `OnDestroy` 释放。�
 Level 先取消并进入退休队列，后续 `Update` 只轮询已经完成的任务，不在 Scene Step 中同步等待；
 Session 终止释放仍遵循 Preview → Pending/Retired → Active → Fallback，每个 Lease 再移除自己注册的 Texture。
 
+当 Zoom 已选择另一个 LOD 时，当前 Active Level 会冻结现有驻留集合，只作为新层级接管前的画面桥接；
+它不会用新的全景范围扩张高细节 Chunk。缺失区域继续由最粗层或 Preview 覆盖，因此快速从最大细节拉回
+全景既不会突破 `MaximumTrackedChunks`，也不会短暂加载整张地图的 LOD0。
+
 ## LOD 选择与滞回
 
 LOD 不是硬编码 Zoom 列表，而是从世界 Chunk 尺寸和离线 Raster 像素密度推导。默认目标为
@@ -160,13 +164,14 @@ Lease 的唯一所有权。
 - 独立 Preview/Fallback Surface 已支持；未声明时保持最粗生成 LOD 的原有行为。
 - 不同 Session 尚不共享跨 Viewport 的解码结果或 Texture 引用计数。
 - 已有逐帧上传预算，但没有总显存预算降级、LRU、PBO、逐 Chunk 热重载或层级淡化。
-- `.mgworld` 仍来自权威 TileMap；历史 `tile_{row}_{column}.webp + preview.webp` 尚未接入
-  `preTiledRaster` 导入器。
+- `.mgworld` 可来自权威 TileMap，也可来自固定网格的 `*.pretiledworld.json`；后者的 LOD0 是纯视觉
+  Raster，不提供 Tile/碰撞语义。
 - LOD0 碰撞数据已经随 Lease 可用，但视觉 Session 不替 Gameplay 自动建立空间查询索引。
 
-下一切片是离线 `preTiledRaster` 导入适配器，把既有多切片地图规范化进相同 `.mgworld` 索引；不要让
-Session 扫描目录或猜测资源语义。实现与测试继续使用小型合成 Fixture，完整历史地图仅留作未来人工验收。
-默认上传预算应在未来真实 `12000×12000` 样本上测量后按目标平台覆盖，跨 View 共享也留到该验收阶段。
+离线 `preTiledRaster` 适配器已经把既有多切片地图规范化进相同 `.mgworld` 索引；Session 仍不扫描目录
+或猜测文件名。`12000×12000`、400 张详细 WebP 的仓库外样本已验证 Preview、6 层 LOD、后台解码和
+逐帧上传；仓库内自动测试继续使用小型合成 Fixture。下一阶段可聚焦总显存预算/LRU、跨 View 共享、
+逐 Chunk 构建缓存与可选 LOD 淡化。
 
 ## 验证
 

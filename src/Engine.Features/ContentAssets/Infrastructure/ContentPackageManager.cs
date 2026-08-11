@@ -494,6 +494,7 @@ public sealed partial class ContentPackageManager : IDisposable
         {
             string path = ResolveUnderRoot(directory, definition.Path, "TileWorld");
             using var reader = new TileWorldArchiveReader(File.OpenRead(path));
+            if (!reader.HasAuthoritativeChunks) continue;
             foreach (TileWorldLayerMetadata layer in reader.Metadata.Layers)
             {
                 if (!visibleTileSets.Contains(layer.TileSet.Name))

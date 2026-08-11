@@ -2,7 +2,7 @@
 
 `Engine.Features.TileWorlds` 为大型 Tile 世界提供独立于 GPU 和 Viewport 的编译产物边界。小地图继续使用整体驻留的 `TileMap` JSON；需要按 Chunk 加载、验证和释放的大地图声明为 `TileWorld`，由 AssetCompiler 转换为单个可随机读取的 `.mgworld` 归档。
 
-当前已经完成权威 `LOD0`、生成式 `LOD1+` 与运行时流式适配。AssetCompiler 从 TileMap、TileSet 和原始 Sprite 帧确定性烘焙逐 Layer 无损 WebP，并嵌入 `.mgworld`；归档中只有确实存在的 Chunk 才能通过 `Contains` 查询。`Engine.Features.TileWorldStreaming` 进一步提供 Zoom LOD、滞回、后台 WebP 解码、主线程 GPU Lease 和最粗层回退。
+当前已经完成权威 `LOD0`、预切片栅格 `LOD0`、生成式 `LOD1+` 与运行时流式适配。AssetCompiler 既可从 TileMap、TileSet 和原始 Sprite 帧确定性烘焙，也可导入 `tile_{row}_{column}.webp` 形式的既有地图；归档中只有确实存在的 Chunk 才能通过 `Contains` 查询。`Engine.Features.TileWorldStreaming` 进一步提供 Zoom LOD、滞回、后台 WebP 解码、主线程 GPU Lease 和最粗层回退。
 
 ## 为什么不直接缩小 Tile ID
 
@@ -14,6 +14,8 @@ LOD1+：逐 Layer 的只读视觉 WebP，不参与碰撞和 Gameplay 查询
 ```
 
 LOD1+ 把每个可见 Layer 独立烘焙，保留 Metadata 中的 Depth；不会把多个可能与 GameInstance 穿插的 Layer 无条件合成一张图。不可见 Layer 不进入 Raster Payload，透明空 Chunk 不写入归档。
+
+纯视觉历史地图可以使用 Raster LOD0。它不伪造 Tile Cell、TileSet 或碰撞语义；Gameplay 权威状态由游戏自己的空间数据提供，而 TileWorld 只负责地图画面流式驻留。
 
 ## 资产声明
 
@@ -67,6 +69,50 @@ LOD1+ 把每个可见 Layer 独立烘焙，保留 Metadata 中的 Depth；不会
 
 运行时清单不保留 `build`，也不会复制原始 `.tilemap.json`。`GameAssets.TileWorlds.WorldOverworld` 只携带稳定逻辑名称，不携带文件路径或 Stream。
 
+## 导入既有 WebP 切片
+
+对于已经离线切成固定网格的纯视觉地图，`path` 使用 `.pretiledworld.json` 描述符：
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "world.legacy-map",
+  "chunkWorldSize": { "width": 600, "height": 600 },
+  "chunkPattern": "Map/tile_{row}_{column}.webp",
+  "layer": { "name": "map", "depth": 0 }
+}
+```
+
+对应 Content 清单仍使用标准 `tileWorlds` 入口：
+
+```json
+{
+  "name": "world.legacy-map",
+  "path": "legacy-map.pretiledworld.json",
+  "build": {
+    "bounds": { "minX": 0, "minY": 0, "maxX": 19, "maxY": 19 },
+    "lodCount": 6,
+    "rasterChunkSize": { "width": 600, "height": 600 },
+    "encoding": "webpLossless",
+    "sampling": "smooth",
+    "gutter": 0,
+    "fallbackSurfaces": [{
+      "layer": "map",
+      "path": "Map/preview.webp",
+      "sampling": "smooth"
+    }]
+  }
+}
+```
+
+- `{row}` / `{column}` 必须同时存在，所有路径仍受 Package 根目录安全边界约束。
+- `bounds` 内每个 LOD0 文件都必须存在且尺寸等于 `rasterChunkSize`；缺片、非 WebP 或尺寸不一致在构建期失败。
+- LOD0 保留原始 WebP 编码字节，不重复压缩；因此可以接纳已有的有损或无损 WebP。
+- LOD1+ 每层把前一层的 2×2 Chunk 降采样为一个固定尺寸的无损 WebP。边界为奇数时，超出世界的象限保持透明。
+- 原始 WebP Preview 同样原样嵌入归档，未就绪区域按世界坐标裁取对应 UV。
+- Raster-only 归档不要求声明虚假的 TileSet，也不提供 Tile/碰撞查询。
+- 当前预切片导入要求 `gutter: 0`；独立纹理使用 Clamp 采样，不存在 Atlas 跨帧串色。
+
 ## `.mgworld` 格式
 
 归档采用 little-endian、版本化、确定性布局：
@@ -83,7 +129,8 @@ Chunk Index（Level → Y → X）
 Fallback Surface Payloads
   └─ 逐 Layer 的 exact 无损 WebP 全图
 Chunk Payloads
-  ├─ LOD0：逐 Layer 的 RLE Tile Cell 与合并碰撞矩形
+  ├─ TileMap 来源 LOD0：逐 Layer 的 RLE Tile Cell 与合并碰撞矩形
+  ├─ 预切片来源 LOD0：保留源编码的逐 Layer WebP Raster
   └─ LOD1+：逐 Layer 的 exact 无损 WebP Raster
 ```
 
@@ -91,7 +138,7 @@ Tile Cell 的低 16 bit 保存 `TileId`，bit 16–19 保存 Flip/90° 旋转标
 
 Reader 在分配 Payload 前检查 Magic、版本、字符串、Layer/Chunk 数量、Offset、Length、顺序和格式上限。读取具体 Chunk 时再次验证 SHA-256；截断或被修改的 Payload 不会进入 Gameplay。
 
-归档格式 v3 自描述 TileSize、Raster 尺寸、Gutter、采样方式和可选逐 Layer Fallback Surface。Fallback 描述符保存 LayerIndex、图片尺寸、编码、采样、长度和 SHA-256，Payload 位于 Chunk Payload 之前并按 LayerIndex 确定性排列。索引继续显式区分 `AuthoritativeTiles` 与 `RasterLayers`：Level 0 只能是前者，Level 1+ 只能是后者。每个 Raster Chunk Payload 按 LayerIndex 保存 Encoding、内区尺寸、Gutter 和 WebP 字节；Chunk 外层继续使用 SHA-256 做完整性验证。
+归档格式 v3 自描述 TileSize、Raster 尺寸、Gutter、采样方式和可选逐 Layer Fallback Surface。Fallback 描述符保存 LayerIndex、图片尺寸、编码、采样、长度和 SHA-256，Payload 位于 Chunk Payload 之前并按 LayerIndex 确定性排列。索引显式区分 `AuthoritativeTiles` 与 `RasterLayers`：权威 Tile 只允许出现在 Level 0；Raster 可以从 Level 0 开始并继续覆盖 LOD1+。每个 Raster Chunk Payload 按 LayerIndex 保存 Encoding、内区尺寸、Gutter 和 WebP 字节；Chunk 外层继续使用 SHA-256 做完整性验证。
 
 离线栅格器与运行时 `TileMapRenderer` 共用 `TileTransformOperations`，因此 FlipX/FlipY 与 0/90/180/270° 旋转采用相同的 Y 向下、正弧度视觉逆时针约定。Tile Sprite 的固定 SubImage 会从 Single、Grid 或多图片 Frames 声明解析；Atlas 是否启用不改变烘焙像素来源。
 
@@ -143,7 +190,7 @@ Viewport 不知道 `.mgworld`、Tile 或 GPU；归档 Reader 也不知道 Camera
 - 当前增量缓存按 Package 指纹复用，修改 TileMap、Sprite、Texture 或传递依赖会重建拥有它的 TileWorld；逐 Chunk 编码缓存尚未实现。
 - 当前源 TileMap 仍整体解析；超大型导入格式和前向解析临时索引后续按真实地图规模补充。
 - 当前 WebP 内嵌归档，不单独输出松散图片；运行时 Loader 从 Chunk Payload 按需解码。
-- 尚无 Tiled/既有切片导入、无限程序化地图、视觉 LOD 淡化或 GPU 显存预算。
+- 已有固定网格 WebP 切片导入；尚无 Tiled TMX、稀疏缺片、无限程序化地图或视觉 LOD 淡化。
 
 ## 真实地图案例与固定推进顺序
 
@@ -158,8 +205,8 @@ Viewport 不知道 `.mgworld`、Tile 或 GPU；归档 Reader 也不知道 Camera
 连续性，不参与 Tile、碰撞或 Gameplay 查询。详细 WebP 也只是视觉数据；权威世界状态仍应由
 LOD0 Tile/Collision 或游戏自己的空间数据提供。
 
-该目录目前不能直接作为 TileWorld 编译输入。为避免一个历史文件命名约定反过来塑造公共 API，
-后续固定按以下顺序推进：
+该目录现在已经通过独立 `.pretiledworld.json` 描述符成为真实验收输入；文件名约定只属于离线适配器，
+不会泄漏到运行时 API。推进结果如下：
 
 1. **生成式 LOD1+（已完成）**：从权威 TileMap 和 TileSet 确定性烘焙逐 Layer、逐层级的无损 WebP
    Chunk，保留 Layer Depth、透明边缘和 Gutter；构建阶段验证像素、索引和重复构建字节一致。
@@ -167,14 +214,13 @@ LOD0 Tile/Collision 或游戏自己的空间数据提供。
    接到现有 `WorldChunkStreamer<TLease>`；Viewport 仍只提供观察范围和 Zoom。
 3. **Fallback Surface（已完成）**：最粗层级继续按需驻留；可选低清全图 Preview 按 Layer 独立声明并常驻，
    当最粗 Chunk 尚未解码时按缺失世界区域裁取对应 UV，不要求 Preview 来自 Tile 烘焙。
-4. **既有切片导入**：最后增加离线 `preTiledRaster` 适配，验证行列、尺寸、缺片、路径安全与
-   Preview 世界范围，把 `tile_{row}_{column}.webp` 规范化进同一归档索引。运行时不扫描目录，
-   也不解析文件名。
+4. **既有切片导入（已完成）**：离线适配器验证行列、尺寸、缺片、路径安全与 Preview 世界范围，
+   把 `tile_{row}_{column}.webp` 规范化进同一归档索引并生成 LOD1+。运行时不扫描目录，也不解析文件名。
 
 这样既能让新项目得到由权威内容确定性生成的标准产物，也能在边界稳定后无损接纳已有大地图。
-ZL 样本未来只用于集成验收 Preview 常驻、400 个详细 Chunk 的按需驻留、快速缩放/移动、加载取消、
-资源回收和画面无空洞，不进入当前功能切片，也不作为公共 API 的特例。当前测试只使用临时目录中
-程序生成的几像素图片与小型 TileMap。
+ZL 样本已在仓库外的独立 SDK 消费项目中通过集成验收：400 个原始 Chunk 生成 6 层共 539 个
+Raster Chunk，隐藏窗口 smoke 在全图视角以 LOD3 驻留 9 个 Chunk 并保持一张 Preview。仓库内自动测试
+仍只使用临时目录中程序生成的几像素图片，避免把完整真实地图引入引擎仓库。
 
 验证命令：
 

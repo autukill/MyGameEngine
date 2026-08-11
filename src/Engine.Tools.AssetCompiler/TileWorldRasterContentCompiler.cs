@@ -168,6 +168,16 @@ internal static class TileWorldLosslessWebpEncoder
     }
 
     public static byte[] Encode(int width, int height, byte[] rgbaPixels)
+        => Encode(width, height, rgbaPixels, losslessPreset: 9);
+
+    public static byte[] EncodeForStreamingLod(int width, int height, byte[] rgbaPixels)
+        => Encode(width, height, rgbaPixels, losslessPreset: 4);
+
+    private static byte[] Encode(
+        int width,
+        int height,
+        byte[] rgbaPixels,
+        int losslessPreset)
     {
         ArgumentNullException.ThrowIfNull(rgbaPixels);
         if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
@@ -176,7 +186,7 @@ internal static class TileWorldLosslessWebpEncoder
             throw new ArgumentException("RGBA pixel length does not match dimensions.", nameof(rgbaPixels));
         using var destination = new MemoryStream();
         var config = new WebPEncoderConfig()
-            .SetLosslessPreset(9)
+            .SetLosslessPreset(losslessPreset)
             .SetExact();
         WebPEncoder.Encode(
             rgbaPixels,

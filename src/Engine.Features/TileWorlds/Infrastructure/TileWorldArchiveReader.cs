@@ -24,10 +24,13 @@ public sealed class TileWorldArchiveReader : IDisposable
     private readonly bool _leaveOpen;
     private readonly Dictionary<TileWorldChunkKey, Entry> _entries = [];
     private readonly FallbackEntry[] _fallbackEntries = [];
+    private int _authoritativeChunkCount;
     private bool _disposed;
 
     public TileWorldMetadata Metadata { get; }
     public int ChunkCount => _entries.Count;
+    public int AuthoritativeChunkCount => _authoritativeChunkCount;
+    public bool HasAuthoritativeChunks => _authoritativeChunkCount > 0;
     public int FallbackSurfaceCount => _fallbackEntries.Length;
 
     public TileWorldArchiveReader(Stream stream, bool leaveOpen = false)
@@ -168,6 +171,8 @@ public sealed class TileWorldArchiveReader : IDisposable
                     throw new InvalidDataException($"TileWorld Chunk '{key}' has invalid payload bounds.");
                 if (!_entries.TryAdd(key, new Entry(kind, offset, length, hash)))
                     throw new InvalidDataException($"TileWorld Chunk key '{key}' appears more than once.");
+                if (kind == TileWorldChunkPayloadKind.AuthoritativeTiles)
+                    _authoritativeChunkCount++;
                 previousEnd = checked(offset + length);
                 previousKey = key;
             }

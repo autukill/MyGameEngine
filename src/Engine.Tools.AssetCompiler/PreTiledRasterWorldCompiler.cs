@@ -259,6 +259,9 @@ internal static class PreTiledRasterWorldCompiler
         canvas.Flush();
         var pixels = new byte[checked(settings.Width * settings.Height * 4)];
         Marshal.Copy(target.GetPixels(), pixels, 0, pixels.Length);
-        return TileWorldLosslessWebpEncoder.Encode(settings.Width, settings.Height, pixels);
+        return TileWorldLosslessWebpEncoder.EncodeForStreamingLod(
+            settings.Width,
+            settings.Height,
+            pixels);
     }
 }

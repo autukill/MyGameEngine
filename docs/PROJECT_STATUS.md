@@ -120,7 +120,7 @@
 1. 已建立逻辑 TileSet/TileLayer/TileMap、稀疏 Chunk、负坐标和相机可见 Chunk 渲染，不依赖编辑器 UI。
 2. `assets.json`、ContentPackageManager、AssetCompiler 和强类型生成器已贯通 TileSet/TileMap，复用现有 Texture/Sprite/Atlas 生命周期。
 3. 已提供 Chunk 内静态碰撞贪心烘焙、复用 Buffer、多 Camera 显式可见边界和无窗口回归。
-4. 小型 TileMap 编译产物继续保留严格 JSON；大型 `tileWorlds` 已编译为 `.mgworld` v3，并通过独立运行时 Session 实现异步 Loader、Zoom LOD、非阻塞退休、逐帧 GPU 上传预算、流式驻留、最粗层回退和可选逐 Layer Preview Surface。既有切片导入、地图热重载、总显存预算与 LRU 仍留在后续切片；功能测试不导入完整真实地图。
+4. 小型 TileMap 编译产物继续保留严格 JSON；大型 `tileWorlds` 已编译为 `.mgworld` v3，并通过独立运行时 Session 实现异步 Loader、Zoom LOD、非阻塞退休、逐帧 GPU 上传预算、流式驻留、最粗层回退和可选逐 Layer Preview Surface。固定网格 WebP 的预切片 Raster LOD0 导入与生成式 LOD1+ 已由仓库外 12000×12000 真实地图验证；地图热重载、总显存预算与 LRU 仍留在后续切片，仓库内测试不导入完整地图资源。
 
 ## 当前真实游戏里程碑：《神意难测》Gate 4 外部盲测
 
