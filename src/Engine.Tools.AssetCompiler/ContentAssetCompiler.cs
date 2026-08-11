@@ -732,6 +732,9 @@ public sealed class ContentAssetCompiler
     internal static string CompiledTileWorldPath(string sourcePath)
     {
         string normalized = sourcePath.Replace('\\', '/');
+        const string preTiledSuffix = ".pretiledworld.json";
+        if (normalized.EndsWith(preTiledSuffix, StringComparison.OrdinalIgnoreCase))
+            return normalized[..^preTiledSuffix.Length] + ".mgworld";
         const string tileMapSuffix = ".tilemap.json";
         return normalized.EndsWith(tileMapSuffix, StringComparison.OrdinalIgnoreCase)
             ? normalized[..^tileMapSuffix.Length] + ".mgworld"

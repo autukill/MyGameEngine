@@ -175,8 +175,8 @@ public static class TileWorldArchiveWriter
         TileWorldMetadata metadata,
         TileWorldRasterChunkData chunk)
     {
-        if (chunk.Key.Level <= 0)
-            throw new InvalidDataException("Raster Chunk levels must be greater than zero.");
+        if (chunk.Key.Level < 0)
+            throw new InvalidDataException("Raster Chunk levels cannot be negative.");
         long payloadLength = 4;
         foreach (TileWorldRasterLayerData layer in chunk.Layers)
         {
@@ -216,7 +216,7 @@ public static class TileWorldArchiveWriter
 
     private static void ValidateEncodedRaster(TileWorldRasterLayerData layer)
     {
-        if (layer.Encoding != TileWorldRasterEncoding.WebpLossless ||
+        if (layer.Encoding is not (TileWorldRasterEncoding.WebpLossless or TileWorldRasterEncoding.Webp) ||
             layer.EncodedBytes.Length < 12 ||
             !layer.EncodedBytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) ||
             !layer.EncodedBytes.AsSpan(8, 4).SequenceEqual("WEBP"u8))

@@ -67,7 +67,7 @@ public sealed class TileWorldRasterChunkImage
         TileWorldChunkKey key,
         IEnumerable<TileWorldRasterLayerImage> layers)
     {
-        if (key.Level <= 0) throw new ArgumentOutOfRangeException(nameof(key));
+        if (key.Level < 0) throw new ArgumentOutOfRangeException(nameof(key));
         ArgumentNullException.ThrowIfNull(layers);
         Key = key;
         _layers = layers.OrderBy(layer => layer.LayerIndex).ToArray();

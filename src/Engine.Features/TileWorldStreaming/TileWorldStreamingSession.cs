@@ -398,7 +398,7 @@ public sealed class TileWorldStreamingSession : IDisposable
             return false;
         if (!lease.HasPayload) return true;
 
-        if (_active.Level == 0)
+        if (lease.AuthoritativeData is not null)
             return DrawAuthoritativeLayer(
                 batch, lease, coordinate, layerIndex, tint, ref tileSprites);
 

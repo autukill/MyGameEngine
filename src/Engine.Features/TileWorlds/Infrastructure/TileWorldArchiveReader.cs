@@ -161,7 +161,7 @@ public sealed class TileWorldArchiveReader : IDisposable
                     throw new InvalidDataException("TileWorld Chunk index is not in deterministic key order.");
                 if (!Metadata.GetChunkBounds(key.Level).Contains(key.X, key.Y))
                     throw new InvalidDataException($"TileWorld Chunk key '{key}' is outside world bounds.");
-                if ((key.Level == 0) != (kind == TileWorldChunkPayloadKind.AuthoritativeTiles))
+                if (key.Level > 0 && kind == TileWorldChunkPayloadKind.AuthoritativeTiles)
                     throw new InvalidDataException($"TileWorld Chunk '{key}' has an invalid payload kind for its level.");
                 if (length < 0 || length > TileWorldArchiveFormat.MaximumPayloadBytes ||
                     offset < indexEnd || offset != previousEnd || checked(offset + length) > stream.Length)
@@ -219,7 +219,7 @@ public sealed class TileWorldArchiveReader : IDisposable
             entry.Length,
             entry.Hash,
             $"TileWorld fallback surface for layer '{layerIndex}'");
-        if (entry.Metadata.Encoding != TileWorldRasterEncoding.WebpLossless ||
+        if (entry.Metadata.Encoding is not (TileWorldRasterEncoding.WebpLossless or TileWorldRasterEncoding.Webp) ||
             payload.Length < 12 ||
             !payload.AsSpan(0, 4).SequenceEqual("RIFF"u8) ||
             !payload.AsSpan(8, 4).SequenceEqual("WEBP"u8))
@@ -381,7 +381,8 @@ public sealed class TileWorldArchiveReader : IDisposable
                 throw new InvalidDataException("TileWorld Raster layer metadata is invalid.");
             byte[] bytes = new byte[length];
             stream.ReadExactly(bytes);
-            if (encoding != TileWorldRasterEncoding.WebpLossless || bytes.Length < 12 ||
+            if (encoding is not (TileWorldRasterEncoding.WebpLossless or TileWorldRasterEncoding.Webp) ||
+                bytes.Length < 12 ||
                 !bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) ||
                 !bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8))
                 throw new InvalidDataException("TileWorld Raster layer is not a WebP payload.");

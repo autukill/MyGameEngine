@@ -21,7 +21,7 @@ using GameEngine.Features.TextureAssets.Infrastructure;
 /// </summary>
 public sealed class ContentBuildPipeline
 {
-    public const string CompilerVersion = "9";
+    public const string CompilerVersion = "10";
     public const string MetadataFileName = ".mygame-assets.json";
     private const string OwnerName = "MyGameEngine.AssetCompiler";
     private const int MetadataSchemaVersion = 1;
@@ -560,6 +560,41 @@ public sealed class ContentBuildPipeline
                         $"TileWorld '{definition.Name}' has invalid raster build settings.", exception);
                 }
                 string path = ResolveUnderRoot(consumer.PackageDirectory, definition.Path, "TileWorld source");
+                if (PreTiledRasterWorldCompiler.IsSourcePath(path))
+                {
+                    PreTiledRasterWorldSource preTiled = PreTiledRasterWorldCompiler.Parse(path);
+                    if (!StringComparer.Ordinal.Equals(preTiled.Name, definition.Name))
+                        throw new InvalidDataException(
+                            $"TileWorld declaration '{definition.Name}' does not match pre-tiled source name '{preTiled.Name}'.");
+                    foreach (string relativeChunk in
+                             PreTiledRasterWorldCompiler.EnumerateChunkRelativePaths(preTiled, build.Bounds))
+                    {
+                        string chunkPath = ResolveUnderRoot(
+                            consumer.PackageDirectory,
+                            relativeChunk,
+                            "Pre-tiled Raster Chunk");
+                        if (!File.Exists(chunkPath))
+                            throw new FileNotFoundException(
+                                $"Pre-tiled Raster Chunk '{relativeChunk}' does not exist.", chunkPath);
+                    }
+                    foreach (TileWorldFallbackSurfaceAssetDefinition fallback in build.FallbackSurfaces)
+                    {
+                        if (!StringComparer.Ordinal.Equals(fallback.Layer, preTiled.LayerName))
+                            throw new InvalidDataException(
+                                $"TileWorld '{definition.Name}' fallback surface references unknown layer '{fallback.Layer}'.");
+                        string fallbackPath = ResolveUnderRoot(
+                            consumer.PackageDirectory,
+                            fallback.Path,
+                            "TileWorld fallback surface");
+                        using var fallbackStream = File.OpenRead(fallbackPath);
+                        DecodedImage decoded = _imageDecoder.Decode(fallbackStream);
+                        if (decoded.Width is <= 0 or > 16_384 || decoded.Height is <= 0 or > 16_384 ||
+                            (long)decoded.Width * decoded.Height > 67_108_864L)
+                            throw new InvalidDataException(
+                                $"TileWorld '{definition.Name}' fallback surface '{fallback.Path}' exceeds the pixel limit.");
+                    }
+                    continue;
+                }
                 using var stream = File.OpenRead(path);
                 TileMap map = TileMapManifestParser.Parse(stream);
                 if (!StringComparer.Ordinal.Equals(map.Name, definition.Name))
@@ -731,6 +766,21 @@ public sealed class ContentBuildPipeline
                 AppendFile(hash, source);
                 if (tileWorld.Build is { } build)
                 {
+                    if (PreTiledRasterWorldCompiler.IsSourcePath(source))
+                    {
+                        PreTiledRasterWorldSource preTiled = PreTiledRasterWorldCompiler.Parse(source);
+                        foreach (string relativeChunk in
+                                 PreTiledRasterWorldCompiler.EnumerateChunkRelativePaths(preTiled, build.Bounds))
+                        {
+                            string chunkSource = ResolveUnderRoot(
+                                node.PackageDirectory,
+                                relativeChunk,
+                                "Pre-tiled Raster Chunk");
+                            AppendString(hash, NormalizeRelativePath(
+                                Path.GetRelativePath(packagesRoot, chunkSource)));
+                            AppendFile(hash, chunkSource);
+                        }
+                    }
                     foreach (TileWorldFallbackSurfaceAssetDefinition fallback in
                              build.FallbackSurfaces.OrderBy(item => item.Layer, StringComparer.Ordinal))
                     {
@@ -824,6 +874,57 @@ public sealed class ContentBuildPipeline
             TileWorldAssetBuildDefinition buildDefinition = definition.Build
                 ?? throw new InvalidDataException($"Source TileWorld '{definition.Name}' requires build settings.");
             string source = ResolveUnderRoot(node.PackageDirectory, definition.Path, "TileWorld source");
+            if (PreTiledRasterWorldCompiler.IsSourcePath(source))
+            {
+                PreTiledRasterWorldSource preTiled = PreTiledRasterWorldCompiler.Parse(source);
+                var preTiledFallbackSurfaces = new List<TileWorldFallbackSurfaceData>(
+                    buildDefinition.FallbackSurfaces.Count);
+                foreach (TileWorldFallbackSurfaceAssetDefinition fallback in
+                         buildDefinition.FallbackSurfaces.OrderBy(item => item.Layer, StringComparer.Ordinal))
+                {
+                    string fallbackPath = ResolveUnderRoot(
+                        node.PackageDirectory,
+                        fallback.Path,
+                        "TileWorld fallback surface");
+                    using var fallbackStream = File.OpenRead(fallbackPath);
+                    DecodedImage decoded = _imageDecoder.Decode(fallbackStream);
+                    byte[] sourceBytes = File.ReadAllBytes(fallbackPath);
+                    bool isWebp = sourceBytes.Length >= 12 &&
+                                  sourceBytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) &&
+                                  sourceBytes.AsSpan(8, 4).SequenceEqual("WEBP"u8);
+                    preTiledFallbackSurfaces.Add(new TileWorldFallbackSurfaceData(
+                        0,
+                        decoded.Width,
+                        decoded.Height,
+                        isWebp ? TileWorldRasterEncoding.Webp : TileWorldRasterEncoding.WebpLossless,
+                        fallback.Sampling == TextureSampler.PixelArt
+                            ? TileWorldRasterSampling.PixelArt
+                            : TileWorldRasterSampling.Smooth,
+                        isWebp
+                            ? sourceBytes
+                            : TileWorldLosslessWebpEncoder.Encode(
+                                decoded.Width,
+                                decoded.Height,
+                                decoded.RgbaPixels)));
+                }
+                TileWorldArchiveBuild preTiledArchive = PreTiledRasterWorldCompiler.Compile(
+                    preTiled,
+                    buildDefinition,
+                    relative => ResolveUnderRoot(
+                        node.PackageDirectory,
+                        relative,
+                        "Pre-tiled Raster Chunk"),
+                    _imageDecoder,
+                    preTiledFallbackSurfaces);
+                WriteCompiledTileWorld(
+                    staging,
+                    relativeDirectory,
+                    definition,
+                    preTiledArchive);
+                chunks += preTiledArchive.TotalChunkCount;
+                rasterChunkCount += preTiledArchive.RasterChunks.Count;
+                continue;
+            }
             using var sourceStream = File.OpenRead(source);
             TileMap map = TileMapManifestParser.Parse(sourceStream);
             var rasterSettings = new TileWorldRasterSettings(
@@ -906,20 +1007,29 @@ public sealed class ContentBuildPipeline
                 lod0.Chunks,
                 rasterChunks,
                 fallbackSurfaces);
-            string compiledRelative = ContentAssetCompiler.CompiledTileWorldPath(definition.Path);
-            string output = ResolveOutputPath(staging, Path.Combine(relativeDirectory, compiledRelative));
-            Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-            if (File.Exists(output))
-                throw new InvalidDataException(
-                    $"TileWorld output path '{compiledRelative}' is already produced by another asset.");
-            using var destination = File.Create(output);
-            TileWorldArchiveWriter.Write(destination, archive);
+            WriteCompiledTileWorld(staging, relativeDirectory, definition, archive);
             chunks += archive.TotalChunkCount;
             rasterChunkCount += archive.RasterChunks.Count;
         }
         RewriteCompiledTileWorldManifest(
             ResolveOutputPath(staging, node.RelativeManifestPath), node.Manifest.TileWorlds);
         return (node.Manifest.TileWorlds.Count, chunks, rasterChunkCount);
+    }
+
+    private static void WriteCompiledTileWorld(
+        string staging,
+        string relativeDirectory,
+        TileWorldAssetDefinition definition,
+        TileWorldArchiveBuild archive)
+    {
+        string compiledRelative = ContentAssetCompiler.CompiledTileWorldPath(definition.Path);
+        string output = ResolveOutputPath(staging, Path.Combine(relativeDirectory, compiledRelative));
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        if (File.Exists(output))
+            throw new InvalidDataException(
+                $"TileWorld output path '{compiledRelative}' is already produced by another asset.");
+        using var destination = File.Create(output);
+        TileWorldArchiveWriter.Write(destination, archive);
     }
 
     private TileWorldRasterSpriteSource CreateRasterSource(GraphNode node)

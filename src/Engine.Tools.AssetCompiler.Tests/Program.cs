@@ -24,6 +24,7 @@ internal static class Program
         VerifyCompileAndRuntimeLoad();
         VerifyLosslessWebpAggregatePackage();
         VerifyTileWorldCompilation();
+        VerifyPreTiledRasterWorldCompilation();
         VerifyShaderReferenceGeneration();
 
         Console.WriteLine();
@@ -166,6 +167,64 @@ internal static class Program
                 "Visual TileWorld LODs reject non-WebP encoding before replacing valid output");
             Check(File.ReadAllBytes(archivePath).SequenceEqual(validArchive),
                 "Rejected visual LOD configuration preserves the previous valid archive");
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
+    }
+
+    private static void VerifyPreTiledRasterWorldCompilation()
+    {
+        Console.WriteLine("6. Pre-tiled Raster world import and generated LODs");
+        string workspace = Directory.CreateTempSubdirectory("mygame-pretiled-world-").FullName;
+        string source = Path.Combine(workspace, "source");
+        string chunks = Path.Combine(source, "Map");
+        string output = Path.Combine(workspace, "compiled");
+        Directory.CreateDirectory(chunks);
+        try
+        {
+            SKColor[] colors = [SKColors.Red, SKColors.Green, SKColors.Blue, SKColors.Gold];
+            for (int row = 0; row < 2; row++)
+                for (int column = 0; column < 2; column++)
+                    WriteWebp(
+                        Path.Combine(chunks, $"tile_{row}_{column}.webp"),
+                        8,
+                        8,
+                        colors[row * 2 + column]);
+            WriteWebp(Path.Combine(chunks, "preview.webp"), 4, 4, SKColors.DarkSlateBlue);
+            File.WriteAllText(Path.Combine(source, "world.pretiledworld.json"), PreTiledWorldSource);
+            File.WriteAllText(Path.Combine(source, "assets.json"), PreTiledWorldPackageManifest);
+
+            byte[] original = File.ReadAllBytes(Path.Combine(chunks, "tile_0_0.webp"));
+            var pipeline = new ContentBuildPipeline();
+            ContentBuildResult first = pipeline.Build(new ContentBuildRequest(
+                source, "assets.json", output, ContentBuildMode.Incremental));
+            string archivePath = Path.Combine(output, "world.mgworld");
+            using (var archive = new TileWorldArchiveReader(File.OpenRead(archivePath)))
+            {
+                TileWorldRasterChunkData lod0 = archive.ReadRasterChunk(
+                    new TileWorldChunkKey(0, 0, 0));
+                TileWorldRasterChunkData lod1 = archive.ReadRasterChunk(
+                    new TileWorldChunkKey(1, 0, 0));
+                TileWorldFallbackSurfaceData preview = archive.ReadFallbackSurface(0);
+                Check(first.TileWorldChunkCount == 5 && first.TileWorldRasterChunkCount == 5 &&
+                      archive.Metadata.BaseChunkWorldSize == new System.Numerics.Vector2(600f, 600f) &&
+                      archive.Metadata.DeclaredLodCount == 2 &&
+                      lod0.Layers[0].Encoding == TileWorldRasterEncoding.Webp &&
+                      lod0.Layers[0].EncodedBytes.SequenceEqual(original) &&
+                      lod1.Layers[0].Encoding == TileWorldRasterEncoding.WebpLossless &&
+                      preview.Encoding == TileWorldRasterEncoding.Webp,
+                    "Importer preserves original WebP LOD0, embeds Preview, and generates a coarser lossless LOD");
+            }
+
+            string fingerprint = first.InputFingerprint;
+            WriteWebp(Path.Combine(chunks, "tile_1_1.webp"), 8, 8, SKColors.Purple);
+            ContentBuildResult changed = pipeline.Build(new ContentBuildRequest(
+                source, "assets.json", output, ContentBuildMode.Incremental));
+            Check(changed.Status == ContentBuildStatus.Built &&
+                  changed.InputFingerprint != fingerprint,
+                "A pre-tiled source Chunk invalidates the owning package fingerprint");
         }
         finally
         {
@@ -626,6 +685,17 @@ internal static class Program
         data.SaveTo(stream);
     }
 
+    private static void WriteWebp(string path, int width, int height, SKColor color)
+    {
+        using var bitmap = new SKBitmap(width, height);
+        bitmap.Erase(color);
+        using SKImage image = SKImage.FromBitmap(bitmap);
+        using SKData encoded = image.Encode(SKEncodedImageFormat.Webp, 82)
+            ?? throw new InvalidOperationException("Could not encode test WebP.");
+        using FileStream output = File.Create(path);
+        encoded.SaveTo(output);
+    }
+
     private static byte[] CreatePcm16Wave()
     {
         const short channels = 1;
@@ -856,6 +926,43 @@ internal static class Program
               { "x": -1, "y": 0, "tiles": [1, 0, 0, 0] },
               { "x": 0, "y": 0, "tiles": [1, 0, 0, 0] }
             ]
+          }]
+        }
+        """;
+
+    private const string PreTiledWorldSource = """
+        {
+          "schemaVersion": 1,
+          "name": "compiler.pretiled",
+          "chunkWorldSize": { "width": 600, "height": 600 },
+          "chunkPattern": "Map/tile_{row}_{column}.webp",
+          "layer": { "name": "map", "depth": 0 }
+        }
+        """;
+
+    private const string PreTiledWorldPackageManifest = """
+        {
+          "schemaVersion": 1,
+          "id": "compiler.pretiled.assets",
+          "dependencies": [],
+          "textures": [],
+          "sprites": [],
+          "tileWorlds": [{
+            "name": "compiler.pretiled",
+            "path": "world.pretiledworld.json",
+            "build": {
+              "bounds": { "minX": 0, "minY": 0, "maxX": 1, "maxY": 1 },
+              "lodCount": 2,
+              "rasterChunkSize": { "width": 8, "height": 8 },
+              "encoding": "webpLossless",
+              "sampling": "smooth",
+              "gutter": 0,
+              "fallbackSurfaces": [{
+                "layer": "map",
+                "path": "Map/preview.webp",
+                "sampling": "smooth"
+              }]
+            }
           }]
         }
         """;

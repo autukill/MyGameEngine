@@ -102,7 +102,7 @@ public sealed class TileWorldChunkLoader :
         if (!_archive.Contains(key))
             return new TileWorldChunkLease(key, false, null, [], prefix, sampler);
 
-        if (Level == 0)
+        if (_archive.GetPayloadKind(key) == TileWorldChunkPayloadKind.AuthoritativeTiles)
         {
             TileWorldChunkData data = _archive.ReadChunk(key);
             cancellationToken.ThrowIfCancellationRequested();

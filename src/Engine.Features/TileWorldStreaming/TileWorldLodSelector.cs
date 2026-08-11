@@ -25,8 +25,9 @@ public readonly record struct TileWorldLodSelectionOptions
 }
 
 /// <summary>
-/// Selects a visual LOD from Viewport zoom. Level zero is authoritative Tile data; greater levels
-/// are progressively coarser raster Chunks. Switching thresholds use a multiplicative dead band.
+/// Selects a visual LOD from Viewport zoom. Level zero can be authoritative Tile data or imported
+/// raster Chunks; greater levels are progressively coarser raster Chunks. Switching thresholds use
+/// a multiplicative dead band.
 /// </summary>
 public sealed class TileWorldLodSelector
 {

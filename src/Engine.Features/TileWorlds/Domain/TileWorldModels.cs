@@ -30,7 +30,8 @@ public enum TileWorldChunkPayloadKind : byte
 
 public enum TileWorldRasterEncoding : byte
 {
-    WebpLossless = 1
+    WebpLossless = 1,
+    Webp = 2
 }
 
 public enum TileWorldRasterSampling : byte
@@ -273,7 +274,7 @@ public sealed class TileWorldRasterChunkData
         TileWorldChunkKey key,
         IEnumerable<TileWorldRasterLayerData> layers)
     {
-        if (key.Level <= 0) throw new ArgumentOutOfRangeException(nameof(key));
+        if (key.Level < 0) throw new ArgumentOutOfRangeException(nameof(key));
         ArgumentNullException.ThrowIfNull(layers);
         Key = key;
         _layers = layers.OrderBy(layer => layer.LayerIndex).ToArray();
