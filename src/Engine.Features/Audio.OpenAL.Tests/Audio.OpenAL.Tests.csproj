@@ -8,6 +8,9 @@
     <AssemblyName>AudioOpenALTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="OggVorbisEncoder" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Audio.OpenAL\Audio.OpenAL.csproj" />
     <ProjectReference Include="..\ContentAssets\ContentAssets.csproj" />
   </ItemGroup>

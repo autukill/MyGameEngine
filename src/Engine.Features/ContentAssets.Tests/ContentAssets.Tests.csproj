@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="OggVorbisEncoder" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />

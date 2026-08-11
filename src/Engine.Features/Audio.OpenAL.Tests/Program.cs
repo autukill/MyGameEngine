@@ -8,6 +8,7 @@ using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using OggVorbisEncoder;
 
 internal static class Program
 {
@@ -90,6 +91,7 @@ internal static class Program
             const int sampleRate = 48_000;
             const int frameCount = 4_800;
             string wavPath = Path.Combine(root, "hit.wav");
+            string oggPath = Path.Combine(root, "music.ogg");
             string manifestPath = Path.Combine(root, "assets.json");
 
             File.WriteAllBytes(
@@ -99,6 +101,7 @@ internal static class Program
                     sampleRate,
                     frameCount,
                     frequency: 440d));
+            File.WriteAllBytes(oggPath, CreateVorbisOgg());
             File.WriteAllText(
                 manifestPath,
                 $$"""
@@ -111,11 +114,16 @@ internal static class Program
                         "name": "{{clipName}}",
                         "path": "hit.wav",
                         "streaming": false
+                      },
+                      {
+                        "name": "test.declarative.music",
+                        "path": "music.ogg",
+                        "streaming": true
                       }
                     ]
                   }
                   """,
-                Encoding.UTF8);
+                System.Text.Encoding.UTF8);
 
             var textureBackend = new FakeTextureBackend();
             using var textures = new TextureLibrary(textureBackend);
@@ -147,12 +155,19 @@ internal static class Program
             Check(
                 descriptor.Metadata.Duration == TimeSpan.FromMilliseconds(100),
                 "Decoded WAV metadata exposes its 100 ms duration");
+            AudioClipDescriptor music = audio.Get(package.GetAudioClip("test.declarative.music"));
+            Check(music.StorageKind == AudioClipStorageKind.Streaming && music.Decoded is null,
+                "Declarative OGG remains compressed and exposes a streaming source");
 
             using IAudioBackend backend = OpenAlAudioBackend.CreateOrSilent(out _, audio);
             AudioVoiceMix mix = new(0f, 0f, 1f, Loop: true);
             AudioBackendVoice voice = backend.Play(in descriptor, in mix);
             Check(!voice.IsEmpty && backend.IsPlaying(voice),
                 "Declarative WAV Clip starts one OpenAL/fallback Voice");
+            AudioBackendVoice musicVoice = backend.Play(in music, in mix);
+            backend.Update();
+            Check(!musicVoice.IsEmpty && backend.IsPlaying(musicVoice),
+                "Declarative OGG Clip crosses Content -> decoder -> queued backend playback");
 
             package.Dispose();
             Check(audio.Count == 0,
@@ -161,6 +176,7 @@ internal static class Program
                 "Removing a Clip defers backend Buffer release until its active Voice stops");
 
             backend.Stop(voice);
+            backend.Stop(musicVoice);
             Check(!backend.IsPlaying(voice),
                 "Stopping the last Voice releases the declarative playback instance");
         }
@@ -179,7 +195,7 @@ internal static class Program
         int blockAlign = channels * sizeof(short);
         int dataLength = checked(frameCount * blockAlign);
         using var stream = new MemoryStream(44 + dataLength);
-        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
         {
             writer.Write("RIFF"u8);
             writer.Write(36 + dataLength);
@@ -208,6 +224,59 @@ internal static class Program
             }
         }
         return stream.ToArray();
+    }
+
+    private static byte[] CreateVorbisOgg()
+    {
+        const int channels = 2;
+        const int sampleRate = 44_100;
+        const int frameCount = 4_410;
+        var samples = new float[channels][];
+        for (var channel = 0; channel < channels; channel++)
+        {
+            samples[channel] = new float[frameCount];
+            for (var frame = 0; frame < frameCount; frame++)
+                samples[channel][frame] = 0.1f * MathF.Sin(2f * MathF.PI * 330f * frame / sampleRate);
+        }
+
+        using var output = new MemoryStream();
+        VorbisInfo info = VorbisInfo.InitVariableBitRate(channels, sampleRate, 0.3f);
+        var ogg = new OggStream(0x4D4747);
+        var comments = new Comments();
+        comments.AddTag("ENCODER", "MyGameEngine.Audio.OpenAL.Tests");
+        ogg.PacketIn(HeaderPacketBuilder.BuildInfoPacket(info));
+        ogg.PacketIn(HeaderPacketBuilder.BuildCommentsPacket(comments));
+        ogg.PacketIn(HeaderPacketBuilder.BuildBooksPacket(info));
+        FlushOggPages(ogg, output, force: true);
+
+        ProcessingState state = ProcessingState.Create(info);
+        for (var offset = 0; offset < frameCount; offset += 512)
+        {
+            int length = Math.Min(512, frameCount - offset);
+            state.WriteData(samples, length, offset);
+            while (!ogg.Finished && state.PacketOut(out OggPacket packet))
+            {
+                ogg.PacketIn(packet);
+                FlushOggPages(ogg, output, force: false);
+            }
+        }
+        state.WriteEndOfStream();
+        while (!ogg.Finished && state.PacketOut(out OggPacket packet))
+        {
+            ogg.PacketIn(packet);
+            FlushOggPages(ogg, output, force: false);
+        }
+        FlushOggPages(ogg, output, force: true);
+        return output.ToArray();
+    }
+
+    private static void FlushOggPages(OggStream ogg, Stream output, bool force)
+    {
+        while (ogg.PageOut(out OggPage page, force))
+        {
+            output.Write(page.Header);
+            output.Write(page.Body);
+        }
     }
 
     private static void Check(bool condition, string name)

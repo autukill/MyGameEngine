@@ -6,12 +6,14 @@ using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Animation;
 using GameEngine.Features.Audio;
+using GameEngine.Features.Audio.Vorbis;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.Tilemaps.Infrastructure;
 using SkiaSharp;
+using OggVorbisEncoder;
 
 internal static class Program
 {
@@ -181,18 +183,20 @@ internal static class Program
 
     private static void VerifyAudioPackageIntegration()
     {
-        Console.WriteLine("3. Real WAV content package integration");
+        Console.WriteLine("3. Real WAV and streaming OGG content package integration");
         string root = Directory.CreateTempSubdirectory("mygame-content-audio-").FullName;
         try
         {
             File.WriteAllBytes(Path.Combine(root, "shot.wav"), CreatePcm16Wave(1, 48_000, 480));
+            File.WriteAllBytes(Path.Combine(root, "music.ogg"), CreateVorbisOgg(2, 44_100, 4_410));
             File.WriteAllText(Path.Combine(root, "assets.json"), """
                 {
                   "schemaVersion": 1,
                   "id": "audio.assets",
                   "dependencies": [],
                   "audioClips": [
-                    { "name": "player.shot", "path": "shot.wav", "streaming": false }
+                    { "name": "player.shot", "path": "shot.wav", "streaming": false },
+                    { "name": "home.music", "path": "music.ogg", "streaming": true }
                   ]
                 }
                 """);
@@ -210,9 +214,35 @@ internal static class Program
                 Check(descriptor.Decoded is { FrameCount: 480 } &&
                       descriptor.Metadata.Duration == TimeSpan.FromMilliseconds(10),
                     "Package WAV is synchronously decoded into a logical short clip");
+
+                AudioClipDescriptor music = audio.Get(package.GetAudioClip("home.music"));
+                Check(music.StorageKind == AudioClipStorageKind.Streaming &&
+                      music.Decoded is null && music.StreamFactory is VorbisAudioStreamFactory &&
+                      music.Metadata is { Channels: 2, SampleRate: 44_100, Streaming: true },
+                    "Package OGG registers metadata and a per-Voice factory without pre-decoding PCM");
+                using IAudioStreamSource source = music.StreamFactory!.Open();
+                byte[] pcm = new byte[512 * source.BytesPerFrame];
+                int firstRead = source.ReadFrames(pcm);
+                source.Seek(0);
+                int restartedRead = source.ReadFrames(pcm);
+                Check(firstRead > 0 && restartedRead == firstRead && source.PositionFrames == firstRead,
+                    "Real OGG decodes bounded PCM chunks and seeks back to an exact loop origin");
             }
             Check(audio.Count == 0,
-                "Final package lease removes its decoded Audio clip");
+                "Final package lease removes static and streaming Audio clips");
+
+            File.WriteAllText(Path.Combine(root, "bad-assets.json"), """
+                {
+                  "schemaVersion": 1,
+                  "id": "bad-audio.assets",
+                  "dependencies": [],
+                  "audioClips": [
+                    { "name": "bad.music", "path": "shot.wav", "streaming": true }
+                  ]
+                }
+                """);
+            CheckThrows<InvalidDataException>(() => manager.Load("bad-assets.json"),
+                "Streaming declarations require OGG while static declarations require WAV");
         }
         finally
         {
@@ -589,7 +619,7 @@ internal static class Program
 
     private static AssetPackageManifest Parse(string json)
     {
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
         return AssetPackageManifestParser.Parse(stream);
     }
 
@@ -625,7 +655,7 @@ internal static class Program
         int blockAlign = channels * sizeof(short);
         int dataLength = frames * blockAlign;
         using var stream = new MemoryStream();
-        using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+        using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
         {
             writer.Write("RIFF"u8);
             writer.Write(36 + dataLength);
@@ -643,6 +673,57 @@ internal static class Program
             writer.Write(new byte[dataLength]);
         }
         return stream.ToArray();
+    }
+
+    private static byte[] CreateVorbisOgg(int channels, int sampleRate, int frameCount)
+    {
+        var samples = new float[channels][];
+        for (var channel = 0; channel < channels; channel++)
+        {
+            samples[channel] = new float[frameCount];
+            for (var frame = 0; frame < frameCount; frame++)
+                samples[channel][frame] = 0.2f * MathF.Sin(2f * MathF.PI * 440f * frame / sampleRate);
+        }
+
+        using var output = new MemoryStream();
+        VorbisInfo info = VorbisInfo.InitVariableBitRate(channels, sampleRate, 0.35f);
+        var ogg = new OggStream(0x4D4745);
+        var comments = new Comments();
+        comments.AddTag("ENCODER", "MyGameEngine.Tests");
+        ogg.PacketIn(HeaderPacketBuilder.BuildInfoPacket(info));
+        ogg.PacketIn(HeaderPacketBuilder.BuildCommentsPacket(comments));
+        ogg.PacketIn(HeaderPacketBuilder.BuildBooksPacket(info));
+        FlushOggPages(ogg, output, force: true);
+
+        ProcessingState state = ProcessingState.Create(info);
+        const int blockFrames = 512;
+        for (var offset = 0; offset < frameCount; offset += blockFrames)
+        {
+            int length = Math.Min(blockFrames, frameCount - offset);
+            state.WriteData(samples, length, offset);
+            while (!ogg.Finished && state.PacketOut(out OggPacket packet))
+            {
+                ogg.PacketIn(packet);
+                FlushOggPages(ogg, output, force: false);
+            }
+        }
+        state.WriteEndOfStream();
+        while (!ogg.Finished && state.PacketOut(out OggPacket packet))
+        {
+            ogg.PacketIn(packet);
+            FlushOggPages(ogg, output, force: false);
+        }
+        FlushOggPages(ogg, output, force: true);
+        return output.ToArray();
+    }
+
+    private static void FlushOggPages(OggStream ogg, Stream output, bool force)
+    {
+        while (ogg.PageOut(out OggPage page, force))
+        {
+            output.Write(page.Header);
+            output.Write(page.Body);
+        }
     }
 
     private static bool Near(float left, float right) => MathF.Abs(left - right) < .0001f;

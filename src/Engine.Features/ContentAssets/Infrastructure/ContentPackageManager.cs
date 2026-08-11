@@ -6,6 +6,7 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.Animation;
 using GameEngine.Features.Audio;
+using GameEngine.Features.Audio.Vorbis;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
@@ -368,14 +369,17 @@ public sealed partial class ContentPackageManager : IDisposable
 
             foreach (AudioAssetDefinition definition in node.Manifest.AudioClips)
             {
-                if (definition.Streaming)
-                    throw new InvalidDataException(
-                        $"Audio clip '{definition.Name}' requests streaming, which is not supported by the short-SFX slice.");
                 string path = ResolveUnderRoot(packageDirectory, definition.Path, "Audio clip");
                 if (!File.Exists(path))
                     throw new FileNotFoundException($"Audio asset '{definition.Path}' does not exist.", path);
-                if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetExtension(path), ".wav"))
-                    throw new InvalidDataException($"Audio clip '{definition.Name}' must use a .wav asset in v1.");
+                string expectedExtension = definition.Streaming ? ".ogg" : ".wav";
+                if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetExtension(path), expectedExtension))
+                    throw new InvalidDataException(
+                        $"Audio clip '{definition.Name}' must use a {expectedExtension} asset when streaming is {definition.Streaming.ToString().ToLowerInvariant()}.");
+                if (definition.Streaming)
+                    _ = VorbisAudioStreamFactory.ReadMetadata(path);
+                else
+                    _ = WaveAudioDecoder.DecodeFile(path);
                 if (!audioNames.Add(definition.Name) ||
                     _audio.TryGet(new AudioClipRef(definition.Name), out _))
                 {
@@ -586,8 +590,20 @@ public sealed partial class ContentPackageManager : IDisposable
                 foreach (AudioAssetDefinition definition in node.Manifest.AudioClips)
                 {
                     string path = ResolveUnderRoot(packageDirectory, definition.Path, "Audio clip");
-                    DecodedAudioClip decoded = WaveAudioDecoder.DecodeFile(path);
-                    audioClips.Add(_audio.RegisterDecoded(definition.Name, path, decoded));
+                    if (definition.Streaming)
+                    {
+                        AudioClipMetadata metadata = VorbisAudioStreamFactory.ReadMetadata(path);
+                        audioClips.Add(_audio.RegisterStreaming(
+                            definition.Name,
+                            path,
+                            in metadata,
+                            new VorbisAudioStreamFactory(path)));
+                    }
+                    else
+                    {
+                        DecodedAudioClip decoded = WaveAudioDecoder.DecodeFile(path);
+                        audioClips.Add(_audio.RegisterDecoded(definition.Name, path, decoded));
+                    }
                 }
             }
 

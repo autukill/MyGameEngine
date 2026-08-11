@@ -10,6 +10,7 @@
     <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\Animation\Animation.csproj" />
     <ProjectReference Include="..\Audio\Audio.csproj" />
+    <ProjectReference Include="..\Audio.Vorbis\Audio.Vorbis.csproj" />
     <ProjectReference Include="..\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\Tilemaps\Tilemaps.csproj" />
     <ProjectReference Include="..\TextureAssets\TextureAssets.csproj" />

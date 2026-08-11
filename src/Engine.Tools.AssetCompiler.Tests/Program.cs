@@ -2,6 +2,7 @@ namespace AssetCompiler.Tests;
 
 using GameEngine.Features.Animation;
 using GameEngine.Features.Audio;
+using GameEngine.Features.Audio.Vorbis;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
@@ -9,6 +10,7 @@ using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Tools.AssetCompiler;
 using SkiaSharp;
+using OggVorbisEncoder;
 
 internal static class Program
 {
@@ -123,6 +125,7 @@ internal static class Program
             WriteSheet(Path.Combine(source, "sheet.png"));
             WriteSolid(Path.Combine(source, "large.png"), 7, 7, SKColors.Blue);
             File.WriteAllBytes(Path.Combine(source, "shot.wav"), CreatePcm16Wave());
+            File.WriteAllBytes(Path.Combine(source, "music.ogg"), CreateVorbisOgg());
             File.WriteAllText(Path.Combine(source, "level.tilemap.json"), TileMapManifest);
             Directory.CreateDirectory(Path.Combine(source, "shared"));
             WriteSolid(Path.Combine(source, "shared", "white.png"), 1, 1, SKColors.White);
@@ -143,6 +146,7 @@ internal static class Program
             Check(!compiledJson.Contains("sheet.png", StringComparison.Ordinal) &&
                   compiledJson.Contains("large.png", StringComparison.Ordinal) &&
                   compiledJson.Contains("shot.wav", StringComparison.Ordinal) &&
+                  compiledJson.Contains("music.ogg", StringComparison.Ordinal) &&
                   compiledJson.Contains("atlas/pixel-art-0.png", StringComparison.Ordinal) &&
                   compiledJson.Contains("compiler.grid.run", StringComparison.Ordinal),
                 "Atlas remap preserves declarative Animation assets");
@@ -151,6 +155,8 @@ internal static class Program
                 "Dependency packages are copied into the compiled packages root");
             Check(File.Exists(Path.Combine(firstOutput, "shot.wav")),
                 "Audio assets are copied through the Atlas compiler boundary");
+            Check(File.Exists(Path.Combine(firstOutput, "music.ogg")),
+                "Streaming OGG is preserved as compressed package content");
             Check(File.Exists(Path.Combine(firstOutput, "level.tilemap.json")),
                 "TileMap documents are copied through the Atlas compiler boundary");
 
@@ -182,6 +188,10 @@ internal static class Program
             AudioClipDescriptor audio = manager.Audio.Get(package.GetAudioClip("compiler.shot"));
             Check(audio.Decoded is { Channels: 1, SampleRate: 48_000 },
                 "Compiled package retains a runtime-decodable Audio clip");
+            AudioClipDescriptor music = manager.Audio.Get(package.GetAudioClip("compiler.music"));
+            Check(music.StorageKind == AudioClipStorageKind.Streaming &&
+                  music.StreamFactory is VorbisAudioStreamFactory && music.Decoded is null,
+                "Compiled package retains a lazy streaming OGG factory");
             Check(package.GetTileSet("compiler.tiles") == new TileSetRef("compiler.tiles") &&
                   manager.TileMaps.Get(package.GetTileMap("compiler.level"))
                       .GetLayer("ground").GetCell(0, 0).Tile == new TileId(1),
@@ -213,7 +223,7 @@ internal static class Program
         Check(first.Changed && !cached.Changed && File.GetLastWriteTimeUtc(output) == firstWrite,
             "Unchanged generated references preserve the file timestamp");
         Check(first.PackageCount == 2 && first.TextureCount == 2 && first.SpriteCount == 2 &&
-              first.AnimationCount == 1 && first.AudioClipCount == 1 && first.AnimationEventCount == 1 &&
+              first.AnimationCount == 1 && first.AudioClipCount == 2 && first.AnimationEventCount == 1 &&
               first.TileSetCount == 1 && first.TileMapCount == 1 &&
               source.Contains("ContentPackageRef Root = new(\"compiler.assets\", \"assets.json\")", StringComparison.Ordinal) &&
               source.Contains("ContentPackageRef CompilerShared", StringComparison.Ordinal),
@@ -229,7 +239,8 @@ internal static class Program
         Check(source.Contains("AnimationClipRef CompilerGridRun", StringComparison.Ordinal) &&
               source.Contains("AnimationEventRef CompilerStep", StringComparison.Ordinal),
             "Animation clips and marker events become strongly typed references");
-        Check(source.Contains("AudioClipRef CompilerShot", StringComparison.Ordinal),
+        Check(source.Contains("AudioClipRef CompilerShot", StringComparison.Ordinal) &&
+              source.Contains("AudioClipRef CompilerMusic", StringComparison.Ordinal),
             "Audio clips become strongly typed logical references");
         Check(source.Contains("TileSetRef CompilerTiles", StringComparison.Ordinal) &&
               source.Contains("TileMapRef CompilerLevel", StringComparison.Ordinal),
@@ -499,6 +510,60 @@ internal static class Program
         return stream.ToArray();
     }
 
+    private static byte[] CreateVorbisOgg()
+    {
+        const int channels = 2;
+        const int sampleRate = 44_100;
+        const int frameCount = 2_205;
+        var samples = new float[channels][];
+        for (var channel = 0; channel < channels; channel++)
+        {
+            samples[channel] = new float[frameCount];
+            for (var frame = 0; frame < frameCount; frame++)
+                samples[channel][frame] = 0.15f * MathF.Sin(2f * MathF.PI * 220f * frame / sampleRate);
+        }
+
+        using var output = new MemoryStream();
+        VorbisInfo info = VorbisInfo.InitVariableBitRate(channels, sampleRate, 0.3f);
+        var ogg = new OggStream(0x4D4746);
+        var comments = new Comments();
+        comments.AddTag("ENCODER", "MyGameEngine.AssetCompiler.Tests");
+        ogg.PacketIn(HeaderPacketBuilder.BuildInfoPacket(info));
+        ogg.PacketIn(HeaderPacketBuilder.BuildCommentsPacket(comments));
+        ogg.PacketIn(HeaderPacketBuilder.BuildBooksPacket(info));
+        FlushOggPages(ogg, output, force: true);
+
+        ProcessingState state = ProcessingState.Create(info);
+        const int blockFrames = 512;
+        for (var offset = 0; offset < frameCount; offset += blockFrames)
+        {
+            int length = Math.Min(blockFrames, frameCount - offset);
+            state.WriteData(samples, length, offset);
+            while (!ogg.Finished && state.PacketOut(out OggPacket packet))
+            {
+                ogg.PacketIn(packet);
+                FlushOggPages(ogg, output, force: false);
+            }
+        }
+        state.WriteEndOfStream();
+        while (!ogg.Finished && state.PacketOut(out OggPacket packet))
+        {
+            ogg.PacketIn(packet);
+            FlushOggPages(ogg, output, force: false);
+        }
+        FlushOggPages(ogg, output, force: true);
+        return output.ToArray();
+    }
+
+    private static void FlushOggPages(OggStream ogg, Stream output, bool force)
+    {
+        while (ogg.PageOut(out OggPage page, force))
+        {
+            output.Write(page.Header);
+            output.Write(page.Body);
+        }
+    }
+
     private static void Check(bool condition, string name)
     {
         if (condition) Console.WriteLine($"  [PASS] {name}");
@@ -564,7 +629,8 @@ internal static class Program
             }
           ],
           "audioClips": [
-            { "name": "compiler.shot", "path": "shot.wav", "streaming": false }
+            { "name": "compiler.shot", "path": "shot.wav", "streaming": false },
+            { "name": "compiler.music", "path": "music.ogg", "streaming": true }
           ],
           "tileSets": [{
             "name": "compiler.tiles",

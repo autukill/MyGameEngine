@@ -6,6 +6,8 @@ using System.Text.Json;
 using GameEngine.Core.Domain.Graphics;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
+using GameEngine.Features.Audio;
+using GameEngine.Features.Audio.Vorbis;
 using GameEngine.Features.Animation;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
@@ -458,10 +460,23 @@ public sealed class ContentAssetCompiler
         foreach (AudioAssetDefinition definition in package.Manifest.AudioClips)
         {
             string source = ResolveUnderRoot(package.Directory, definition.Path, "Audio clip");
+            ValidateAudioFile(definition, source);
             string destination = ResolveOutputPath(output, definition.Path);
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(source, destination, overwrite: false);
         }
+    }
+
+    private static void ValidateAudioFile(AudioAssetDefinition definition, string path)
+    {
+        string expectedExtension = definition.Streaming ? ".ogg" : ".wav";
+        if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetExtension(path), expectedExtension))
+            throw new InvalidDataException(
+                $"Audio clip '{definition.Name}' must use a {expectedExtension} asset when streaming is {definition.Streaming.ToString().ToLowerInvariant()}.");
+        if (definition.Streaming)
+            _ = VorbisAudioStreamFactory.ReadMetadata(path);
+        else
+            _ = WaveAudioDecoder.DecodeFile(path);
     }
 
     private static void CopyTileMaps(ManifestContext package, string output)

@@ -6,6 +6,8 @@ using System.Text;
 using System.Text.Json;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
+using GameEngine.Features.Audio;
+using GameEngine.Features.Audio.Vorbis;
 using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.Tilemaps.Infrastructure;
 
@@ -14,7 +16,7 @@ using GameEngine.Features.Tilemaps.Infrastructure;
 /// </summary>
 public sealed class ContentBuildPipeline
 {
-    public const string CompilerVersion = "5";
+    public const string CompilerVersion = "6";
     public const string MetadataFileName = ".mygame-assets.json";
     private const string OwnerName = "MyGameEngine.AssetCompiler";
     private const int MetadataSchemaVersion = 1;
@@ -392,6 +394,7 @@ public sealed class ContentBuildPipeline
                 string path = ResolveUnderRoot(node.PackageDirectory, audio.Path, "Audio clip");
                 if (!File.Exists(path))
                     throw new FileNotFoundException($"Audio asset '{audio.Path}' does not exist.", path);
+                ValidateAudioFile(audio, path);
                 string relativeDirectory = Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
                 string outputPath = NormalizeRelativePath(Path.Combine(relativeDirectory, audio.Path));
                 if (StringComparer.OrdinalIgnoreCase.Equals(outputPath, MetadataFileName))
@@ -473,6 +476,18 @@ public sealed class ContentBuildPipeline
                 }
             }
         }
+    }
+
+    private static void ValidateAudioFile(AudioAssetDefinition definition, string path)
+    {
+        string expectedExtension = definition.Streaming ? ".ogg" : ".wav";
+        if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetExtension(path), expectedExtension))
+            throw new InvalidDataException(
+                $"Audio clip '{definition.Name}' must use a {expectedExtension} asset when streaming is {definition.Streaming.ToString().ToLowerInvariant()}.");
+        if (definition.Streaming)
+            _ = VorbisAudioStreamFactory.ReadMetadata(path);
+        else
+            _ = WaveAudioDecoder.DecodeFile(path);
     }
 
     private static bool HasVisibleTileSet(

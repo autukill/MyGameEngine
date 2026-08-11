@@ -21,6 +21,7 @@
     <PackageReference Include="Silk.NET.OpenAL.Soft.Native" />
     <PackageReference Include="SkiaSharp" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+    <PackageReference Include="NVorbis" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,6 +29,7 @@
     <ProjectReference Include="..\Engine.Features\Animation\Animation.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\Audio\Audio.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\Audio.OpenAL\Audio.OpenAL.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\Engine.Features\Audio.Vorbis\Audio.Vorbis.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\Bloom\Bloom.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\Camera\Camera.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\ContentAssets\ContentAssets.csproj" PrivateAssets="all" />
@@ -56,6 +58,7 @@
       <TfmSpecificPackageFile Include="..\Engine.Features\Animation\bin\$(Configuration)\net10.0\Animation.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\Audio\bin\$(Configuration)\net10.0\Audio.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\Audio.OpenAL\bin\$(Configuration)\net10.0\Audio.OpenAL.dll" />
+      <TfmSpecificPackageFile Include="..\Engine.Features\Audio.Vorbis\bin\$(Configuration)\net10.0\Audio.Vorbis.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\Bloom\bin\$(Configuration)\net10.0\Bloom.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\Camera\bin\$(Configuration)\net10.0\Camera.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\ContentAssets\bin\$(Configuration)\net10.0\ContentAssets.dll" />

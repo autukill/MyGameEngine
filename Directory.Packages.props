@@ -17,6 +17,8 @@
     <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.150.1" />
     <PackageVersion Include="Imazen.WebP" Version="11.0.0" />
     <PackageVersion Include="Imazen.WebP.NativeRuntime.All" Version="1.6.1" />
+    <PackageVersion Include="NVorbis" Version="0.10.5" />
+    <PackageVersion Include="OggVorbisEncoder" Version="1.2.2" />
 
     <!-- 编辑器 Web 后端 (SignalR) — 预留, Phase 2.x 编辑器切片使用 -->
     <PackageVersion Include="Microsoft.AspNetCore.SignalR" Version="1.2.0" />
