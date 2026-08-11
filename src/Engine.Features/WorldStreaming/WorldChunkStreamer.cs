@@ -16,6 +16,7 @@ public sealed class WorldChunkStreamer<TChunk> : IDisposable
     private WorldChunkRange _preloaded;
     private WorldChunkRange _retained;
     private bool _hasDesiredSet;
+    private bool _retiring;
     private bool _disposed;
     private int _activeLoads;
 
@@ -24,6 +25,7 @@ public sealed class WorldChunkStreamer<TChunk> : IDisposable
     public ulong LastViewportRevision { get; private set; }
     public int TrackedCount => _entries.Count;
     public int ActiveLoadCount => _activeLoads;
+    public bool IsRetiring => _retiring;
 
     public event Action<WorldChunkLoadedEvent>? ChunkLoaded;
     public event Action<WorldChunkUnloadedEvent>? ChunkUnloaded;
@@ -42,6 +44,9 @@ public sealed class WorldChunkStreamer<TChunk> : IDisposable
     public WorldChunkUpdateResult Update(in ViewportSnapshot viewport)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_retiring)
+            throw new InvalidOperationException(
+                "A retiring WorldChunkStreamer cannot accept new Viewport updates.");
         ValidateViewport(viewport);
         int completed = 0;
         int failures = 0;
@@ -127,6 +132,55 @@ public sealed class WorldChunkStreamer<TChunk> : IDisposable
         return new WorldChunkStreamingDiagnostics(
             _entries.Count, pending, loading, loaded, failed,
             visible, preloaded, retained, LastViewportRevision);
+    }
+
+    /// <summary>
+    /// Cancels in-flight loads and enters a non-blocking retirement state. Call
+    /// <see cref="DrainRetirement"/> from the owning update thread until it returns true, then
+    /// dispose the streamer and its loader. Lease disposal and events remain on the caller thread.
+    /// </summary>
+    public void BeginRetirement()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_retiring) return;
+        _retiring = true;
+        _hasDesiredSet = false;
+        _removeScratch.Clear();
+        foreach ((WorldChunkCoordinate coordinate, Entry entry) in _entries)
+        {
+            if (entry.State == WorldChunkLoadState.Loading)
+            {
+                entry.Cancellation!.Cancel();
+                continue;
+            }
+            if (entry.Chunk is { } chunk)
+            {
+                entry.Chunk = null;
+                chunk.Dispose();
+                ChunkUnloaded?.Invoke(new WorldChunkUnloadedEvent(coordinate));
+            }
+            entry.Cancellation?.Dispose();
+            entry.Cancellation = null;
+            _removeScratch.Add(coordinate);
+        }
+        for (int index = 0; index < _removeScratch.Count; index++)
+            _entries.Remove(_removeScratch[index]);
+    }
+
+    /// <summary>
+    /// Harvests completed retirement work without waiting. Returns true after every cancelled
+    /// operation and resulting lease has been observed and released on the caller thread.
+    /// </summary>
+    public bool DrainRetirement()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_retiring)
+            throw new InvalidOperationException("BeginRetirement must be called before draining.");
+        int completed = 0;
+        int failures = 0;
+        int unloaded = 0;
+        HarvestCompleted(ref completed, ref failures, ref unloaded);
+        return _activeLoads == 0 && _entries.Count == 0;
     }
 
     public void Dispose()

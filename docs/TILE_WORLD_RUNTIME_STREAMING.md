@@ -14,8 +14,8 @@ ViewportSnapshot
        ├─ Active Level                   当前稳定绘制层
        └─ Pending Level                  可见 Chunk 全部就绪后原子替换 Active
             → WorldChunkStreamer<TileWorldChunkLease>
-                 → TileWorldChunkLoader  后台随机读取 + WebP 解码
-                 → CommitTextures        主线程 TextureLibrary 提交
+                 → TileWorldChunkLoader  有界后台读取 + WebP 解码
+                 → staged upload queue   主线程按张数/字节预算提交
 ```
 
 ## Hosting 黄金入口
@@ -38,7 +38,11 @@ TileWorldStreamingSession stream = context.CreateTileWorldStream(
             maximumConcurrentLoads: 4,
             maximumTrackedChunks: 4096,
             retryFailedOnViewportChange: true,
-            maximumLoadsStartedPerUpdate: 8)));
+            maximumLoadsStartedPerUpdate: 8),
+        TileWorldChunkLoadMode.Background,
+        new TileWorldTextureUploadBudget(
+            maximumTexturesPerUpdate: 2,
+            maximumBytesPerUpdate: 2 * 1024 * 1024)));
 
 ViewportController viewport = context.GetViewportNavigation(context.RenderViews[0].Ref);
 
@@ -58,8 +62,9 @@ stream.Dispose();
 ```
 
 `TileWorldStreamingSession` 不拥有 `TileSetLibrary`、`TextureLibrary` 或 Content Package。推荐由
-GameInstance/Scene Controller 在 `OnCreate` 创建，在 `OnDestroy` 释放。Session 释放顺序固定为
-Preview → Pending → Active → Fallback；每个 Lease 再移除自己注册的 Texture。
+GameInstance/Scene Controller 在 `OnCreate` 创建，在 `OnDestroy` 释放。运行中被替换的 Pending/Active
+Level 先取消并进入退休队列，后续 `Update` 只轮询已经完成的任务，不在 Scene Step 中同步等待；
+Session 终止释放仍遵循 Preview → Pending/Retired → Active → Fallback，每个 Lease 再移除自己注册的 Texture。
 
 ## LOD 选择与滞回
 
@@ -91,10 +96,19 @@ Gameplay 查询不得使用 Raster LOD 替代 LOD0 权威数据。
 3. 使用 `IImageDecoder` 把每个 Layer WebP 解码为未预乘 RGBA8。
 4. 返回尚未触碰 GPU 的 `TileWorldChunkLease`。
 
-`TileWorldStreamingSession.Update` 在调用线程收割完成项，然后调用
-`TileWorldChunkLease.CommitTextures(TextureLibrary)`。这让 OpenGL Texture 创建始终停留在图形上下文
-线程。一个 Chunk 的后续 Layer 上传失败时，本次已经注册的 Texture 会全部回滚；旧 Active 和最粗
-Fallback 不受影响。
+`TileWorldStreamingSession.Update` 在调用线程收割完成项，但不会把所有 CPU-ready 图片在同一帧
+全部上传。`TileWorldTextureUploadBudget` 默认限制每次 Update 最多 `2` 张 Texture / `2 MiB` RGBA；
+张数和字节任一耗尽即延后到下一帧。若第一张 Texture 本身超过字节预算，仍允许这一张前进，避免
+永久饥饿，因此离线构建仍应限制单 Chunk 图片尺寸。
+
+每个 Chunk 可以跨多帧逐 Layer 上传，但只有最后一个 Layer 成功后才原子发布为 `IsCommitted`；
+期间旧 Active、最粗 LOD 或 Preview 继续遮盖缺口。后续 Layer 上传失败会删除该 Chunk 已暂存的
+Texture，不影响旧 Active。`TileWorldStreamingUpdateResult.TexturesUploaded/TextureBytesUploaded`
+提供本帧提交量，`RetiringLevels` 可观察尚未完成的取消任务。
+
+OpenGL Texture 创建仍停留在拥有图形 Context 的线程。IO、SHA-256 与 WebP 解码通过
+`MaximumConcurrentLoads` 有界并行；单纯把 `glTexImage2D` 放进线程池并不安全，若未来实测单张
+Texture 上传仍超预算，再独立评估 PBO 或共享上传 Context/Fence。
 
 `Inline` 模式主要用于无窗口测试、离线工具或确定知道 Chunk 很小的场景。它仍保持显式 Commit
 边界，但归档读取和图片解码会占用调用线程，不建议作为大型地图默认值。
@@ -115,8 +129,8 @@ Active Level。
 Active、Pending、Fallback Level 及各自 Pending/Loading/Loaded/Failed 计数。
 
 若清单声明 `build.fallbackSurfaces[]`，Session 会独立后台读取并解码这些全世界低清图片，再在
-`Update` 调用线程通过 `TileWorldFallbackSurfaceLease.CommitTextures` 原子上传。它不占用 Chunk
-Streamer 的并发预算，也不等待最粗 LOD；只有对应世界区域连最粗 Chunk 都尚未就绪时，Renderer 才按
+`Update` 调用线程让 `TileWorldFallbackSurfaceLease` 共享同一 GPU 上传预算并原子发布。它不占用 Chunk
+Streamer 的后台并发预算，也不等待最粗 LOD；只有对应世界区域连最粗 Chunk 都尚未就绪时，Renderer 才按
 Layer 和世界 `bounds` 裁取 Preview UV。`TileWorldDrawStatistics.FallbackSurfaceQuads` 可单独观察该路径。
 Preview 绑定明确 Layer，因此 `DrawLayer()` 仍能保持 Gameplay 深度穿插边界；扁平全图 Preview 应绑定到
 最底部地表 Layer。
@@ -145,14 +159,14 @@ Lease 的唯一所有权。
 
 - 独立 Preview/Fallback Surface 已支持；未声明时保持最粗生成 LOD 的原有行为。
 - 不同 Session 尚不共享跨 Viewport 的解码结果或 Texture 引用计数。
-- 没有按显存预算降级、LRU、逐 Chunk 热重载或层级淡化。
+- 已有逐帧上传预算，但没有总显存预算降级、LRU、PBO、逐 Chunk 热重载或层级淡化。
 - `.mgworld` 仍来自权威 TileMap；历史 `tile_{row}_{column}.webp + preview.webp` 尚未接入
   `preTiledRaster` 导入器。
 - LOD0 碰撞数据已经随 Lease 可用，但视觉 Session 不替 Gameplay 自动建立空间查询索引。
 
 下一切片是离线 `preTiledRaster` 导入适配器，把既有多切片地图规范化进相同 `.mgworld` 索引；不要让
 Session 扫描目录或猜测资源语义。实现与测试继续使用小型合成 Fixture，完整历史地图仅留作未来人工验收。
-GPU 预算和跨 View 共享应由真实 12000×12000 样本测量后决定。
+默认上传预算应在未来真实 `12000×12000` 样本上测量后按目标平台覆盖，跨 View 共享也留到该验收阶段。
 
 ## 验证
 
@@ -161,11 +175,14 @@ dotnet run --project src/Engine.Features/TileWorldStreaming.Tests/TileWorldStrea
 dotnet run --project src/Engine.Features/TileWorldStreaming.VisualTests/TileWorldStreaming.VisualTests.csproj -c Release
 ```
 
-无窗口测试覆盖密度阈值、双向滞回、稀疏空 Chunk、权威 LOD0、后台准备/GPU 提交边界、上传失败
-回滚、最粗层常驻、完整替换和按世界区域裁取 Fallback。
+无窗口测试覆盖密度阈值、双向滞回、稀疏空 Chunk、权威 LOD0、后台准备/GPU 提交边界、逐帧
+张数/字节预算、分层暂存与原子发布、上传失败回滚、不可取消解码的非阻塞退休、最粗层常驻、
+完整替换和按世界区域裁取 Fallback。
 
 VisualTests 不提交真实地图资源，而是在临时目录生成一个 `4×4` 的小型 `.mgworld v3`、LOD1/LOD2
 无损 WebP Chunk 和独立 Preview Surface。运行后可通过拖拽/滚轮观察 Viewport，通过 `Q/W/E`
 直接切换 LOD2/LOD1/LOD0，`Space` 暂停或恢复自动巡游，`R` 重建 Session 并重放
 Preview → Raster LOD → LOD0 的异步接管过程，`ESC` 退出。窗口标题与顶部状态条会显示当前来源、
-待切换 Level、Preview 常驻数和 Fallback Draw 数；`--smoke` 使用隐藏窗口自动验证完整 GPU 路径。
+待切换 Level、每帧上传量、退休 Level、Preview 常驻数和 Fallback Draw 数；交互 Zoom 使用平滑
+Viewport Animate。`--smoke` 使用隐藏窗口故意在解码未结束时连续替换 LOD，并守卫 Scene Step
+不得因同步 join 产生长帧。

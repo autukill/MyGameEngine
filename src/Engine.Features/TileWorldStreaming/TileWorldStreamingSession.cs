@@ -27,9 +27,11 @@ public sealed class TileWorldStreamingSession : IDisposable
     private readonly IImageDecoder _decoder;
     private readonly TileWorldStreamingOptions _options;
     private readonly TileWorldLodSelector _selector;
+    private readonly TileWorldBackgroundScheduler? _backgroundScheduler;
     private readonly string _scope;
     private readonly CancellationTokenSource _fallbackSurfaceCancellation = new();
     private readonly TileWorldLevelState _fallback;
+    private readonly List<TileWorldLevelState> _retiredLevels = [];
     private Task<TileWorldFallbackSurfaceLease>? _fallbackSurfaceLoad;
     private TileWorldFallbackSurfaceLease? _fallbackSurface;
     private TileWorldLevelState _active;
@@ -54,11 +56,24 @@ public sealed class TileWorldStreamingSession : IDisposable
         _options = new TileWorldStreamingOptions(
             supplied.LodSelection,
             supplied.ChunkStreaming,
-            supplied.LoadMode);
+            supplied.LoadMode,
+            supplied.TextureUploadBudget);
         _selector = new TileWorldLodSelector(descriptor.Metadata, _options.LodSelection);
+        if (_options.LoadMode == TileWorldChunkLoadMode.Background)
+            _backgroundScheduler = new TileWorldBackgroundScheduler(
+                _options.ChunkStreaming.MaximumConcurrentLoads);
         _scope = $"__tileworld-stream-{Interlocked.Increment(ref _nextScope)}-{descriptor.Ref.Name}";
         int fallbackLevel = descriptor.Metadata.DeclaredLodCount - 1;
-        _fallback = CreateLevel(fallbackLevel);
+        try
+        {
+            _fallback = CreateLevel(fallbackLevel);
+        }
+        catch
+        {
+            _backgroundScheduler?.Dispose();
+            _fallbackSurfaceCancellation.Dispose();
+            throw;
+        }
         _active = _fallback;
         _desiredLevel = fallbackLevel;
         if (descriptor.Metadata.FallbackSurfaces.Count > 0)
@@ -75,6 +90,7 @@ public sealed class TileWorldStreamingSession : IDisposable
             catch
             {
                 _fallback.Dispose();
+                _backgroundScheduler?.Dispose();
                 _fallbackSurfaceCancellation.Dispose();
                 throw;
             }
@@ -93,7 +109,9 @@ public sealed class TileWorldStreamingSession : IDisposable
     public TileWorldStreamingUpdateResult Update(in ViewportSnapshot viewport)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        CompleteFallbackSurfaceLoad();
+        DrainRetiredLevels();
+        var uploadBudget = new TileWorldTextureUploadBudgetState(_options.TextureUploadBudget);
+        CompleteFallbackSurfaceLoad(ref uploadBudget);
         _desiredLevel = _selector.Select(viewport.Zoom);
         _lastViewport = viewport;
         _hasViewport = true;
@@ -104,24 +122,24 @@ public sealed class TileWorldStreamingSession : IDisposable
         int failures = 0;
         bool levelChanged = false;
 
-        Accumulate(_fallback.Update(viewport, _textures),
+        Accumulate(_fallback.Update(viewport, _textures, ref uploadBudget),
             ref started, ref completed, ref unloaded, ref failures);
         if (!ReferenceEquals(_active, _fallback))
-            Accumulate(_active.Update(viewport, _textures),
+            Accumulate(_active.Update(viewport, _textures, ref uploadBudget),
                 ref started, ref completed, ref unloaded, ref failures);
 
         if (_desiredLevel == _active.Level)
         {
-            DisposePending();
+            RetirePending();
         }
         else if (_desiredLevel == _fallback.Level)
         {
-            DisposePending();
+            RetirePending();
             if (_fallback.IsVisibleReady(viewport))
             {
                 TileWorldLevelState previous = _active;
                 _active = _fallback;
-                if (!ReferenceEquals(previous, _fallback)) previous.Dispose();
+                if (!ReferenceEquals(previous, _fallback)) RetireLevel(previous);
                 levelChanged = true;
             }
         }
@@ -129,17 +147,17 @@ public sealed class TileWorldStreamingSession : IDisposable
         {
             if (_pending is null || _pending.Level != _desiredLevel)
             {
-                DisposePending();
+                RetirePending();
                 _pending = CreateLevel(_desiredLevel);
             }
-            Accumulate(_pending.Update(viewport, _textures),
+            Accumulate(_pending.Update(viewport, _textures, ref uploadBudget),
                 ref started, ref completed, ref unloaded, ref failures);
             if (_pending.IsVisibleReady(viewport))
             {
                 TileWorldLevelState previous = _active;
                 _active = _pending;
                 _pending = null;
-                if (!ReferenceEquals(previous, _fallback)) previous.Dispose();
+                if (!ReferenceEquals(previous, _fallback)) RetireLevel(previous);
                 levelChanged = true;
             }
         }
@@ -152,7 +170,10 @@ public sealed class TileWorldStreamingSession : IDisposable
             started,
             completed,
             unloaded,
-            failures);
+            failures,
+            uploadBudget.TexturesUploaded,
+            uploadBudget.BytesUploaded,
+            _retiredLevels.Count);
     }
 
     public TileWorldDrawStatistics Draw(
@@ -249,7 +270,8 @@ public sealed class TileWorldStreamingSession : IDisposable
             _pending?.Streamer.CaptureDiagnostics(),
             HasFallbackSurfaces,
             FallbackSurfacesReady,
-            ResidentFallbackSurfaceCount);
+            ResidentFallbackSurfaceCount,
+            _retiredLevels.Count);
     }
 
     public void Dispose()
@@ -276,9 +298,14 @@ public sealed class TileWorldStreamingSession : IDisposable
         }
         _fallbackSurface?.Dispose();
         _fallbackSurface = null;
-        DisposePending();
+        _pending?.Dispose();
+        _pending = null;
+        for (int index = _retiredLevels.Count - 1; index >= 0; index--)
+            _retiredLevels[index].Dispose();
+        _retiredLevels.Clear();
         if (!ReferenceEquals(_active, _fallback)) _active.Dispose();
         _fallback.Dispose();
+        _backgroundScheduler?.Dispose();
         _fallbackSurfaceCancellation.Dispose();
     }
 
@@ -287,7 +314,8 @@ public sealed class TileWorldStreamingSession : IDisposable
         level,
         $"{_scope}.state-{level}",
         _decoder,
-        _options);
+        _options,
+        _backgroundScheduler);
 
     private int? EffectivePendingLevel =>
         _pending?.Level ??
@@ -528,29 +556,53 @@ public sealed class TileWorldStreamingSession : IDisposable
         fallbackSurfaceQuads++;
     }
 
-    private void CompleteFallbackSurfaceLoad()
+    private void CompleteFallbackSurfaceLoad(ref TileWorldTextureUploadBudgetState uploadBudget)
     {
         Task<TileWorldFallbackSurfaceLease>? task = _fallbackSurfaceLoad;
-        if (task is null || !task.IsCompleted) return;
-        _fallbackSurfaceLoad = null;
-        TileWorldFallbackSurfaceLease? lease = null;
+        if (_fallbackSurface is null && task is not null && task.IsCompleted)
+        {
+            _fallbackSurfaceLoad = null;
+            _fallbackSurface = task.GetAwaiter().GetResult();
+        }
+
+        TileWorldFallbackSurfaceLease? lease = _fallbackSurface;
+        if (lease is null || lease.IsCommitted) return;
         try
         {
-            lease = task.GetAwaiter().GetResult();
-            lease.CommitTextures(_textures);
-            _fallbackSurface = lease;
+            while (!lease.IsCommitted)
+            {
+                if (!lease.TryCommitNextTexture(_textures, ref uploadBudget)) return;
+            }
         }
         catch
         {
-            lease?.Dispose();
+            lease.Dispose();
+            _fallbackSurface = null;
             throw;
         }
     }
 
-    private void DisposePending()
+    private void RetirePending()
     {
-        _pending?.Dispose();
+        if (_pending is not null) RetireLevel(_pending);
         _pending = null;
+    }
+
+    private void RetireLevel(TileWorldLevelState level)
+    {
+        level.BeginRetirement();
+        _retiredLevels.Add(level);
+    }
+
+    private void DrainRetiredLevels()
+    {
+        for (int index = _retiredLevels.Count - 1; index >= 0; index--)
+        {
+            TileWorldLevelState level = _retiredLevels[index];
+            if (!level.DrainRetirement()) continue;
+            level.Dispose();
+            _retiredLevels.RemoveAt(index);
+        }
     }
 
     private static void Accumulate(

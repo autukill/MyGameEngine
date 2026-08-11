@@ -59,7 +59,7 @@ src/
 │   ├── ViewportNavigation/              # 交互式 Camera 插件链与稳定可见范围快照
 │   ├── WorldStreaming/                  # Snapshot 驱动的 Chunk 驻留、加载预算与租约生命周期
 │   ├── TileWorlds/                      # 权威 LOD0、逐层 WebP LOD、Preview 与确定性 .mgworld v3
-│   ├── TileWorldStreaming/              # Zoom/滞回、后台解码、Texture Lease 与两级视觉回退
+│   ├── TileWorldStreaming/              # 后台解码、非阻塞 LOD 退休、GPU 上传预算与两级回退
 │   ├── Animation/                       # 命名 Clip、循环模式与帧事件
 │   ├── Audio/                           # 逻辑 Clip/Bus/Voice 与 Backend 边界
 │   ├── Audio.Vorbis/                    # OGG Vorbis 元数据与分块 PCM 解码适配器

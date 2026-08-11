@@ -19,8 +19,8 @@ internal sealed record PreparedRasterLayer(
     byte[] RgbaPixels);
 
 /// <summary>
-/// Owns one decoded TileWorld Chunk. Background loading only prepares CPU data; CommitTextures is
-/// intentionally explicit and must be called on the graphics-context thread.
+/// Owns one decoded TileWorld Chunk. Background loading only prepares CPU data. The eager public
+/// CommitTextures path and the Session's incremental budgeted path both run on the graphics thread.
 /// </summary>
 public sealed class TileWorldChunkLease : IDisposable
 {
@@ -28,7 +28,9 @@ public sealed class TileWorldChunkLease : IDisposable
     private readonly TextureSampler _sampler;
     private PreparedRasterLayer[]? _preparedLayers;
     private TileWorldRuntimeRasterLayer[] _rasterLayers = [];
+    private TileWorldRuntimeRasterLayer[]? _stagedRasterLayers;
     private TextureLibrary? _textureLibrary;
+    private int _nextPreparedLayer;
     private bool _committed;
     private bool _disposed;
 
@@ -57,63 +59,75 @@ public sealed class TileWorldChunkLease : IDisposable
 
     public void CommitTextures(TextureLibrary textures)
     {
+        var budget = TileWorldTextureUploadBudgetState.Unlimited;
+        while (!_committed) TryCommitNextTexture(textures, ref budget);
+    }
+
+    internal bool TryCommitNextTexture(
+        TextureLibrary textures,
+        ref TileWorldTextureUploadBudgetState budget)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(textures);
         if (_committed)
         {
-            if (_textureLibrary is not null && !ReferenceEquals(_textureLibrary, textures))
-                throw new InvalidOperationException("TileWorld Chunk is committed to another TextureLibrary.");
-            return;
+            ValidateTextureLibrary(textures);
+            return false;
         }
+        ValidateTextureLibrary(textures);
 
         PreparedRasterLayer[] prepared = _preparedLayers ?? [];
         if (prepared.Length == 0)
         {
             _preparedLayers = null;
+            _textureLibrary = textures;
             _committed = true;
-            return;
+            return false;
         }
 
-        var committed = new TileWorldRuntimeRasterLayer[prepared.Length];
-        int registered = 0;
+        PreparedRasterLayer layer = prepared[_nextPreparedLayer];
+        int encodedWidth = checked(layer.Width + layer.Gutter * 2);
+        int encodedHeight = checked(layer.Height + layer.Gutter * 2);
+        long bytes = checked((long)encodedWidth * encodedHeight * 4L);
+        if (!budget.TryReserve(bytes)) return false;
+
+        _stagedRasterLayers ??= new TileWorldRuntimeRasterLayer[prepared.Length];
+        _textureLibrary = textures;
         try
         {
-            for (int index = 0; index < prepared.Length; index++)
-            {
-                PreparedRasterLayer layer = prepared[index];
-                int encodedWidth = checked(layer.Width + layer.Gutter * 2);
-                int encodedHeight = checked(layer.Height + layer.Gutter * 2);
-                string name = $"{_textureNamePrefix}.layer-{layer.LayerIndex}";
-                TextureRef texture = textures.RegisterRgba(
-                    name,
-                    encodedWidth,
-                    encodedHeight,
-                    layer.RgbaPixels,
-                    _sampler);
-                float left = (float)layer.Gutter / encodedWidth;
-                float top = (float)layer.Gutter / encodedHeight;
-                committed[index] = new TileWorldRuntimeRasterLayer(
-                    layer.LayerIndex,
-                    texture,
-                    new Vector4(
-                        left,
-                        top,
-                        (float)(layer.Gutter + layer.Width) / encodedWidth,
-                        (float)(layer.Gutter + layer.Height) / encodedHeight));
-                registered++;
-            }
+            string name = $"{_textureNamePrefix}.layer-{layer.LayerIndex}";
+            TextureRef texture = textures.RegisterRgba(
+                name,
+                encodedWidth,
+                encodedHeight,
+                layer.RgbaPixels,
+                _sampler);
+            float left = (float)layer.Gutter / encodedWidth;
+            float top = (float)layer.Gutter / encodedHeight;
+            _stagedRasterLayers[_nextPreparedLayer] = new TileWorldRuntimeRasterLayer(
+                layer.LayerIndex,
+                texture,
+                new Vector4(
+                    left,
+                    top,
+                    (float)(layer.Gutter + layer.Width) / encodedWidth,
+                    (float)(layer.Gutter + layer.Height) / encodedHeight));
+            _nextPreparedLayer++;
         }
         catch
         {
-            for (int index = 0; index < registered; index++)
-                textures.Remove(committed[index].Texture);
+            RollBackStagedTextures();
             throw;
         }
 
-        _rasterLayers = committed;
-        _preparedLayers = null;
-        _textureLibrary = textures;
-        _committed = true;
+        if (_nextPreparedLayer == prepared.Length)
+        {
+            _rasterLayers = _stagedRasterLayers;
+            _stagedRasterLayers = null;
+            _preparedLayers = null;
+            _committed = true;
+        }
+        return true;
     }
 
     public bool TryGetRasterLayer(int layerIndex, out TileWorldRuntimeRasterLayer layer)
@@ -141,9 +155,37 @@ public sealed class TileWorldChunkLease : IDisposable
                 try { textures.Remove(_rasterLayers[index].Texture); }
                 catch (ObjectDisposedException) { }
             }
+            if (_stagedRasterLayers is not null)
+            {
+                for (int index = 0; index < _nextPreparedLayer; index++)
+                {
+                    try { textures.Remove(_stagedRasterLayers[index].Texture); }
+                    catch (ObjectDisposedException) { }
+                }
+            }
         }
         _rasterLayers = [];
+        _stagedRasterLayers = null;
         _preparedLayers = null;
         _textureLibrary = null;
+        _nextPreparedLayer = 0;
+    }
+
+    private void ValidateTextureLibrary(TextureLibrary textures)
+    {
+        if (_textureLibrary is not null && !ReferenceEquals(_textureLibrary, textures))
+            throw new InvalidOperationException("TileWorld Chunk is committed to another TextureLibrary.");
+    }
+
+    private void RollBackStagedTextures()
+    {
+        if (_textureLibrary is not null && _stagedRasterLayers is not null)
+        {
+            for (int index = 0; index < _nextPreparedLayer; index++)
+                _textureLibrary.Remove(_stagedRasterLayers[index].Texture);
+        }
+        _stagedRasterLayers = null;
+        _textureLibrary = null;
+        _nextPreparedLayer = 0;
     }
 }

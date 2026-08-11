@@ -17,6 +17,7 @@ public sealed class TileWorldChunkLoader :
     private readonly IImageDecoder _decoder;
     private readonly string _textureScope;
     private readonly TileWorldChunkLoadMode _loadMode;
+    private readonly TileWorldBackgroundScheduler? _backgroundScheduler;
     private bool _disposed;
 
     public TileWorldChunkLoader(
@@ -25,6 +26,17 @@ public sealed class TileWorldChunkLoader :
         string textureScope,
         IImageDecoder? decoder = null,
         TileWorldChunkLoadMode loadMode = TileWorldChunkLoadMode.Background)
+        : this(descriptor, level, textureScope, decoder, loadMode, null)
+    {
+    }
+
+    internal TileWorldChunkLoader(
+        TileWorldDescriptor descriptor,
+        int level,
+        string textureScope,
+        IImageDecoder? decoder,
+        TileWorldChunkLoadMode loadMode,
+        TileWorldBackgroundScheduler? backgroundScheduler)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         if ((uint)level >= (uint)descriptor.Metadata.DeclaredLodCount)
@@ -36,6 +48,7 @@ public sealed class TileWorldChunkLoader :
         _decoder = decoder ?? new SkiaImageDecoder();
         _textureScope = textureScope;
         _loadMode = loadMode;
+        _backgroundScheduler = backgroundScheduler;
         Level = level;
         Metadata = _archive.Metadata;
         if (!StringComparer.Ordinal.Equals(descriptor.Ref.Name, Metadata.Name))
@@ -55,6 +68,10 @@ public sealed class TileWorldChunkLoader :
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (_loadMode == TileWorldChunkLoadMode.Inline)
             return ValueTask.FromResult(Load(coordinate, cancellationToken));
+        if (_backgroundScheduler is not null)
+            return new ValueTask<TileWorldChunkLease>(_backgroundScheduler.RunAsync(
+                () => Load(coordinate, cancellationToken),
+                cancellationToken));
         return new ValueTask<TileWorldChunkLease>(Task.Run(
             () => Load(coordinate, cancellationToken),
             cancellationToken));

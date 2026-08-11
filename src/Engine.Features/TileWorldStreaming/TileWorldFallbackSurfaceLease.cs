@@ -16,15 +16,17 @@ internal sealed record PreparedFallbackSurface(
     byte[] RgbaPixels);
 
 /// <summary>
-/// Owns the optional full-world fallback textures. Decode is CPU-only; CommitTextures is the
-/// explicit graphics-thread boundary.
+/// Owns the optional full-world fallback textures. Decode is CPU-only; eager and incremental
+/// commits share the same explicit graphics-thread boundary.
 /// </summary>
 public sealed class TileWorldFallbackSurfaceLease : IDisposable
 {
     private readonly string _textureNamePrefix;
     private PreparedFallbackSurface[]? _prepared;
     private TileWorldRuntimeFallbackSurface[] _surfaces = [];
+    private TileWorldRuntimeFallbackSurface[]? _stagedSurfaces;
     private TextureLibrary? _textures;
+    private int _nextPreparedSurface;
     private bool _committed;
     private bool _disposed;
 
@@ -42,47 +44,65 @@ public sealed class TileWorldFallbackSurfaceLease : IDisposable
 
     public void CommitTextures(TextureLibrary textures)
     {
+        var budget = TileWorldTextureUploadBudgetState.Unlimited;
+        while (!_committed) TryCommitNextTexture(textures, ref budget);
+    }
+
+    internal bool TryCommitNextTexture(
+        TextureLibrary textures,
+        ref TileWorldTextureUploadBudgetState budget)
+    {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(textures);
         if (_committed)
         {
-            if (_textures is not null && !ReferenceEquals(_textures, textures))
-                throw new InvalidOperationException(
-                    "TileWorld fallback surfaces are committed to another TextureLibrary.");
-            return;
+            ValidateTextureLibrary(textures);
+            return false;
         }
+        ValidateTextureLibrary(textures);
 
         PreparedFallbackSurface[] prepared = _prepared ?? [];
-        var committed = new TileWorldRuntimeFallbackSurface[prepared.Length];
-        int registered = 0;
+        if (prepared.Length == 0)
+        {
+            _prepared = null;
+            _textures = textures;
+            _committed = true;
+            return false;
+        }
+
+        PreparedFallbackSurface surface = prepared[_nextPreparedSurface];
+        long bytes = checked((long)surface.Width * surface.Height * 4L);
+        if (!budget.TryReserve(bytes)) return false;
+
+        _stagedSurfaces ??= new TileWorldRuntimeFallbackSurface[prepared.Length];
+        _textures = textures;
         try
         {
-            for (int index = 0; index < prepared.Length; index++)
-            {
-                PreparedFallbackSurface surface = prepared[index];
-                TextureRef texture = textures.RegisterRgba(
-                    $"{_textureNamePrefix}.layer-{surface.LayerIndex}",
-                    surface.Width,
-                    surface.Height,
-                    surface.RgbaPixels,
-                    surface.Sampler);
-                committed[index] = new TileWorldRuntimeFallbackSurface(
-                    surface.LayerIndex,
-                    texture);
-                registered++;
-            }
+            TextureRef texture = textures.RegisterRgba(
+                $"{_textureNamePrefix}.layer-{surface.LayerIndex}",
+                surface.Width,
+                surface.Height,
+                surface.RgbaPixels,
+                surface.Sampler);
+            _stagedSurfaces[_nextPreparedSurface] = new TileWorldRuntimeFallbackSurface(
+                surface.LayerIndex,
+                texture);
+            _nextPreparedSurface++;
         }
         catch
         {
-            for (int index = 0; index < registered; index++)
-                textures.Remove(committed[index].Texture);
+            RollBackStagedTextures();
             throw;
         }
 
-        _surfaces = committed;
-        _prepared = null;
-        _textures = textures;
-        _committed = true;
+        if (_nextPreparedSurface == prepared.Length)
+        {
+            _surfaces = _stagedSurfaces;
+            _stagedSurfaces = null;
+            _prepared = null;
+            _committed = true;
+        }
+        return true;
     }
 
     public bool TryGet(int layerIndex, out TileWorldRuntimeFallbackSurface surface)
@@ -109,9 +129,38 @@ public sealed class TileWorldFallbackSurfaceLease : IDisposable
                 try { _textures.Remove(_surfaces[index].Texture); }
                 catch (ObjectDisposedException) { }
             }
+            if (_stagedSurfaces is not null)
+            {
+                for (int index = 0; index < _nextPreparedSurface; index++)
+                {
+                    try { _textures.Remove(_stagedSurfaces[index].Texture); }
+                    catch (ObjectDisposedException) { }
+                }
+            }
         }
         _surfaces = [];
+        _stagedSurfaces = null;
         _prepared = null;
         _textures = null;
+        _nextPreparedSurface = 0;
+    }
+
+    private void ValidateTextureLibrary(TextureLibrary textures)
+    {
+        if (_textures is not null && !ReferenceEquals(_textures, textures))
+            throw new InvalidOperationException(
+                "TileWorld fallback surfaces are committed to another TextureLibrary.");
+    }
+
+    private void RollBackStagedTextures()
+    {
+        if (_textures is not null && _stagedSurfaces is not null)
+        {
+            for (int index = 0; index < _nextPreparedSurface; index++)
+                _textures.Remove(_stagedSurfaces[index].Texture);
+        }
+        _stagedSurfaces = null;
+        _textures = null;
+        _nextPreparedSurface = 0;
     }
 }

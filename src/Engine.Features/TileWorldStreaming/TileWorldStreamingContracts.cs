@@ -8,6 +8,32 @@ public enum TileWorldChunkLoadMode
     Inline = 1
 }
 
+/// <summary>
+/// Limits graphics-thread RGBA uploads per Session update. The first Texture may exceed the byte
+/// limit so an oversized but otherwise valid offline Chunk cannot starve forever.
+/// </summary>
+public readonly record struct TileWorldTextureUploadBudget
+{
+    public static TileWorldTextureUploadBudget Default => new(
+        maximumTexturesPerUpdate: 2,
+        maximumBytesPerUpdate: 2 * 1_024 * 1_024);
+
+    public TileWorldTextureUploadBudget(
+        int maximumTexturesPerUpdate,
+        long maximumBytesPerUpdate)
+    {
+        if (maximumTexturesPerUpdate <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumTexturesPerUpdate));
+        if (maximumBytesPerUpdate <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumBytesPerUpdate));
+        MaximumTexturesPerUpdate = maximumTexturesPerUpdate;
+        MaximumBytesPerUpdate = maximumBytesPerUpdate;
+    }
+
+    public int MaximumTexturesPerUpdate { get; }
+    public long MaximumBytesPerUpdate { get; }
+}
+
 public readonly record struct TileWorldStreamingOptions
 {
     public static TileWorldStreamingOptions Default => new(
@@ -18,7 +44,8 @@ public readonly record struct TileWorldStreamingOptions
     public TileWorldStreamingOptions(
         TileWorldLodSelectionOptions lodSelection,
         WorldChunkStreamingOptions chunkStreaming,
-        TileWorldChunkLoadMode loadMode = TileWorldChunkLoadMode.Background)
+        TileWorldChunkLoadMode loadMode = TileWorldChunkLoadMode.Background,
+        TileWorldTextureUploadBudget? textureUploadBudget = null)
     {
         if (!Enum.IsDefined(loadMode)) throw new ArgumentOutOfRangeException(nameof(loadMode));
         LodSelection = new TileWorldLodSelectionOptions(
@@ -32,11 +59,13 @@ public readonly record struct TileWorldStreamingOptions
             chunkStreaming.RetryFailedOnViewportChange,
             chunkStreaming.MaximumLoadsStartedPerUpdate);
         LoadMode = loadMode;
+        TextureUploadBudget = textureUploadBudget ?? TileWorldTextureUploadBudget.Default;
     }
 
     public TileWorldLodSelectionOptions LodSelection { get; }
     public WorldChunkStreamingOptions ChunkStreaming { get; }
     public TileWorldChunkLoadMode LoadMode { get; }
+    public TileWorldTextureUploadBudget TextureUploadBudget { get; }
 }
 
 public readonly record struct TileWorldStreamingUpdateResult(
@@ -47,7 +76,10 @@ public readonly record struct TileWorldStreamingUpdateResult(
     int LoadsStarted,
     int LoadsCompleted,
     int ChunksUnloaded,
-    int FailuresObserved);
+    int FailuresObserved,
+    int TexturesUploaded = 0,
+    long TextureBytesUploaded = 0,
+    int RetiringLevels = 0);
 
 public readonly record struct TileWorldStreamingDiagnostics(
     int DesiredLevel,
@@ -59,7 +91,8 @@ public readonly record struct TileWorldStreamingDiagnostics(
     WorldChunkStreamingDiagnostics? Pending,
     bool HasFallbackSurfaces = false,
     bool FallbackSurfacesReady = false,
-    int ResidentFallbackSurfaces = 0);
+    int ResidentFallbackSurfaces = 0,
+    int RetiringLevels = 0);
 
 public readonly record struct TileWorldDrawStatistics(
     int RasterQuads,

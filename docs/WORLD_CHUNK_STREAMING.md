@@ -62,7 +62,11 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 }
 ```
 
-异步 Loader 必须响应传入的 `CancellationToken`。Streamer 在 Chunk 离开 Retained 范围或自身释放时会请求取消；不响应取消的 Loader 会延迟资源回收，甚至令同步 `Dispose()` 等待。
+异步 Loader 应尽快响应传入的 `CancellationToken`。Streamer 在 Chunk 离开 Retained 范围或自身
+释放时会请求取消；同步 `Dispose()` 是终止所有权边界，因此仍可能等待不响应取消的 Loader。
+运行时需要替换整个 Streamer 时，使用 `BeginRetirement()` 发出取消，再在后续更新线程调用
+`DrainRetirement()`；它只收割已完成结果，从不 join 未完成 Task。返回 `true` 后再 Dispose Streamer
+及其 Loader。TileWorld LOD 热切换使用的正是这条非阻塞路径。
 
 ## 三层驻留范围
 
@@ -84,6 +88,9 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 - `MaximumLoadsStartedPerUpdate` 限制一次 `Update` 新启动的数量。即使 Loader 同步命中缓存，也不会在单帧无上限地装配 Chunk。
 - `MaximumTrackedChunks` 在修改驻留状态前检查完整 Retained 范围；超限时原子失败，不会留下半套新状态。
 
+这些预算只管理后台工作和 Chunk 数，不管理 OpenGL 上传。`Engine.Features.TileWorldStreaming` 在上层
+另有每帧 Texture 张数/RGBA 字节预算，避免多个后台结果同时完成后集中阻塞渲染线程。
+
 默认值分别为 4 个异步加载、每次 Update 启动 8 个、最多跟踪 4096 个 Chunk。实际项目应结合单 Chunk 解码成本、移动速度和平台内存预算测量，而不是简单增大这些值。
 
 ## 生命周期与失败语义
@@ -94,6 +101,7 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 - 离开 Retained 的在途任务先收到取消；若任务仍成功完成，结果会立即释放，不重新进入世界。
 - 失败默认只在 Viewport Revision 再次变化且 Chunk 仍被需要时重试，避免稳定画面每帧重试损坏资源。
 - `Dispose` 幂等。Scene 通常拥有自己的 Streamer，并应在销毁 Scene 内容之前先释放它。
+- `BeginRetirement/DrainRetirement` 保证热替换不等待在途 Loader，同时让最终 lease 仍在调用线程释放。
 
 `CaptureDiagnostics()` 提供 Pending、Loading、Loaded、Failed 以及三层驻留计数，不暴露 Loader 或 GPU 句柄。相同且已完全加载的 Snapshot 重复更新保持 `0 B` 托管分配。
 
@@ -120,4 +128,5 @@ WorldChunkCoordinate
 dotnet run --project src/Engine.Features/WorldStreaming.Tests/WorldStreaming.Tests.csproj -c Release
 ```
 
-无窗口测试覆盖精确边界与负坐标、Visible/Preloaded/Retained、并发与取消、失败重试、原子跟踪预算、幂等释放和稳定 Snapshot `0 B` 分配。
+无窗口测试覆盖精确边界与负坐标、Visible/Preloaded/Retained、并发与取消、不响应取消任务的非阻塞
+退休、失败重试、原子跟踪预算、幂等释放和稳定 Snapshot `0 B` 分配。

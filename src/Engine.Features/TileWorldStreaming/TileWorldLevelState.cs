@@ -18,7 +18,8 @@ internal sealed class TileWorldLevelState : IDisposable
         int level,
         string textureScope,
         IImageDecoder decoder,
-        TileWorldStreamingOptions options)
+        TileWorldStreamingOptions options,
+        TileWorldBackgroundScheduler? backgroundScheduler)
     {
         Level = level;
         _options = options.ChunkStreaming;
@@ -33,7 +34,8 @@ internal sealed class TileWorldLevelState : IDisposable
             level,
             textureScope,
             decoder,
-            options.LoadMode);
+            options.LoadMode,
+            backgroundScheduler);
         Streamer = new WorldChunkStreamer<TileWorldChunkLease>(Layout, _loader, _options);
     }
 
@@ -43,11 +45,12 @@ internal sealed class TileWorldLevelState : IDisposable
 
     public WorldChunkUpdateResult Update(
         in ViewportSnapshot viewport,
-        TextureLibrary textures)
+        TextureLibrary textures,
+        ref TileWorldTextureUploadBudgetState uploadBudget)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         WorldChunkUpdateResult result = Streamer.Update(viewport);
-        CommitLoadedRange(viewport, textures);
+        CommitLoadedRange(viewport, textures, ref uploadBudget);
         return result;
     }
 
@@ -73,6 +76,18 @@ internal sealed class TileWorldLevelState : IDisposable
         WorldChunkCoordinate coordinate,
         out TileWorldChunkLease? lease) => Streamer.TryGetChunk(coordinate, out lease);
 
+    public void BeginRetirement()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        Streamer.BeginRetirement();
+    }
+
+    public bool DrainRetirement()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return Streamer.DrainRetirement();
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -83,7 +98,8 @@ internal sealed class TileWorldLevelState : IDisposable
 
     private void CommitLoadedRange(
         in ViewportSnapshot viewport,
-        TextureLibrary textures)
+        TextureLibrary textures,
+        ref TileWorldTextureUploadBudgetState uploadBudget)
     {
         WorldChunkRange range = Layout.GetRange(
             viewport.VisibleWorldBounds,
@@ -95,8 +111,13 @@ internal sealed class TileWorldLevelState : IDisposable
                 if (Streamer.TryGetChunk(
                         new WorldChunkCoordinate(x, y),
                         out TileWorldChunkLease? lease) &&
-                    lease is not null && !lease.IsCommitted)
-                    lease.CommitTextures(textures);
+                    lease is not null)
+                {
+                    while (!lease.IsCommitted)
+                    {
+                        if (!lease.TryCommitNextTexture(textures, ref uploadBudget)) return;
+                    }
+                }
                 if (x == range.MaxX) break;
             }
             if (y == range.MaxY) break;

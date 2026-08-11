@@ -1,5 +1,6 @@
 namespace TileWorldStreaming.Tests;
 
+using System.Diagnostics;
 using System.Numerics;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Graphics;
@@ -28,6 +29,9 @@ internal static class Program
             VerifyFallbackSurfaceLoader(fixture));
         await RunAsync("Fallback Surface covers a visible region while coarse LOD decodes", () =>
             VerifySessionFallbackSurface(fixture));
+        Run("GPU uploads obey deterministic per-update budgets", () => VerifyUploadBudget(fixture));
+        await RunAsync("LOD replacement retires blocked work without joining", () =>
+            VerifyNonBlockingLodRetirement(fixture));
         Run("Session retains coarse fallback until detailed coverage is complete", () => VerifySession(fixture));
         Console.WriteLine(_failures == 0
             ? "=== All TileWorldStreaming smoke tests passed ==="
@@ -83,7 +87,7 @@ internal static class Program
             Check(textures.Count == 0 && backend.DeleteCount == 2,
                 "Idempotent lease disposal should release all owned GPU textures.");
             await ThrowsAsync<ArgumentOutOfRangeException>(() => loader.LoadAsync(
-                new WorldChunkCoordinate(1, 0), CancellationToken.None).AsTask());
+                new WorldChunkCoordinate(2, 0), CancellationToken.None).AsTask());
         }
 
         using (var missingLoader = new TileWorldChunkLoader(
@@ -93,7 +97,7 @@ internal static class Program
                    decoder,
                    TileWorldChunkLoadMode.Inline))
         using (TileWorldChunkLease missing = await missingLoader.LoadAsync(
-                   new WorldChunkCoordinate(0, 0), CancellationToken.None))
+                   new WorldChunkCoordinate(1, 0), CancellationToken.None))
         {
             missing.CommitTextures(textures);
             Check(!missing.HasPayload && missing.IsCommitted,
@@ -127,6 +131,115 @@ internal static class Program
         Throws<InvalidOperationException>(() => rollback.CommitTextures(failingTextures));
         Check(failingTextures.Count == 0 && failingBackend.DeleteCount == 1,
             "A later upload failure should roll back textures registered by the same commit.");
+    }
+
+    private static void VerifyUploadBudget(WorldFixture fixture)
+    {
+        Throws<ArgumentOutOfRangeException>(() => new TileWorldTextureUploadBudget(0, 1));
+        Throws<ArgumentOutOfRangeException>(() => new TileWorldTextureUploadBudget(1, 0));
+
+        var decoder = new FakeDecoder();
+        var backend = new FakeTextureBackend();
+        using var textures = new TextureLibrary(backend, decoder);
+        var options = new TileWorldStreamingOptions(
+            new TileWorldLodSelectionOptions(1f, 0.1f),
+            new WorldChunkStreamingOptions(0, 0, 1, 8, true, 1),
+            TileWorldChunkLoadMode.Inline,
+            new TileWorldTextureUploadBudget(2, 1));
+        using var session = new TileWorldStreamingSession(
+            fixture.Descriptor,
+            fixture.TileSets,
+            textures,
+            decoder,
+            options);
+        ViewportSnapshot view = Snapshot(0f, 0f, 4f, 4f, 0.1f, 200);
+
+        TileWorldStreamingUpdateResult first = session.Update(view);
+        Check(first.TexturesUploaded == 1 && first.TextureBytesUploaded == 144 &&
+              textures.Count == 1 && session.FallbackSurfacesReady,
+            "The first oversized Preview upload may exceed the byte budget to guarantee progress");
+        TileWorldStreamingUpdateResult second = session.Update(view);
+        Check(second.TexturesUploaded == 1 && textures.Count == 2,
+            "Only one prepared Raster Layer should upload in the next update");
+        var batch = new RecordingBatch();
+        TileWorldDrawStatistics staged = session.Draw(batch);
+        Check(staged.FallbackSurfaceQuads == 1 && staged.RasterQuads == 1,
+            "A partially uploaded Chunk must remain invisible while Preview covers its missing layer");
+
+        TileWorldStreamingUpdateResult third = session.Update(view);
+        batch.Reset();
+        TileWorldDrawStatistics committed = session.Draw(batch);
+        Check(third.TexturesUploaded == 1 && textures.Count == 3 &&
+              committed.FallbackSurfaceQuads == 0 && committed.RasterQuads == 2,
+            "The Chunk should publish atomically after its final Layer upload");
+        session.Dispose();
+        Check(textures.Count == 0,
+            "Session disposal should remove committed and staged budgeted uploads");
+
+        var countBackend = new FakeTextureBackend();
+        using var countTextures = new TextureLibrary(countBackend, decoder);
+        var countOptions = new TileWorldStreamingOptions(
+            new TileWorldLodSelectionOptions(1f, 0.1f),
+            new WorldChunkStreamingOptions(0, 0, 1, 8, true, 1),
+            TileWorldChunkLoadMode.Inline,
+            new TileWorldTextureUploadBudget(1, 1_024 * 1_024));
+        using var countSession = new TileWorldStreamingSession(
+            fixture.Descriptor,
+            fixture.TileSets,
+            countTextures,
+            decoder,
+            countOptions);
+        TileWorldStreamingUpdateResult countLimited = countSession.Update(view);
+        Check(countLimited.TexturesUploaded == 1 && countTextures.Count == 1,
+            "Texture-count budget should stop additional uploads even when byte capacity remains");
+    }
+
+    private static async Task VerifyNonBlockingLodRetirement(WorldFixture fixture)
+    {
+        var decoder = new BlockingSelectedRasterDecoder();
+        var backend = new FakeTextureBackend();
+        using var textures = new TextureLibrary(backend, decoder);
+        var options = new TileWorldStreamingOptions(
+            new TileWorldLodSelectionOptions(1f, 0.1f),
+            new WorldChunkStreamingOptions(0, 0, 1, 16, true, 1),
+            TileWorldChunkLoadMode.Background,
+            new TileWorldTextureUploadBudget(8, 8 * 1_024 * 1_024));
+        TileWorldStreamingSession? session = null;
+        try
+        {
+            session = new TileWorldStreamingSession(
+                fixture.Descriptor,
+                fixture.TileSets,
+                textures,
+                decoder,
+                options);
+            ViewportSnapshot lod1 = Snapshot(0f, 0f, 8f, 4f, 0.3f, 300);
+            session.Update(lod1);
+            Check(decoder.WaitUntilBlocked(TimeSpan.FromSeconds(5)),
+                "LOD1 decode should be blocked before replacement");
+
+            long started = Stopwatch.GetTimestamp();
+            TileWorldStreamingUpdateResult changed = session.Update(
+                Snapshot(0f, 0f, 8f, 4f, 1f, 301));
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
+            Check(elapsed < TimeSpan.FromMilliseconds(250) && changed.RetiringLevels == 1,
+                $"LOD replacement must retire without joining blocked decode ({elapsed.TotalMilliseconds:0.###} ms)");
+
+            decoder.Release();
+            for (int attempt = 0; attempt < 500 &&
+                 session.CaptureDiagnostics().RetiringLevels > 0; attempt++)
+            {
+                await Task.Delay(1);
+                session.Update(Snapshot(0f, 0f, 8f, 4f, 1f, 301));
+            }
+            Check(session.CaptureDiagnostics().RetiringLevels == 0,
+                "Retired LOD work should be drained and release its prepared lease");
+        }
+        finally
+        {
+            decoder.Release();
+            session?.Dispose();
+        }
     }
 
     private static async Task VerifyFallbackSurfaceLoader(WorldFixture fixture)
@@ -220,7 +333,8 @@ internal static class Program
                 maximumTrackedChunks: 16,
                 retryFailedOnViewportChange: true,
                 maximumLoadsStartedPerUpdate: 1),
-            TileWorldChunkLoadMode.Inline);
+            TileWorldChunkLoadMode.Inline,
+            new TileWorldTextureUploadBudget(8, 8 * 1_024 * 1_024));
         using (var session = new TileWorldStreamingSession(
                    fixture.Descriptor,
                    fixture.TileSets,
@@ -373,7 +487,15 @@ internal static class Program
                 new TileWorldChunkBounds(0, 0, 3, 0),
                 3,
                 new TileWorldRasterSettings(4, 4, 1, TileWorldRasterSampling.PixelArt));
-            var raster = new TileWorldRasterChunkData(
+            var rasterLod1 = new TileWorldRasterChunkData(
+                new TileWorldChunkKey(1, 0, 0),
+                [
+                    new TileWorldRasterLayerData(0, 4, 4, 1,
+                        TileWorldRasterEncoding.WebpLossless, FakeWebp(53)),
+                    new TileWorldRasterLayerData(1, 4, 4, 1,
+                        TileWorldRasterEncoding.WebpLossless, FakeWebp(59))
+                ]);
+            var rasterLod2 = new TileWorldRasterChunkData(
                 new TileWorldChunkKey(2, 0, 0),
                 [
                     new TileWorldRasterLayerData(0, 4, 4, 1,
@@ -402,7 +524,11 @@ internal static class Program
             using (FileStream stream = File.Create(archivePath))
                 TileWorldArchiveWriter.Write(
                     stream,
-                    new TileWorldArchiveBuild(metadata, lod0.Chunks, [raster], [fallback]));
+                    new TileWorldArchiveBuild(
+                        metadata,
+                        lod0.Chunks,
+                        [rasterLod1, rasterLod2],
+                        [fallback]));
             Descriptor = new TileWorldDescriptor(metadata.Ref, archivePath, metadata);
         }
 
@@ -467,6 +593,33 @@ internal static class Program
         }
 
         public void ReleaseRaster() => _rasterGate.Set();
+    }
+
+    private sealed class BlockingSelectedRasterDecoder : IImageDecoder
+    {
+        private readonly ManualResetEventSlim _blocked = new(false);
+        private readonly ManualResetEventSlim _release = new(false);
+
+        public DecodedImage Decode(Stream stream)
+        {
+            stream.Position = stream.Length - 1;
+            int marker = stream.ReadByte();
+            if (marker is 53 or 59)
+            {
+                _blocked.Set();
+                _release.Wait(TimeSpan.FromSeconds(10));
+            }
+            var pixels = new byte[6 * 6 * 4];
+            for (int index = 0; index < pixels.Length; index += 4)
+            {
+                pixels[index] = (byte)marker;
+                pixels[index + 3] = 255;
+            }
+            return new DecodedImage(6, 6, pixels);
+        }
+
+        public bool WaitUntilBlocked(TimeSpan timeout) => _blocked.Wait(timeout);
+        public void Release() => _release.Set();
     }
 
     private sealed class FakeTextureBackend : ITextureBackend

@@ -1,5 +1,6 @@
 namespace WorldStreaming.Tests;
 
+using System.Diagnostics;
 using System.Numerics;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Features.ViewportNavigation;
@@ -14,6 +15,7 @@ internal static class Program
         Run("Chunk layout and exact boundaries", LayoutBehavior);
         Run("Visible, preload, and retained residency", ResidencyBehavior);
         Run("Concurrency and cancellation", ConcurrencyAndCancellation);
+        Run("Retirement never joins unfinished loads", NonBlockingRetirement);
         Run("Synchronous load start pacing", SynchronousLoadPacing);
         Run("Failure retry on Viewport revision", FailureRetry);
         Run("Observer failures preserve loaded state", ObserverFailureIsolation);
@@ -116,6 +118,33 @@ internal static class Program
         streamer.Update(Snapshot(0f, 0f, 256f, 256f, 11));
         Check(streamer.TryGetChunk(new WorldChunkCoordinate(0, 0), out _),
             "A new Viewport revision retries a failed desired chunk");
+    }
+
+    private static void NonBlockingRetirement()
+    {
+        var loader = new NonCancellingLoader();
+        var streamer = new WorldChunkStreamer<TestLease>(
+            new WorldChunkLayout(new Vector2(256f)),
+            loader,
+            new WorldChunkStreamingOptions(0, 0, 1, 8));
+        streamer.Update(Snapshot(0f, 0f, 256f, 256f, 1));
+        Check(streamer.ActiveLoadCount == 1,
+            "The retirement fixture must begin with one unfinished load");
+
+        long started = Stopwatch.GetTimestamp();
+        streamer.BeginRetirement();
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
+        Check(elapsed < TimeSpan.FromMilliseconds(100) && !streamer.DrainRetirement(),
+            $"Retirement should cancel and return without joining the loader ({elapsed.TotalMilliseconds:0.###} ms)");
+        Throws<InvalidOperationException>(() =>
+            streamer.Update(Snapshot(0f, 0f, 256f, 256f, 2)));
+
+        loader.Complete();
+        Check(streamer.DrainRetirement() && loader.DisposedCount == 1 &&
+              streamer.ActiveLoadCount == 0 && streamer.TrackedCount == 0,
+            "Completed retirement work should release its lease exactly once on the drain thread");
+        streamer.Dispose();
+        Check(loader.DisposedCount == 1, "Dispose after retirement remains idempotent");
     }
 
     private static void SynchronousLoadPacing()
@@ -284,6 +313,20 @@ internal static class Program
         private readonly record struct Pending(
             TaskCompletionSource<TestLease> Completion,
             CancellationTokenRegistration Registration);
+    }
+
+    private sealed class NonCancellingLoader : IWorldChunkLoader<TestLease>
+    {
+        private readonly TaskCompletionSource<TestLease> _completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        public int DisposedCount { get; private set; }
+
+        public ValueTask<TestLease> LoadAsync(
+            WorldChunkCoordinate coordinate,
+            CancellationToken cancellationToken) => new(_completion.Task);
+
+        public void Complete() =>
+            _completion.SetResult(new TestLease(() => DisposedCount++));
     }
 
     private sealed class FailOnceLoader : IWorldChunkLoader<TestLease>

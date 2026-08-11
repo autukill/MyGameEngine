@@ -93,7 +93,7 @@
 - Layer 索引现已在实例加入、切层和改 Depth 时维护稳定有序关系，普通 View Draw 不再重复排序；相同 Depth 保持 Scene 加入顺序，同帧后续 Layer 仍能看到变更。10,000 实例双 View 本机调度由 Layer 索引阶段约 1.185 ms 进一步降至 0.470 ms，排序比较为 0/0。
 - Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；`UseRenderViews` 可声明每个 View 的静态跟随策略，Hosting 惰性创建控制器，Gameplay 仍显式提供和切换运行时目标。
 - Interactive Viewport 提供 `ViewportController` 与固定顺序插件链：Core 以 `PointerId/PointerContact` 统一 Mouse、Touch、Pen，Hosting 按 Pointer 独立捕获到最上层 Render View；主 Camera 或每个 Render View 可声明 Drag、双指 Pinch/平移、Wheel、MouseEdges、Decelerate、Animate、Bounce、SnapZoom、ClampZoom、Snap 和 Clamp。运动统一使用秒与 `EasingKind`，交互中断可选 Pause/Cancel/Ignore，持续目标在 Resize/外部偏移后重新收敛；`ViewportSnapshot` 以 Revision 暴露可见世界边界，稳定更新保持 0 B。
-- 独立 `Engine.Features.WorldStreaming` 消费 `ViewportSnapshot`，以确定性行优先顺序管理 Visible/Preloaded/Retained 三层 Chunk；异步并发、单次 Update 启动量、最大跟踪数、取消、失败重试和唯一 lease 释放均有明确边界，完全加载的稳定 Snapshot 更新保持 0 B。`Engine.Features.TileWorlds` 提供权威 LOD0、逐 Layer LOD1+ WebP、逐 Layer 全图 Fallback Surface 与 `.mgworld` v3；`Engine.Features.TileWorldStreaming` 已接通 Zoom/滞回、后台 WebP 解码、主线程 Texture Lease、完整跨层替换、最粗层常驻，以及 Preview/粗 LOD 两级缺失区域 UV 回退；独立 VisualTests 以临时合成世界真实验证 Preview → Raster LOD → LOD0、交互缩放和 GPU 资源释放，不携带大型实际地图。
+- 独立 `Engine.Features.WorldStreaming` 消费 `ViewportSnapshot`，以确定性行优先顺序管理 Visible/Preloaded/Retained 三层 Chunk；异步并发、单次 Update 启动量、最大跟踪数、取消、非阻塞退休、失败重试和唯一 lease 释放均有明确边界，完全加载的稳定 Snapshot 更新保持 0 B。`Engine.Features.TileWorlds` 提供权威 LOD0、逐 Layer LOD1+ WebP、逐 Layer 全图 Fallback Surface 与 `.mgworld` v3；`Engine.Features.TileWorldStreaming` 已接通 Zoom/滞回、有界后台 WebP 解码、主线程逐帧 Texture 张数/字节预算、逐 Chunk 原子发布、非阻塞 LOD 热替换、最粗层常驻，以及 Preview/粗 LOD 两级缺失区域 UV 回退；独立 VisualTests 以临时合成世界真实验证 Preview → Raster LOD → LOD0、平滑缩放、受阻解码替换和 GPU 资源释放，不携带大型实际地图。
 - 独立 `Engine.PerformanceBenchmarks` 已把多 View 性能实验与 DDD 烟测分离：100/1,000/10,000 实例场景同时报告无剔除/剔除耗时、每 View 候选/Draw/拒绝数与分配量，并以确定性计数、零排序和 `0 B/frame` 作为回归守卫。
 - GPU 回归新增 `multi-render-view-lifecycle`：真实组合主 View HDR Bloom + Tone Mapping 与 0.75 RenderScale observer Tone Mapping，resize 后验证五个活动租约的精确尺寸，逐 View 释放后验证活动效果和租约归零、缓存全部回到 Pool。
 - `games/TheGodTheyMade` 的 Gate 4 工程切片已完成：30 分钟场景状态机组合水闸、湿遗迹、葬礼价值选择、无操作恢复和有限三联壁画；Game 呈现相应灰盒视觉并用程序短音反馈钟/雨/闸/葬礼。40 项无窗口检查覆盖三条完整 108,000 Tick 历史、确定性、版本化 Gameplay Command Journal 与 Gate 聚合判定；结构化 Playtest Report 可留存终局、学习轨迹和 Hash，严格审计 CLI 可输出逐项 Gate 结论，Gate 仍等待 5 人外部盲测证据后正式关闭。
@@ -120,7 +120,7 @@
 1. 已建立逻辑 TileSet/TileLayer/TileMap、稀疏 Chunk、负坐标和相机可见 Chunk 渲染，不依赖编辑器 UI。
 2. `assets.json`、ContentPackageManager、AssetCompiler 和强类型生成器已贯通 TileSet/TileMap，复用现有 Texture/Sprite/Atlas 生命周期。
 3. 已提供 Chunk 内静态碰撞贪心烘焙、复用 Buffer、多 Camera 显式可见边界和无窗口回归。
-4. 小型 TileMap 编译产物继续保留严格 JSON；大型 `tileWorlds` 已编译为 `.mgworld` v3，并通过独立运行时 Session 实现异步 Loader、Zoom LOD、流式驻留、最粗层回退和可选逐 Layer Preview Surface。既有切片导入、地图热重载与显存预算仍留在后续切片；功能测试不导入完整真实地图。
+4. 小型 TileMap 编译产物继续保留严格 JSON；大型 `tileWorlds` 已编译为 `.mgworld` v3，并通过独立运行时 Session 实现异步 Loader、Zoom LOD、非阻塞退休、逐帧 GPU 上传预算、流式驻留、最粗层回退和可选逐 Layer Preview Surface。既有切片导入、地图热重载、总显存预算与 LRU 仍留在后续切片；功能测试不导入完整真实地图。
 
 ## 当前真实游戏里程碑：《神意难测》Gate 4 外部盲测
 

@@ -1,5 +1,6 @@
 namespace TileWorldStreaming.VisualTests;
 
+using System.Diagnostics;
 using System.Numerics;
 using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
@@ -72,12 +73,15 @@ internal static class Program
         private TileSetRef _tileSet;
         private uint _whiteHandle;
         private TileWorldDrawStatistics _lastDraw;
+        private TileWorldStreamingUpdateResult _lastUpdate;
         private TileWorldStreamingDiagnostics _diagnostics;
         private string _lastTitle = string.Empty;
         private double _tourElapsed;
         private int _tourPhase = -1;
         private int _smokeSteps;
         private int _smokeReadyStep = -1;
+        private int _smokeStressPhase;
+        private int _smokeStressStableFrames;
         private bool _smokeSawPreview;
         private bool _smokeRequestedLod0;
         private bool _autoTour = true;
@@ -119,7 +123,17 @@ internal static class Program
             else if (_smoke)
             {
                 _smokeSteps++;
-                if (!_smokeSawPreview && _lastDraw.FallbackSurfaceQuads > 0)
+                if (_smokeStressPhase == 1)
+                {
+                    _viewport.SetZoom(TourZooms[1]);
+                    _smokeStressPhase = 2;
+                }
+                else if (_smokeStressPhase == 2 && _stream.PendingLevel == 1)
+                {
+                    _viewport.SetZoom(TourZooms[2]);
+                    _smokeStressPhase = 3;
+                }
+                else if (!_smokeSawPreview && _lastDraw.FallbackSurfaceQuads > 0)
                 {
                     _smokeSawPreview = true;
                     SetManualZoom(TourZooms[1]);
@@ -132,7 +146,14 @@ internal static class Program
                 }
             }
 
-            _stream.Update(_viewport.CaptureSnapshot());
+            bool retiringBlockedLod = _smoke && _smokeStressPhase == 3 &&
+                                      _stream.PendingLevel == 1;
+            long updateStarted = Stopwatch.GetTimestamp();
+            _lastUpdate = _stream.Update(_viewport.CaptureSnapshot());
+            TimeSpan updateElapsed = Stopwatch.GetElapsedTime(updateStarted);
+            if (retiringBlockedLod && updateElapsed >= TimeSpan.FromMilliseconds(300))
+                throw new InvalidOperationException(
+                    $"Retiring a blocked LOD stalled Scene Step for {updateElapsed.TotalMilliseconds:0.###} ms.");
             _diagnostics = _stream.CaptureDiagnostics();
             UpdateTitle();
 
@@ -140,8 +161,13 @@ internal static class Program
             bool ready = _smokeSawPreview && _diagnostics.FallbackSurfacesReady &&
                          _stream.ActiveLevel == 0 && _stream.PendingLevel is null;
             if (ready && _smokeReadyStep < 0) _smokeReadyStep = _smokeSteps;
-            if (_smokeReadyStep >= 0 && _smokeSteps >= _smokeReadyStep + 3)
-                _context.Close();
+            if (_smokeReadyStep >= 0 && _smokeStressPhase == 0)
+                _smokeStressPhase = 1;
+            else if (_smokeStressPhase == 3 && ready)
+            {
+                _smokeStressStableFrames++;
+                if (_smokeStressStableFrames >= 3) _context.Close();
+            }
             else if (_smokeSteps >= 180)
                 throw new InvalidOperationException(
                     "TileWorld visual smoke did not reach committed LOD0 within 180 fixed steps.");
@@ -231,7 +257,10 @@ internal static class Program
                     maximumTrackedChunks: 64,
                     retryFailedOnViewportChange: true,
                     maximumLoadsStartedPerUpdate: 1),
-                TileWorldChunkLoadMode.Background));
+                TileWorldChunkLoadMode.Background,
+                new TileWorldTextureUploadBudget(
+                    maximumTexturesPerUpdate: 1,
+                    maximumBytesPerUpdate: 512 * 1_024)));
 
         private void RegisterDrawAssets()
         {
@@ -297,14 +326,22 @@ internal static class Program
         {
             if (_tourPhase == phase) return;
             _tourPhase = phase;
-            _viewport.SetZoom(TourZooms[phase]);
+            AnimateZoom(TourZooms[phase]);
         }
 
         private void SetManualZoom(float zoom)
         {
             _autoTour = false;
-            _viewport.SetZoom(zoom);
+            if (_smoke) _viewport.SetZoom(zoom);
+            else AnimateZoom(zoom);
         }
+
+        private void AnimateZoom(float zoom) =>
+            _viewport.Plugins.Add(new ViewportAnimatePlugin(new ViewportAnimateOptions(
+                zoom: zoom,
+                durationSeconds: .65d,
+                easing: EasingKind.SmootherStep,
+                interruptMode: ViewportMotionInterruptMode.Cancel)));
 
         private void UpdateTitle()
         {
@@ -318,6 +355,8 @@ internal static class Program
             string pending = _stream.PendingLevel is { } level ? $" → LOD{level}" : string.Empty;
             string title = $"TileWorld | {source}{pending} | Zoom {_viewport.Zoom:0.00} | " +
                            $"Preview {_diagnostics.ResidentFallbackSurfaces} | " +
+                           $"Upload {_lastUpdate.TexturesUploaded}/{_lastUpdate.TextureBytesUploaded / 1_024f:0.#} KiB | " +
+                           $"Retiring {_diagnostics.RetiringLevels} | " +
                            $"Fallback draws {_lastDraw.FallbackQuads}/{_lastDraw.FallbackSurfaceQuads}";
             if (StringComparer.Ordinal.Equals(title, _lastTitle)) return;
             _lastTitle = title;
