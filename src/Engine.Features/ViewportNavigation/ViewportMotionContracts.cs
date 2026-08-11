@@ -267,6 +267,13 @@ public readonly record struct ViewportEdgeInsets
     }
 }
 
+public enum ViewportMouseEdgesActivation
+{
+    PointerDown = 0,
+    Hover = 1,
+    Always = 2,
+}
+
 public readonly record struct ViewportMouseEdgesOptions
 {
     public static ViewportMouseEdgesOptions Default => new(
@@ -276,6 +283,7 @@ public readonly record struct ViewportMouseEdgesOptions
         false,
         true,
         false,
+        ViewportMouseEdgesActivation.PointerDown,
         false);
 
     public ViewportEdgeInsets? Insets { get; }
@@ -284,7 +292,8 @@ public readonly record struct ViewportMouseEdgesOptions
     public bool Reverse { get; }
     public bool UseDeceleration { get; }
     public bool LinearRadius { get; }
-    public bool AllowPointerDown { get; }
+    public ViewportMouseEdgesActivation Activation { get; }
+    public bool InterruptDeceleration { get; }
 
     public ViewportMouseEdgesOptions() : this(
         ViewportEdgeInsets.Uniform(32f),
@@ -293,6 +302,7 @@ public readonly record struct ViewportMouseEdgesOptions
         false,
         true,
         false,
+        ViewportMouseEdgesActivation.PointerDown,
         false) { }
 
     public ViewportMouseEdgesOptions(
@@ -302,20 +312,24 @@ public readonly record struct ViewportMouseEdgesOptions
         bool reverse = false,
         bool useDeceleration = true,
         bool linearRadius = false,
-        bool allowPointerDown = false)
+        ViewportMouseEdgesActivation activation = ViewportMouseEdgesActivation.PointerDown,
+        bool interruptDeceleration = false)
     {
         ViewportAnimateOptions.ValidateOptionalPositive(radius, nameof(radius));
         if (!float.IsFinite(speedPixelsPerSecond) || speedPixelsPerSecond <= 0f)
             throw new ArgumentOutOfRangeException(nameof(speedPixelsPerSecond));
         if (insets is not null && radius is not null)
             throw new ArgumentException("MouseEdges uses either edge insets or a center radius.");
+        if (!Enum.IsDefined(activation))
+            throw new ArgumentOutOfRangeException(nameof(activation));
         Insets = insets ?? (radius is null ? ViewportEdgeInsets.Uniform(32f) : null);
         Radius = radius;
         SpeedPixelsPerSecond = speedPixelsPerSecond;
         Reverse = reverse;
         UseDeceleration = useDeceleration;
         LinearRadius = linearRadius;
-        AllowPointerDown = allowPointerDown;
+        Activation = activation;
+        InterruptDeceleration = interruptDeceleration;
     }
 
     internal void Validate()
@@ -327,6 +341,8 @@ public readonly record struct ViewportMouseEdgesOptions
             throw new ArgumentException("MouseEdges uses either edge insets or a center radius.");
         if (Insets is null && Radius is null)
             throw new ArgumentException("MouseEdges requires edge insets or a center radius.");
+        if (!Enum.IsDefined(Activation))
+            throw new ArgumentOutOfRangeException(nameof(Activation));
         Insets?.Validate();
     }
 }

@@ -24,11 +24,19 @@ public sealed class ViewportMouseEdgesPlugin : ViewportPlugin
         in ViewportInputFrame input,
         double deltaTime)
     {
-        if ((!_options.AllowPointerDown && controller.ActivePointerCount > 0) ||
-            !TryGetMouse(in input, out ViewportPointer mouse) ||
-            deltaTime <= 0d)
+        if (deltaTime <= 0d)
         {
-            Stop(controller);
+            Stop(controller, transferVelocity: false);
+            return;
+        }
+        if (!TryGetMouse(in input, out ViewportPointer mouse) || !mouse.IsInside)
+        {
+            Stop(controller, transferVelocity: false);
+            return;
+        }
+        if (!CanActivate(mouse, controller.ActivePointerCount, _options.Activation))
+        {
+            Stop(controller, transferVelocity: false);
             return;
         }
 
@@ -38,7 +46,15 @@ public sealed class ViewportMouseEdgesPlugin : ViewportPlugin
         if (_options.Reverse) direction = -direction;
         if (direction == Vector2.Zero)
         {
-            Stop(controller);
+            Stop(controller, transferVelocity: true);
+            return;
+        }
+
+        ViewportDeceleratePlugin? decelerate = controller.Plugins
+            .Get<ViewportDeceleratePlugin>(ViewportPluginKeys.Decelerate);
+        if (!IsActive && !_options.InterruptDeceleration &&
+            decelerate?.IsActive == true)
+        {
             return;
         }
 
@@ -56,10 +72,11 @@ public sealed class ViewportMouseEdgesPlugin : ViewportPlugin
         _lastWorldVelocity = Vector2.Zero;
     }
 
-    private void Stop(ViewportController controller)
+    private void Stop(ViewportController controller, bool transferVelocity)
     {
         if (!IsActive) return;
-        if (_options.UseDeceleration && _lastWorldVelocity != Vector2.Zero)
+        if (transferVelocity && _options.UseDeceleration &&
+            _lastWorldVelocity != Vector2.Zero)
         {
             controller.Plugins
                 .Get<ViewportDeceleratePlugin>(ViewportPluginKeys.Decelerate)?
@@ -76,13 +93,24 @@ public sealed class ViewportMouseEdgesPlugin : ViewportPlugin
         ReadOnlySpan<ViewportPointer> pointers = input.Pointers;
         for (int i = 0; i < pointers.Length; i++)
         {
-            if (pointers[i].Kind != PointerKind.Mouse || !pointers[i].IsInside) continue;
+            if (pointers[i].Kind != PointerKind.Mouse) continue;
             mouse = pointers[i];
             return true;
         }
         mouse = default;
         return false;
     }
+
+    private static bool CanActivate(
+        ViewportPointer mouse,
+        int activePointerCount,
+        ViewportMouseEdgesActivation activation) => activation switch
+    {
+        ViewportMouseEdgesActivation.PointerDown => mouse.IsDown,
+        ViewportMouseEdgesActivation.Hover => !mouse.IsDown && activePointerCount == 0,
+        ViewportMouseEdgesActivation.Always => mouse.IsDown || activePointerCount == 0,
+        _ => false,
+    };
 
     private static Vector2 EdgeDirection(
         Vector2 position,

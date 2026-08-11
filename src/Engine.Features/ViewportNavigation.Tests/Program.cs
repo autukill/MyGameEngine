@@ -236,7 +236,8 @@ internal static class Program
     {
         var viewport = CreateViewport();
         var edges = new ViewportMouseEdgesPlugin(new ViewportMouseEdgesOptions(
-            speedPixelsPerSecond: 600f));
+            speedPixelsPerSecond: 600f,
+            activation: ViewportMouseEdgesActivation.Hover));
         var decelerate = new ViewportDeceleratePlugin(
             new ViewportDecelerateOptions(0.98f, 0f));
         viewport.Plugins.Add(edges);
@@ -249,11 +250,54 @@ internal static class Program
         Check(!edges.IsActive && decelerate.IsActive && viewport.Position.X > atEdge,
             "Leaving the edge transfers world velocity to Decelerate");
 
+        var inertial = CreateViewport();
+        var guardedEdges = new ViewportMouseEdgesPlugin(ViewportMouseEdgesOptions.Default);
+        var existingDeceleration = new ViewportDeceleratePlugin(
+            new ViewportDecelerateOptions(0.98f, 0f));
+        existingDeceleration.Activate(new Vector2(-300f, 0f));
+        inertial.Plugins.Add(guardedEdges);
+        inertial.Plugins.Add(existingDeceleration);
+        inertial.Update(Frame(799f, 300f, false), 1d / 60d);
+        float beforeExit = inertial.Position.X;
+        float velocityBeforeExit = existingDeceleration.Velocity.X;
+        inertial.Update(Frame(801f, 300f, false, inside: false), 1d / 60d);
+        Check(!guardedEdges.IsActive && inertial.Position.X < beforeExit &&
+              existingDeceleration.Velocity.X < 0f &&
+              MathF.Abs(existingDeceleration.Velocity.X) < MathF.Abs(velocityBeforeExit),
+            "Moving the mouse out during inertia preserves its direction and decay");
+
+        var exit = CreateViewport();
+        var exitEdges = new ViewportMouseEdgesPlugin(new ViewportMouseEdgesOptions(
+            activation: ViewportMouseEdgesActivation.Hover));
+        var exitDeceleration = new ViewportDeceleratePlugin(
+            new ViewportDecelerateOptions(0.98f, 0f));
+        exit.Plugins.Add(exitEdges);
+        exit.Plugins.Add(exitDeceleration);
+        exit.Update(Frame(799f, 300f, false), 1d / 60d);
+        exit.Update(Frame(801f, 300f, false, inside: false), 1d / 60d);
+        Check(!exitEdges.IsActive && !exitDeceleration.IsActive,
+            "Leaving the window does not inject MouseEdges velocity into inertia");
+
+        var pointerDownOnly = CreateViewport();
+        var pointerDownEdges = new ViewportMouseEdgesPlugin(
+            ViewportMouseEdgesOptions.Default);
+        pointerDownOnly.Plugins.Add(pointerDownEdges);
+        pointerDownOnly.Update(Frame(-1f, 300f, false, inside: false), 1d / 60d);
+        Vector2 beforeEntry = pointerDownOnly.Position;
+        pointerDownOnly.Update(Frame(1f, 300f, false), 1d / 60d);
+        Near(pointerDownOnly.Position, beforeEntry);
+        Check(!pointerDownEdges.IsActive,
+            "An unpressed mouse entering through an edge cannot move the Viewport");
+        pointerDownOnly.Update(Frame(1f, 300f, true, pressed: true), 1d / 60d);
+        Check(pointerDownEdges.IsActive && pointerDownOnly.Position.X < beforeEntry.X,
+            "The safe default activates edge movement after the primary button is down");
+
         var radial = CreateViewport();
         radial.Plugins.Add(new ViewportMouseEdgesPlugin(new ViewportMouseEdgesOptions(
             radius: 100f,
             speedPixelsPerSecond: 100f,
-            useDeceleration: false)));
+            useDeceleration: false,
+            activation: ViewportMouseEdgesActivation.Hover)));
         radial.Update(Frame(700f, 500f, false), 1d);
         Check(radial.Position.X > 0f && radial.Position.Y > 0f,
             "Radius mode supports normalized diagonal movement");
@@ -448,6 +492,8 @@ internal static class Program
         Throws<ArgumentOutOfRangeException>(() => new ViewportPinchOptions(zoomSpeed: 0f));
         Throws<ArgumentOutOfRangeException>(() => new ViewportMouseEdgesOptions(
             speedPixelsPerSecond: 0f));
+        Throws<ArgumentOutOfRangeException>(() => new ViewportMouseEdgesOptions(
+            activation: (ViewportMouseEdgesActivation)999));
         Throws<ArgumentException>(() => new ViewportSnapZoomPlugin(default));
         Throws<ArgumentOutOfRangeException>(() => new ViewportDecelerateOptions(friction: 1f));
         Throws<ArgumentException>(() => new ViewportClampZoomOptions(
@@ -555,7 +601,8 @@ internal static class Program
         float x,
         float y,
         bool down,
-        bool pressed = false)
+        bool pressed = false,
+        bool inside = true)
     {
         ViewportPointer[] pointers =
         [
@@ -563,13 +610,13 @@ internal static class Program
                 PointerId.Mouse,
                 PointerKind.Mouse,
                 new Vector2(x, y),
-                isInside: true,
+                isInside: inside,
                 isCaptured: down,
                 down,
                 isPrimary: true,
                 wasPressed: pressed),
         ];
-        return new ViewportInputFrame(pointers, new Vector2(x, y), true, 0f);
+        return new ViewportInputFrame(pointers, new Vector2(x, y), inside, 0f);
     }
 
     private static ViewportInputFrame ScrollFrame(Vector2 position, float delta) =>

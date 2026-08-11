@@ -95,7 +95,7 @@ Provider 可以在释放帧保留 `IsDown=false` 的 Contact，也可以立即�
 
 ## 运动与约束插件
 
-- `MouseEdges` 支持四边统一/独立 Insets 或中心 Radius 两种热区，速度按秒表达；离开热区时可把世界速度交给 `Decelerate`。
+- `MouseEdges` 支持四边统一/独立 Insets 或中心 Radius 两种热区，速度按秒表达。安全默认 `PointerDown` 要求主鼠标键按下，因此无按键鼠标从窗外进入不会移动 Viewport；RTS 式无按键边缘滚动需显式选择 `ViewportMouseEdgesActivation.Hover`，`Always` 则接受两种状态。在 View 内离开热区时可把世界速度交给 `Decelerate`；离开 View/Window 不注入退出方向，默认也不抢占已经运行的惯性，只有 `interruptDeceleration: true` 才允许覆盖。
 - `Animate` 是一次性 Center/Zoom/可见宽高过渡，完成后保持静止；可选择 Pointer 交互时 Pause、Cancel 或 Ignore。
 - `Snap` 是持续位置目标，可锁定 Center 或左上角；目标被其他逻辑移开后会重新收敛。
 - `SnapZoom` 是持续 Zoom/可见宽高目标；Resize 后重新解析目标 Zoom，并可指定屏幕锚点。
@@ -108,7 +108,8 @@ viewport
     .Wheel()
     .MouseEdges(new ViewportMouseEdgesOptions(
         insets: ViewportEdgeInsets.Uniform(36),
-        speedPixelsPerSecond: 720))
+        speedPixelsPerSecond: 720,
+        activation: ViewportMouseEdgesActivation.PointerDown))
     .Decelerate()
     .Bounce(new ViewportBounceOptions(world))
     .SnapZoom(new ViewportSnapZoomOptions(
