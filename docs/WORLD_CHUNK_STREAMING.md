@@ -99,7 +99,7 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 
 ## 与 LOD、Content 和绘制的边界
 
-当前切片只决定 Chunk 的空间驻留，不选择 LOD。离线编译器已经提供权威 LOD0 与逐 Layer LOD1+ exact 无损 WebP、索引校验和逻辑 Package 租约；下一阶段由运行时策略根据 `ViewportSnapshot.Zoom` 选择具体 lease，并把归档 WebP 解码为 Texture。层级替换必须带滞回，并在新层级完整可用前保留旧层级；常驻 Preview/Fallback Surface 负责加载、失败和卸载期间的视觉连续性。最后才增加既有 WebP 切片的离线导入适配。该扩展不应把 Content 或 GPU 所有权塞回 Viewport。格式、真实地图样本和推进顺序见 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)。
+本切片仍只决定 Chunk 的空间驻留，不选择 LOD。独立 `Engine.Features.TileWorldStreaming` 已在其上提供权威 LOD0、逐 Layer LOD1+ exact 无损 WebP、Zoom 选择、滞回、后台解码、主线程 Texture Lease 和最粗层回退；Content 与 GPU 所有权没有进入 Viewport 或通用 Streamer。格式见 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)，组合与生命周期见 [TileWorld 运行时 LOD 与流式加载](TILE_WORLD_RUNTIME_STREAMING.md)。下一步是独立 Preview Surface 与既有 WebP 切片导入。
 
 推荐每个 Chunk 的资源边界如下：
 

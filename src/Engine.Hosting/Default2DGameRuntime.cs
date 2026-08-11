@@ -584,6 +584,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _tileSets,
             _tileMaps,
             _tileMapRenderer,
+            _contentManager?.TileWorlds,
             _transforms,
             _text,
             _shaders,

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>GameEngine.Features.TileWorldStreaming</RootNamespace>
+    <AssemblyName>TileWorldStreaming</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\TextureAssets\TextureAssets.csproj" />
+    <ProjectReference Include="..\Tilemaps\Tilemaps.csproj" />
+    <ProjectReference Include="..\TileWorlds\TileWorlds.csproj" />
+    <ProjectReference Include="..\ViewportNavigation\ViewportNavigation.csproj" />
+    <ProjectReference Include="..\WorldStreaming\WorldStreaming.csproj" />
+  </ItemGroup>
+</Project>

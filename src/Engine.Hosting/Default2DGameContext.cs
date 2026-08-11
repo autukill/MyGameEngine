@@ -17,10 +17,14 @@ using GameEngine.Features.Presentation.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.Sprites.Infrastructure;
+using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.TextRendering.Infrastructure;
 using GameEngine.Features.TransformHierarchy.Gameplay;
 using GameEngine.Features.Tilemaps.Infrastructure;
+using GameEngine.Features.TileWorlds.Domain;
+using GameEngine.Features.TileWorlds.Infrastructure;
+using GameEngine.Features.TileWorldStreaming;
 using GameEngine.Features.ViewportNavigation;
 
 /// <summary>Scene 装配期的强类型上下文；不是全局服务容器。</summary>
@@ -39,6 +43,7 @@ public sealed class Default2DGameContext
     public TileSetLibrary TileSets { get; }
     public TileMapLibrary TileMaps { get; }
     public TileMapRenderer TileMapRenderer { get; }
+    public TileWorldLibrary? TileWorlds { get; }
     public bool AudioEnabled => _audio is not null;
     public AudioRuntime Audio => _audio ?? throw new InvalidOperationException(
         "Audio is not enabled. Call GameApplicationBuilder.UseAudio before Build.");
@@ -74,6 +79,7 @@ public sealed class Default2DGameContext
         TileSetLibrary tileSets,
         TileMapLibrary tileMaps,
         TileMapRenderer tilemapRenderer,
+        TileWorldLibrary? tileWorlds,
         SceneTransformRuntime transforms,
         TextRuntime text,
         ShaderLibrary shaders,
@@ -100,6 +106,7 @@ public sealed class Default2DGameContext
         TileSets = tileSets ?? throw new ArgumentNullException(nameof(tileSets));
         TileMaps = tileMaps ?? throw new ArgumentNullException(nameof(tileMaps));
         TileMapRenderer = tilemapRenderer ?? throw new ArgumentNullException(nameof(tilemapRenderer));
+        TileWorlds = tileWorlds;
         _audio = audio;
         SceneAudio = sceneAudio ?? throw new ArgumentNullException(nameof(sceneAudio));
         Transforms = transforms ?? throw new ArgumentNullException(nameof(transforms));
@@ -238,6 +245,26 @@ public sealed class Default2DGameContext
     /// <summary>Gets the interactive Viewport controller declared for a Render View.</summary>
     public ViewportController GetViewportNavigation(RenderViewRef view) =>
         GetRenderView(view).RequireNavigation();
+
+    /// <summary>
+    /// Creates a Scene-owned TileWorld streaming session. Dispose the session before its Content
+    /// package lease is released so Chunk textures are removed before the archive is unregistered.
+    /// </summary>
+    public TileWorldStreamingSession CreateTileWorldStream(
+        TileWorldRef world,
+        TileWorldStreamingOptions? options = null,
+        IImageDecoder? decoder = null)
+    {
+        if (TileWorlds is null)
+            throw new InvalidOperationException(
+                "TileWorld content is unavailable. Configure a Content package before creating a stream.");
+        return new TileWorldStreamingSession(
+            TileWorlds.Get(world),
+            TileSets,
+            Textures,
+            decoder,
+            options);
+    }
 
     /// <summary>显式捕获当前 Pass、Surface、Effect owner 与临时目标租约。</summary>
     public Default2DRenderDiagnostics CaptureRenderDiagnostics()

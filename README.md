@@ -59,6 +59,7 @@ src/
 │   ├── ViewportNavigation/              # 交互式 Camera 插件链与稳定可见范围快照
 │   ├── WorldStreaming/                  # Snapshot 驱动的 Chunk 驻留、加载预算与租约生命周期
 │   ├── TileWorlds/                      # 权威 LOD0、逐层 WebP LOD 与确定性 .mgworld
+│   ├── TileWorldStreaming/              # Zoom/滞回、后台解码、Texture Lease 与最粗层回退
 │   ├── Animation/                       # 命名 Clip、循环模式与帧事件
 │   ├── Audio/                           # 逻辑 Clip/Bus/Voice 与 Backend 边界
 │   ├── Audio.Vorbis/                    # OGG Vorbis 元数据与分块 PCM 解码适配器
@@ -78,7 +79,7 @@ src/
 │   ├── TextRendering/                   # 真实字体、多行 Layout、复用 Buffer、Glyph Atlas 与 DrawText
 │   ├── TransformHierarchy/              # Local/World、GameInstance Binding、纯挂点与父子层级
 │   ├── Tilemaps/                        # TileSet、稀疏 Chunk、可见区域渲染与静态碰撞烘焙
-│   ├── *.Tests/                         # 21 个 Feature 无窗口控制台冒烟项目
+│   ├── *.Tests/                         # 22 个 Feature 无窗口控制台冒烟项目
 │   └── *.VisualTests/                   # 6 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
@@ -140,10 +141,12 @@ Engine.Core
             ├─ StencilMasking
             └─ ToneMapping
 
-Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/ViewportNavigation/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
+Tilemaps + TileWorlds + TextureAssets + WorldStreaming → TileWorldStreaming
+
+Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/ViewportNavigation/Content/TileWorldStreaming/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 82 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 84 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -180,7 +183,7 @@ dotnet run --project playgrounds/TilemapWorld/TilemapWorld.csproj
 ```
 
 完整 TileSet、地图清单、强类型引用和碰撞边界见 [Tilemap / World Authoring](docs/TILEMAP_WORLD_AUTHORING.md)。
-大型地图的声明式切片、`.mgworld` 格式和 LOD 边界见 [TileWorld 离线切片编译器](docs/TILE_WORLD_OFFLINE_COMPILER.md)。
+大型地图的声明式切片、`.mgworld` 格式和 LOD 边界见 [TileWorld 离线切片编译器](docs/TILE_WORLD_OFFLINE_COMPILER.md)，Viewport 驱动的后台加载、滞回和回退绘制见 [TileWorld 运行时 LOD 与流式加载](docs/TILE_WORLD_RUNTIME_STREAMING.md)。
 
 完整 Gameplay 小游戏示例使用一个白色 Sprite 组合鸟、管道、背景与七段数字，并接通 Input Action、参数化 Prefab、确定性 Spawn、碰撞计分、GameOver Scene 参数和程序化短音效：
 
@@ -212,6 +215,7 @@ dotnet run --project src/Engine.Features/Camera.Tests/Camera.Tests.csproj
 dotnet run --project src/Engine.Features/ViewportNavigation.Tests/ViewportNavigation.Tests.csproj
 dotnet run --project src/Engine.Features/WorldStreaming.Tests/WorldStreaming.Tests.csproj
 dotnet run --project src/Engine.Features/TileWorlds.Tests/TileWorlds.Tests.csproj
+dotnet run --project src/Engine.Features/TileWorldStreaming.Tests/TileWorldStreaming.Tests.csproj
 dotnet run --project src/Engine.Features/Presentation.Tests/Presentation.Tests.csproj
 dotnet run --project src/Engine.Features/RenderPipeline.Tests/RenderPipeline.Tests.csproj
 dotnet run --project src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csproj

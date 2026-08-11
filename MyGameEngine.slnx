@@ -89,6 +89,10 @@
     <Project Path="src/Engine.Features/TileWorlds.Tests/TileWorlds.Tests.csproj" />
     <Project Path="src/Engine.Features/TileWorlds/TileWorlds.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/TileWorldStreaming/">
+    <Project Path="src/Engine.Features/TileWorldStreaming.Tests/TileWorldStreaming.Tests.csproj" />
+    <Project Path="src/Engine.Features/TileWorldStreaming/TileWorldStreaming.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/ToneMapping/">
     <Project Path="src/Engine.Features/ToneMapping.Tests/ToneMapping.Tests.csproj" />
     <Project Path="src/Engine.Features/ToneMapping/ToneMapping.csproj" />

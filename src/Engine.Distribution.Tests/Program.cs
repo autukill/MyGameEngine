@@ -27,6 +27,7 @@ internal static class Program
         "TextureAtlas.dll",
         "Tilemaps.dll",
         "TileWorlds.dll",
+        "TileWorldStreaming.dll",
         "ToneMapping.dll",
         "ViewportNavigation.dll",
         "WorldStreaming.dll"

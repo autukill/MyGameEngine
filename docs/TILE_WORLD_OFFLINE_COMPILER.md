@@ -2,7 +2,7 @@
 
 `Engine.Features.TileWorlds` 为大型 Tile 世界提供独立于 GPU 和 Viewport 的编译产物边界。小地图继续使用整体驻留的 `TileMap` JSON；需要按 Chunk 加载、验证和释放的大地图声明为 `TileWorld`，由 AssetCompiler 转换为单个可随机读取的 `.mgworld` 归档。
 
-当前已经完成权威 `LOD0` 与生成式 `LOD1+`。AssetCompiler 从 TileMap、TileSet 和原始 Sprite 帧确定性烘焙逐 Layer 无损 WebP，并嵌入 `.mgworld`；归档中只有确实存在的 Chunk 才能通过 `Contains` 查询。运行时 LOD 选择、WebP 解码/GPU Lease 和跨层切换尚未实现。
+当前已经完成权威 `LOD0`、生成式 `LOD1+` 与运行时流式适配。AssetCompiler 从 TileMap、TileSet 和原始 Sprite 帧确定性烘焙逐 Layer 无损 WebP，并嵌入 `.mgworld`；归档中只有确实存在的 Chunk 才能通过 `Contains` 查询。`Engine.Features.TileWorldStreaming` 进一步提供 Zoom LOD、滞回、后台 WebP 解码、主线程 GPU Lease 和最粗层回退。
 
 ## 为什么不直接缩小 Tile ID
 
@@ -105,30 +105,32 @@ if (archive.Contains(visualKey) &&
     TileWorldRasterChunkData visual = archive.ReadRasterChunk(visualKey);
     foreach (TileWorldRasterLayerData layer in visual.Layers)
     {
-        // layer.EncodedBytes 是 exact 无损 WebP；当前由后续 Loader 负责异步解码和 GPU 上传。
+        // layer.EncodedBytes 是 exact 无损 WebP；可由 TileWorldChunkLoader 异步准备。
     }
 }
 ```
 
 `TileWorldLibrary` 不删除归档文件。最后一个 `LoadedContentPackage` 释放时先注销 TileWorld，再卸载 TileMap、TileSet、Sprite 和 Texture。Reader 自己拥有打开的文件流；需要在 Package 释放前关闭。
 
+游戏通常不需要手工读取 Payload，而是通过 `TileWorldStreamingSession` 连接 Viewport、LOD 与 GPU；完整用法见 [TileWorld 运行时 LOD 与流式加载](TILE_WORLD_RUNTIME_STREAMING.md)。
+
 ## 与 WorldStreaming 的边界
 
 ```text
 ViewportSnapshot
   → WorldChunkStreamer<TLease>        决定驻留范围、并发和取消
-  → 未来 TileWorldChunkLoader         把坐标映射到归档 Payload
+  → TileWorldChunkLoader              把坐标映射到归档 Payload并后台解码
   → TileWorldArchiveReader            验证并解码权威数据
 ```
 
-Viewport 不知道 `.mgworld`、Tile 或 GPU；归档 Reader 也不知道 Camera。下一切片增加 `TileWorldChunkLoader`、Zoom LOD 策略、滞回、新层完整前的旧层保留，以及 WebP Texture Lease。
+Viewport 不知道 `.mgworld`、Tile 或 GPU；归档 Reader 也不知道 Camera。`TileWorldStreamingSession` 在适配层组合这些模块，并保持最粗生成 LOD 作为回退。
 
 ## 当前限制与下一步
 
-- 当前异步随机读取接口和 WorldStreaming Adapter 尚未实现。
+- 当前 Fallback 来自最粗生成 LOD；独立 `preview.webp` 全图 Surface 尚未进入声明式清单。
 - 当前增量缓存按 Package 指纹复用，修改 TileMap、Sprite、Texture 或传递依赖会重建拥有它的 TileWorld；逐 Chunk 编码缓存尚未实现。
 - 当前源 TileMap 仍整体解析；超大型导入格式和前向解析临时索引后续按真实地图规模补充。
-- 当前 WebP 内嵌归档，不单独输出松散图片；运行时 Loader 后续从 Chunk Payload 解码。
+- 当前 WebP 内嵌归档，不单独输出松散图片；运行时 Loader 从 Chunk Payload 按需解码。
 - 尚无 Tiled/既有切片导入、无限程序化地图、视觉 LOD 淡化或 GPU 显存预算。
 
 ## 真实地图案例与固定推进顺序
@@ -149,10 +151,10 @@ LOD0 Tile/Collision 或游戏自己的空间数据提供。
 
 1. **生成式 LOD1+（已完成）**：从权威 TileMap 和 TileSet 确定性烘焙逐 Layer、逐层级的无损 WebP
    Chunk，保留 Layer Depth、透明边缘和 Gutter；构建阶段验证像素、索引和重复构建字节一致。
-2. **运行时 LOD（下一步）**：实现 `TileWorldChunkLoader`、Zoom 选择、滞回、替换完整性和旧层级保留，
+2. **运行时 LOD（已完成）**：实现 `TileWorldChunkLoader`、Zoom 选择、滞回、替换完整性和旧层级保留，
    接到现有 `WorldChunkStreamer<TLease>`；Viewport 仍只提供观察范围和 Zoom。
-3. **Fallback Surface**：让低清全图或最粗层级先驻留，详细 Chunk 只有完整可用后才覆盖；失败、
-   取消和卸载时自然露出保底层，而不是显示透明空洞。
+3. **Fallback Surface（最粗生成 LOD 已完成，独立 Preview 待实现）**：当前让最粗层级常驻，并按缺失
+   世界区域裁取回退；下一步允许低清全图 Preview 独立声明，不要求它来自 Tile 烘焙。
 4. **既有切片导入**：最后增加离线 `preTiledRaster` 适配，验证行列、尺寸、缺片、路径安全与
    Preview 世界范围，把 `tile_{row}_{column}.webp` 规范化进同一归档索引。运行时不扫描目录，
    也不解析文件名。
@@ -165,5 +167,6 @@ ZL 样本将用于验收 Preview 常驻、400 个详细 Chunk 的按需驻留、
 
 ```powershell
 dotnet run --project src/Engine.Features/TileWorlds.Tests/TileWorlds.Tests.csproj -c Release
+dotnet run --project src/Engine.Features/TileWorldStreaming.Tests/TileWorldStreaming.Tests.csproj -c Release
 dotnet run --project src/Engine.Tools.AssetCompiler.Tests/Engine.Tools.AssetCompiler.Tests.csproj -c Release
 ```
