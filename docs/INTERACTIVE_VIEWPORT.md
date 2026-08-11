@@ -74,6 +74,7 @@ Provider 可以在释放帧保留 `IsDown=false` 的 Contact，也可以立即�
 - `SetZoomAt` 保证缩放前后锚点下的世界位置不变；滚轮默认使用鼠标位置。
 - `IInputProvider.PointerCount/GetPointer` 统一 Mouse、Touch 与 Pen；旧鼠标 Provider 通过默认接口实现自动暴露一个稳定 `PointerId.Mouse`，Hosting 当前为平台后端路由最多 16 个并发 Pointer。
 - Pinch 使用同一 Render View 捕获的两个 Pointer；双指中心平移与距离缩放可以组合，任一 Pointer 消失时结束，剩余 Pointer 可平滑接回 Drag。
+- Pointer 按下后会持续捕获到原 Render View；拖入 Letterbox 或窗口外时，输入位置钉在 fitted Viewport 的最近边缘。未捕获 Pointer 位于 Letterbox 时仍判定为未命中，不会滚动、拖拽或抛出坐标映射异常。
 - `Revision` 只在 Camera 空间发生变化时递增；稳定帧不会递增。
 - `CaptureSnapshot()` 返回可见世界 AABB、中心、Zoom、Render View 尺寸和 Revision，是剔除、LOD 与已实现 `WorldChunkStreamer` 的稳定边界。
 - Camera 旋转继续可用；Snapshot 返回旋转视图的保守世界 AABB。

@@ -17,6 +17,26 @@ public readonly record struct ViewportPlacement(
     {
         if (!Contains(x, y))
             throw new ArgumentOutOfRangeException(nameof(x), "Point is outside the fitted Viewport.");
+        return MapToSource(x, y, sourceWidth, sourceHeight);
+    }
+
+    /// <summary>
+    /// Maps a captured Pointer through the fitted Viewport while pinning positions in Letterbox or
+    /// outside the window to the nearest presentation edge.
+    /// </summary>
+    public Vector2 ScreenToSourceClamped(float x, float y, int sourceWidth, int sourceHeight)
+    {
+        if (!float.IsFinite(x)) throw new ArgumentOutOfRangeException(nameof(x));
+        if (!float.IsFinite(y)) throw new ArgumentOutOfRangeException(nameof(y));
+        float clampedX = Math.Clamp(x, X, X + Width);
+        float clampedY = Math.Clamp(y, Y, Y + Height);
+        return MapToSource(clampedX, clampedY, sourceWidth, sourceHeight);
+    }
+
+    private Vector2 MapToSource(float x, float y, int sourceWidth, int sourceHeight)
+    {
+        if (sourceWidth <= 0) throw new ArgumentOutOfRangeException(nameof(sourceWidth));
+        if (sourceHeight <= 0) throw new ArgumentOutOfRangeException(nameof(sourceHeight));
         float normalizedX = (x - X) / Width;
         float normalizedY = (y - Y) / Height;
         return new Vector2(

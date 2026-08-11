@@ -525,7 +525,7 @@ public sealed class Default2DGameContext
             ViewportBinding binding = _viewportBindings[i];
             if (binding.Viewport.Slot != slot) continue;
             ViewportPlacement placement = ResolvePlacement(binding);
-            Vector2 source = placement.ScreenToSource(
+            Vector2 source = placement.ScreenToSourceClamped(
                 (float)screenPosition.X,
                 (float)screenPosition.Y,
                 binding.View.Target.Width,

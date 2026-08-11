@@ -87,6 +87,12 @@ internal static class Program
         var sourcePoint = covered.ScreenToSource(0, 0, 1600, 900);
         Check(MathF.Abs(sourcePoint.X - 200f) < 0.001f && sourcePoint.Y == 0f,
             "Screen coordinates map through the Cover crop into source pixels");
+        var capturedOutside = contained.ScreenToSourceClamped(-20, 700, 1600, 900);
+        Check(capturedOutside == new System.Numerics.Vector2(0f, 900f),
+            "Captured Pointer positions outside a fitted Viewport clamp to its nearest source edge");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => contained.ScreenToSource(400, 20, 1600, 900),
+            "Non-captured input outside a fitted Viewport remains an explicit miss");
 
         // ---------- 4. LayerRenderState ----------
         Console.WriteLine("4. LayerRenderState");
