@@ -2,7 +2,7 @@
 
 `Engine.Features.ViewportNavigation` 为每台 `Camera2D` 提供可组合的地图浏览行为。当前以 pixi-viewport 的成熟功能形状为参考，完成拖拽、双指 Pinch/平移、鼠标锚点滚轮缩放、惯性、缩放限制和世界边界限制。
 
-它不加载地图、不创建 Sprite，也不拥有 Texture。Chunk Streaming、LOD 和资源生命周期是读取 `ViewportSnapshot` 的后续独立消费者。
+它不加载地图、不创建 Sprite，也不拥有 Texture。已经实现的独立 `WorldChunkStreamer` 读取 `ViewportSnapshot` 管理空间驻留；LOD 与具体资源生命周期继续由后续消费者负责。
 
 ## 最小 Hosting 用法
 
@@ -75,7 +75,7 @@ Provider 可以在释放帧保留 `IsDown=false` 的 Contact，也可以立即�
 - `IInputProvider.PointerCount/GetPointer` 统一 Mouse、Touch 与 Pen；旧鼠标 Provider 通过默认接口实现自动暴露一个稳定 `PointerId.Mouse`，Hosting 当前为平台后端路由最多 16 个并发 Pointer。
 - Pinch 使用同一 Render View 捕获的两个 Pointer；双指中心平移与距离缩放可以组合，任一 Pointer 消失时结束，剩余 Pointer 可平滑接回 Drag。
 - `Revision` 只在 Camera 空间发生变化时递增；稳定帧不会递增。
-- `CaptureSnapshot()` 返回可见世界 AABB、中心、Zoom、Render View 尺寸和 Revision，是未来剔除、LOD 与 Chunk Streaming 的稳定边界。
+- `CaptureSnapshot()` 返回可见世界 AABB、中心、Zoom、Render View 尺寸和 Revision，是剔除、LOD 与已实现 `WorldChunkStreamer` 的稳定边界。
 - Camera 旋转继续可用；Snapshot 返回旋转视图的保守世界 AABB。
 - 插件以固定顺序运行；同 Key 再次添加表示替换，支持 `Pause/Resume/Remove/Reset`。
 - 惯性使用按时间积分的指数衰减，同样总时间在 30 Hz 与 60 Hz 得到一致结果。
@@ -127,12 +127,12 @@ Input → ViewportController → Camera2D
                     │
                     └─ ViewportSnapshot
                               ↓
-                    WorldChunkStreamer（后续）
+                    WorldChunkStreamer
                               ↓
                     Content / Texture leases
 ```
 
-未来 `WorldChunkStreamer` 根据可见范围和 Revision 计算 Visible、Preload、Retained 三层 Chunk；Interactive Viewport 不知道 Chunk 是否存在，也不干预异步 IO 或显存预算。
+`WorldChunkStreamer` 已根据可见范围和 Revision 计算 Visible、Preloaded、Retained 三层 Chunk，并提供并发、单帧启动量、最大跟踪数、取消和租约释放边界；Interactive Viewport 不知道 Chunk 是否存在，也不干预异步 IO 或显存预算。完整用法见 [World Chunk Streaming](WORLD_CHUNK_STREAMING.md)。
 
 ## 当前覆盖与后续兼容面
 
@@ -148,7 +148,8 @@ Input → ViewportController → Camera2D
 | 统一 Mouse/Touch/Pen Pointer 与 Pinch | 已实现；桌面 Silk 后端当前提供 Mouse，Android/触控后端可直接提供多 Pointer |
 | Bounce、Animate、Snap、SnapZoom、MouseEdges | 已实现；共享交互中断与固定执行顺序 |
 | Follow | 现有 `CameraFollowController` 已覆盖玩法跟随；后续统一中断语义 |
-| Chunk Streaming、LOD | 独立后续切片，不属于 Viewport |
+| Chunk Streaming | 已由独立 `Engine.Features.WorldStreaming` 实现，不属于 Viewport |
+| LOD | 后续离线编译与运行时选择切片，不属于 Viewport |
 
 ## 行为参考与版权边界
 
@@ -164,4 +165,4 @@ dotnet run --project src/Engine.Features/ViewportNavigation.VisualTests/Viewport
 dotnet run --project src/Engine.Features/ViewportNavigation.VisualTests/ViewportNavigation.VisualTests.csproj -c Release -- --smoke
 ```
 
-VisualTests 使用 12,000 × 12,000、20 × 20 分块网格验证拖拽、锚点缩放、MouseEdges、惯性、最大可见范围、世界边界、Resize 和隐藏窗口释放；它只绘制网格，不冒充已经实现 Chunk Streaming。
+VisualTests 使用 12,000 × 12,000、20 × 20 分块网格验证拖拽、锚点缩放、MouseEdges、惯性、最大可见范围、世界边界、Resize 和隐藏窗口释放；网格仍只验证 Viewport 本身，Chunk 驻留由独立 WorldStreaming 无窗口测试覆盖。

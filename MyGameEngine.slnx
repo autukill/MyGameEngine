@@ -25,6 +25,10 @@
     <Project Path="src/Engine.Features/ViewportNavigation.VisualTests/ViewportNavigation.VisualTests.csproj" />
     <Project Path="src/Engine.Features/ViewportNavigation/ViewportNavigation.csproj" />
   </Folder>
+  <Folder Name="/Engine.Features/WorldStreaming/">
+    <Project Path="src/Engine.Features/WorldStreaming.Tests/WorldStreaming.Tests.csproj" />
+    <Project Path="src/Engine.Features/WorldStreaming/WorldStreaming.csproj" />
+  </Folder>
   <Folder Name="/Engine.Features/Bloom/">
     <Project Path="src/Engine.Features/Bloom.Tests/Bloom.Tests.csproj" />
     <Project Path="src/Engine.Features/Bloom/Bloom.csproj" />

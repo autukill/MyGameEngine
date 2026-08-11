@@ -47,6 +47,7 @@
     <ProjectReference Include="..\Engine.Features\ToneMapping\ToneMapping.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\TransformHierarchy\TransformHierarchy.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Features\ViewportNavigation\ViewportNavigation.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\Engine.Features\WorldStreaming\WorldStreaming.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\Engine.Hosting\Engine.Hosting.csproj" PrivateAssets="all" />
     <None Include="..\..\docs\GAME_SDK_AND_TEMPLATES.md"
           Pack="true"
@@ -77,6 +78,7 @@
       <TfmSpecificPackageFile Include="..\Engine.Features\ToneMapping\bin\$(Configuration)\net10.0\ToneMapping.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\TransformHierarchy\bin\$(Configuration)\net10.0\TransformHierarchy.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Features\ViewportNavigation\bin\$(Configuration)\net10.0\ViewportNavigation.dll" />
+      <TfmSpecificPackageFile Include="..\Engine.Features\WorldStreaming\bin\$(Configuration)\net10.0\WorldStreaming.dll" />
       <TfmSpecificPackageFile Include="..\Engine.Hosting\bin\$(Configuration)\net10.0\Engine.Hosting.dll" />
       <TfmSpecificPackageFile Update="@(TfmSpecificPackageFile)">
         <PackagePath>lib\net10.0\%(Filename)%(Extension)</PackagePath>
