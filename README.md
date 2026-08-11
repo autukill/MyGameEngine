@@ -43,7 +43,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 运行时渲染快照：显式读取 Pass 顺序、逻辑 Surface、Effect owner 与 RenderTarget 活动租约，不暴露 GPU 句柄。
 - 独立 Feature module、控制台冒烟测试和图形 VisualTests。
 
-文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。真实游戏候选包括尚未立项的《驮春 / Bloomback》[概念档案](games/Bloomback/README.md)，以及已完成 30 分钟 Gate 4 工程切片、等待外部盲测的《神意难测 / The God They Made》[游戏档案](games/TheGodTheyMade/README.md)。
+文档从 [docs/README.md](docs/README.md) 进入；详细进度与已知限制见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。真实游戏候选包括已完成首个 HomeScene、仍处于 Gate 0 行为重建阶段的《天天泡泡TA / BubbleTa》[游戏档案](games/BubbleTa/README.md)、尚未立项的《驮春 / Bloomback》[概念档案](games/Bloomback/README.md)，以及已完成 30 分钟 Gate 4 工程切片、等待外部盲测的《神意难测 / The God They Made》[游戏档案](games/TheGodTheyMade/README.md)。
 
 ## 工程结构
 
@@ -95,6 +95,12 @@ playgrounds/
 
 games/
 ├── Bloomback/                           # 《驮春》概念文档与设计稿；尚无游戏工程
+├── BubbleTa/                            # 《天天泡泡TA》Gate 0 重建与首个真实 HomeScene
+│   ├── src/                             # 可运行 Game、首页内容包与无窗口 Simulation
+│   ├── modules/                         # BubbleGrid、LevelFormat 等游戏局部单功能模块
+│   ├── tools/                           # 旧关卡离线迁移工具
+│   ├── tests/                           # HomeScene 等游戏行为的无窗口测试
+│   └── docs/                            # 项目结构、HomeScene 与旧项目边界
 └── TheGodTheyMade/
     ├── src/TheGodTheyMade.Simulation/   # 导航、可观察世界、信仰、学习与章节纯逻辑
     ├── src/TheGodTheyMade.Game/         # Hosting、Tilemap、Camera、灰盒视听与运行入口

@@ -123,4 +123,22 @@
     <Project Path="games/TheGodTheyMade/src/TheGodTheyMade.Simulation/TheGodTheyMade.Simulation.csproj" />
     <Project Path="games/TheGodTheyMade/tests/TheGodTheyMade.Simulation.Tests/TheGodTheyMade.Simulation.Tests.csproj" />
   </Folder>
+  <Folder Name="/Games/BubbleTa/Game/">
+    <Project Path="games/BubbleTa/src/BubbleTa.Game/BubbleTa.Game.csproj" />
+  </Folder>
+  <Folder Name="/Games/BubbleTa/Simulation/">
+    <Project Path="games/BubbleTa/src/BubbleTa.Simulation/BubbleTa.Simulation.csproj" />
+  </Folder>
+  <Folder Name="/Games/BubbleTa/Modules/BubbleGrid/">
+    <Project Path="games/BubbleTa/modules/BubbleTa.BubbleGrid/BubbleTa.BubbleGrid.csproj" />
+  </Folder>
+  <Folder Name="/Games/BubbleTa/Modules/LevelFormat/">
+    <Project Path="games/BubbleTa/modules/BubbleTa.LevelFormat/BubbleTa.LevelFormat.csproj" />
+  </Folder>
+  <Folder Name="/Games/BubbleTa/Tools/">
+    <Project Path="games/BubbleTa/tools/BubbleTa.LegacyImporter/BubbleTa.LegacyImporter.csproj" />
+  </Folder>
+  <Folder Name="/Games/BubbleTa/Tests/">
+    <Project Path="games/BubbleTa/tests/BubbleTa.Game.Tests/BubbleTa.Game.Tests.csproj" />
+  </Folder>
 </Solution>

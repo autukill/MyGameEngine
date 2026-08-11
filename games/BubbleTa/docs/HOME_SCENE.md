@@ -1,0 +1,59 @@
+# BubbleTa.HomeScene 实现说明
+
+`BubbleTa.HomeScene` 是 2015 年 GameMaker Studio 1 `rm_ini` 的首个可运行重建场景。目标是验证 MyGameEngine 能否承载一个真实旧项目的内容装配、相机坐标、周期动画、确定性装饰和场景切换，而不是重新设计首页或开始核心泡泡玩法。
+
+## 运行结果
+
+- 窗口初始为 720×1280，游戏固定更新为 60 Hz。
+- Scene 保留旧 Room 的 960×1280 世界坐标；相机从 `(120, 0)` 观察中央 720×1280 区域。
+- 背景、12 片 Logo、泡泡、云、三名角色、三颗大星、五个闪点和五条流星均由 Scene 实例装配。
+- 世界按钮使用 Sprite 逻辑边界和屏幕到世界坐标转换；只有同一指针在按钮内按下并在按钮内释放才切换场景。
+- WorldMap 当前只是纯色占位场景，用来验证 `Home → WorldMap → Home` 生命周期，不代表 `rm_world` 已经迁移。
+- 设置图标只展示。首页 BGM、点击音效、存档初始化和旧全局控制对象均未进入本切片。
+
+## 内容管线
+
+顶层 `src/BubbleTa.Game/Assets/assets.json` 是稳定的显式聚合根，只依赖 `Home/assets.json`；Home 子清单独立拥有首页的 Texture、Sprite 和 Atlas 配置。新增场景时只需给聚合根增加一条依赖，不再改动 Home 清单。构建时 Content Compiler 会：
+
+1. 严格解析 Texture 与 Sprite 声明；
+2. 把 32 张无损 WebP 以 `smooth` 采样打入最多 2048×2048 的无损 WebP Atlas 页面；
+3. 生成运行时内容包和强类型 `GameAssets` 常量；
+4. 将女主九帧光效注册为约 9.2 FPS 的多帧 Sprite。
+
+运行时代码只使用 `SpriteRef` 和生成的资源名称，不读取旧 GameMaker 工程，也不持有源 WebP 路径。当前根租约仍会同步加载完整依赖图；子包边界只是为未来 Scene 级加载与释放预留条件，本切片没有改变内容生命周期。
+
+迁移时每张 WebP 都以 libwebp lossless + exact 模式编码，并重新解码验证完整 RGBA 与原 PNG 逐像素相同，包括 alpha 为 0 的隐藏 RGB。源图片由 991,320 bytes 降到 577,636 bytes；两张编译 Atlas 页面由 1,052,090 bytes 降到 639,206 bytes。WebP 只减少仓库和发布包体积，上传 GPU 后仍解码为 RGBA8，不减少显存。
+
+## 时间与动画迁移
+
+旧 `rm_ini` 以 46 FPS 表达 Alarm 和逐 Step 速度。新实现不模拟旧帧率，而是把时间换算为秒，并在 60 Hz 固定更新中推进：
+
+- 旧 Alarm 延迟使用 `旧帧数 ÷ 46` 秒；
+- 流星速度 `40 px/step` 换算为 `1840 px/s`；
+- Logo 和角色入场使用现有 `Tween`/`Easing`，没有引入全局 Tween Manager；
+- 周期浮动、缩放和淡出保留在各实例的 elapsed/phase 状态中，稳定阶段不创建逐帧对象；
+- 所有首页装饰使用 `InstanceTimeMode.Unscaled`，因此不受未来 Gameplay 暂停影响。
+
+集中式 `HomeSceneLayout` 保存旧位置、缩放、Depth、入场延迟和固定随机种子，实例类不再散落 Room 魔法数字。
+
+## 确定性随机装饰
+
+五条流星和五个闪点分别按索引从固定根种子派生 `GameplayRandom`。同一构建、相同更新序列会得到完全一致的首次等待和后续周期：
+
+- 流星首次等待 1–6 秒，之后每 3–6 秒回到固定出生点；
+- 闪点每 3–6 秒开始一次 0.4 秒线性淡出，并在 1 秒周期结束时恢复；
+- 每个实例独立持有随机状态，不依赖全局随机源或绘制次数。
+
+这使无窗口测试和隐藏窗口 smoke 可以复现首页表现，同时保留视觉上的伪随机感。
+
+## 测试边界
+
+`BubbleTa.Game.Tests` 通过 `InternalsVisibleTo` 检查游戏内部表现状态，不把首页类提升成引擎公共 API。测试覆盖 Logo 时序、周期装饰、角色入场、流星与闪点确定性、按钮捕获语义和 ESC 回调。
+
+`--smoke` 使用隐藏窗口和固定推进，验证编译内容包可装配、Home 实例建立、动画进入稳定阶段、切换到 WorldMap 并自动关闭。人工检查仍用于确认最终图层、中央裁切和美术观感。
+
+## 资产发布 Gate
+
+`Assets/Home` 中的 32 张 WebP 由用户自己的 2015 年旧工程 PNG 无损转码而来，仅用于内部重建原型。格式转换不会改变其许可状态；它们进入仓库不等于已经获得公开发布或商业分发许可。
+
+任何公开演示、安装包或商店发布之前，必须完成逐项来源、作者、授权范围、可修改性和再分发权限审计；无法确认的资源必须替换。详细清单边界见 `src/BubbleTa.Game/Assets/ASSET_PROVENANCE.md`。

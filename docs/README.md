@@ -61,6 +61,7 @@
 
 ## 游戏设计档案
 
+- [《天天泡泡TA / BubbleTa》](../games/BubbleTa/README.md)：Gate 0 已完成首个真实 HomeScene，具备旧首页内容装配、确定性动画和 WorldMap 占位切换；核心泡泡玩法尚未开始。
 - [《驮春 / Bloomback》](../games/Bloomback/README.md)：尚未立项的迁徙巨兽与生态花园概念档案。
 - [《神意难测 / The God They Made》](../games/TheGodTheyMade/README.md)：Gate 4 工程切片已完成；具备 30 分钟三谜题、葬礼选择、结局壁画、灰盒视听与确定性回归，等待外部盲测关闭 Gate。
 

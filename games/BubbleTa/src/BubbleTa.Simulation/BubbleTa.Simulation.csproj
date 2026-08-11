@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>BubbleTa.Simulation</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+    <Description>Deterministic, headless BubbleTa gameplay simulation.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\BubbleTa.BubbleGrid\BubbleTa.BubbleGrid.csproj" />
+    <ProjectReference Include="..\..\modules\BubbleTa.LevelFormat\BubbleTa.LevelFormat.csproj" />
+  </ItemGroup>
+</Project>

@@ -10,7 +10,7 @@
 - SceneAggregate、Layer、Background、Camera2D、SpriteBatch 状态机和 RenderPass DAG。
 - SpriteRef/SpriteLibrary、多帧动画、原点、缩放旋转和 DrawSprite 便利 API。
 - TextureRef/TextureLibrary、PNG/静态 WebP、声明式 Content Assets、包依赖和引用计数卸载。
-- 确定性离线 TextureAtlas、跨页动画、大帧旁路和增量 AssetCompiler。
+- 确定性离线 TextureAtlas、默认 PNG/exact 无损 WebP 页面、跨页动画、大帧旁路和增量 AssetCompiler。
 - Build/Run/Publish MSBuild 资产集成、内容指纹、check/rebuild、所有权和原子替换。
 - 类型化 `RenderEffectRequestedEvent`/`RenderEffectReleasedEvent`，描述符不携带 GPU 对象或绘制回调。
 - `ScenePipelineBuilder` 按 EffectKey 与 owner 集合差量创建、更新和回收动态 Pass。
@@ -95,6 +95,7 @@
 - GPU 回归新增 `multi-render-view-lifecycle`：真实组合主 View HDR Bloom + Tone Mapping 与 0.75 RenderScale observer Tone Mapping，resize 后验证五个活动租约的精确尺寸，逐 View 释放后验证活动效果和租约归零、缓存全部回到 Pool。
 - `games/TheGodTheyMade` 的 Gate 4 工程切片已完成：30 分钟场景状态机组合水闸、湿遗迹、葬礼价值选择、无操作恢复和有限三联壁画；Game 呈现相应灰盒视觉并用程序短音反馈钟/雨/闸/葬礼。40 项无窗口检查覆盖三条完整 108,000 Tick 历史、确定性、版本化 Gameplay Command Journal 与 Gate 聚合判定；结构化 Playtest Report 可留存终局、学习轨迹和 Hash，严格审计 CLI 可输出逐项 Gate 结论，Gate 仍等待 5 人外部盲测证据后正式关闭。
 - 《鸣钟谷》外部盲测可构建为约 62 MiB 的 win-x64 自包含 ZIP，附带 SHA-256、源码 commit、编译后资产、无剧透说明与自动留档启动器；测试员无需仓库源码、SDK 或预装 .NET。
+- `games/BubbleTa` 已在 Gate 0 工程骨架上完成首个真实 `HomeScene`：顶层聚合根依赖独立 Home 内容包，32 张旧首页图片以逐 RGBA 验证的无损 WebP 保存并编译为两页 exact WebP Atlas；场景保留旧 960×1280 坐标与中央 720×1280 相机裁切，具备 Logo/角色/装饰动画、确定性流星与闪点、世界按钮和最小 WorldMap 占位切换。核心泡泡玩法尚未开始，原型图片在正式分发前仍受来源与再分发权限审计 Gate 阻挡。
 
 ## 仍在演进
 
