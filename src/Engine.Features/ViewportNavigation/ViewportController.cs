@@ -58,8 +58,10 @@ public sealed class ViewportController
         ReadOnlySpan<ViewportPointer> pointers = input.Pointers;
         for (int i = 0; i < pointers.Length; i++)
         {
-            if (pointers[i].IsDown && (pointers[i].IsInside || pointers[i].IsCaptured))
+            bool routed = pointers[i].IsInside || pointers[i].IsCaptured;
+            if (pointers[i].IsDown && routed)
                 ActivePointerCount++;
+            if (pointers[i].WasPressed && routed) UserInteractionStarted = true;
         }
         Plugins.Update(in input, deltaTime);
         DetectExternalCameraChange();

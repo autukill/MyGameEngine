@@ -168,7 +168,9 @@ internal static class Program
                         .Drag()
                         .Pinch()
                         .Wheel(new ViewportWheelOptions(smoothFrames: 4))
+                        .MouseEdges()
                         .Decelerate()
+                        .SnapZoom(new ViewportSnapZoomOptions(visibleWidth: 1_200f))
                         .ClampZoom(new ViewportClampZoomOptions(
                             maxWidth: 12_000f,
                             maxHeight: 12_000f))
@@ -183,7 +185,9 @@ internal static class Program
               navigation.Drag == ViewportDragOptions.Default &&
               navigation.Pinch == ViewportPinchOptions.Default &&
               navigation.Wheel?.SmoothFrames == 4 &&
+              navigation.MouseEdges == ViewportMouseEdgesOptions.Default &&
               navigation.Decelerate == ViewportDecelerateOptions.Default &&
+              navigation.SnapZoom?.VisibleWidth == 1_200f &&
               navigation.ClampZoom?.MaxWidth == 12_000f &&
               navigation.Clamp?.Underflow == ViewportUnderflow.Center &&
               interactiveViewport.Renderer.RenderViews[1].Navigation is null,

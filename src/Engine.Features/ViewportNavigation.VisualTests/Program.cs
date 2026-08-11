@@ -32,7 +32,7 @@ internal static class Program
     {
         _smoke = args.Contains("--smoke", StringComparer.Ordinal);
         Console.WriteLine("=== Viewport Navigation Visual Test ===");
-        Console.WriteLine("左键拖拽 | 滚轮以鼠标为锚点缩放 | 惯性与世界边界 | ESC 退出");
+        Console.WriteLine("左键拖拽 | 双指 Pinch | 滚轮缩放 | 边缘移动 | 惯性与边界 | ESC 退出");
         EngineWindowOptions options = EngineWindowOptions.Default with
         {
             Title = "MyGameEngine - Interactive Viewport",
@@ -58,6 +58,7 @@ internal static class Program
             .Drag()
             .Pinch()
             .Wheel(new ViewportWheelOptions(smoothFrames: 6))
+            .MouseEdges()
             .Decelerate()
             .ClampZoom(new ViewportClampZoomOptions(
                 maxWidth: World.Width,

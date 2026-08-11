@@ -35,6 +35,11 @@ public enum ViewportChangeKind
     Decelerate = 5,
     ClampZoom = 6,
     Clamp = 7,
+    MouseEdges = 8,
+    Animate = 9,
+    Bounce = 10,
+    SnapZoom = 11,
+    Snap = 12,
 }
 
 /// <summary>One pointer mapped into Render View pixel coordinates.</summary>

@@ -20,7 +20,12 @@ internal static class Program
         Run("Drag threshold and axis", DragThresholdAndAxis);
         Run("Unified multi-pointer pinch and drag handoff", PinchBehavior);
         Run("Wheel anchor, smoothing, and reverse", WheelBehavior);
+        Run("MouseEdges movement and deceleration handoff", MouseEdgesBehavior);
+        Run("Animate target and interruption", AnimateBehavior);
+        Run("Bounce world bounds", BounceBehavior);
+        Run("SnapZoom reactive target", SnapZoomBehavior);
         Run("ClampZoom scale and visible-size constraints", ClampZoomBehavior);
+        Run("Snap center and top-left targets", SnapBehavior);
         Run("Clamp bounds and underflow", ClampBehavior);
         Run("Declarative configuration", DeclarativeConfiguration);
         Run("Validation", Validation);
@@ -227,6 +232,104 @@ internal static class Program
         Check(reverse.Zoom < 1f, "Reverse wheel flips zoom direction");
     }
 
+    private static void MouseEdgesBehavior()
+    {
+        var viewport = CreateViewport();
+        var edges = new ViewportMouseEdgesPlugin(new ViewportMouseEdgesOptions(
+            speedPixelsPerSecond: 600f));
+        var decelerate = new ViewportDeceleratePlugin(
+            new ViewportDecelerateOptions(0.98f, 0f));
+        viewport.Plugins.Add(edges);
+        viewport.Plugins.Add(decelerate);
+        viewport.Update(Frame(799f, 300f, false), 0.5d);
+        Check(edges.IsActive && viewport.Position.X > 299f,
+            "Right edge moves the Camera toward positive world X");
+        float atEdge = viewport.Position.X;
+        viewport.Update(Frame(400f, 300f, false), 1d / 60d);
+        Check(!edges.IsActive && decelerate.IsActive && viewport.Position.X > atEdge,
+            "Leaving the edge transfers world velocity to Decelerate");
+
+        var radial = CreateViewport();
+        radial.Plugins.Add(new ViewportMouseEdgesPlugin(new ViewportMouseEdgesOptions(
+            radius: 100f,
+            speedPixelsPerSecond: 100f,
+            useDeceleration: false)));
+        radial.Update(Frame(700f, 500f, false), 1d);
+        Check(radial.Position.X > 0f && radial.Position.Y > 0f,
+            "Radius mode supports normalized diagonal movement");
+    }
+
+    private static void AnimateBehavior()
+    {
+        var viewport = CreateViewport();
+        var animate = new ViewportAnimatePlugin(new ViewportAnimateOptions(
+            center: new Vector2(1_000f, 900f),
+            zoom: 2f,
+            durationSeconds: 1d));
+        viewport.Plugins.Add(animate);
+        viewport.Update(ViewportInputFrame.Empty, 0.5d);
+        Near(viewport.Center, new Vector2(700f, 600f));
+        Near(viewport.Zoom, 1.5f);
+        viewport.Update(ViewportInputFrame.Empty, 0.5d);
+        Near(viewport.Center, new Vector2(1_000f, 900f));
+        Near(viewport.Zoom, 2f);
+        Check(animate.State == ViewportMotionState.Completed,
+            "Animate reaches its exact target and completes");
+
+        var cancelled = CreateViewport();
+        var cancelAnimation = new ViewportAnimatePlugin(new ViewportAnimateOptions(
+            center: new Vector2(2_000f, 2_000f),
+            interruptMode: ViewportMotionInterruptMode.Cancel));
+        cancelled.Plugins.Add(cancelAnimation);
+        cancelled.Update(Frame(100f, 100f, true, pressed: true), 1d / 60d);
+        Check(cancelAnimation.State == ViewportMotionState.Cancelled,
+            "Any routed Pointer press cancels a cancel-on-interrupt animation");
+    }
+
+    private static void BounceBehavior()
+    {
+        var viewport = CreateViewport();
+        viewport.MoveCorner(new Vector2(-200f, -100f));
+        var decelerate = new ViewportDeceleratePlugin(
+            new ViewportDecelerateOptions(0.98f, 0f));
+        decelerate.Activate(new Vector2(-100f, -100f));
+        viewport.Plugins.Add(decelerate);
+        var bounce = new ViewportBouncePlugin(new ViewportBounceOptions(
+            new Bounds2D(0f, 0f, 1_200f, 1_000f),
+            durationSeconds: 1d,
+            easing: EasingKind.Linear));
+        viewport.Plugins.Add(bounce);
+        viewport.Update(ViewportInputFrame.Empty, 0.5d);
+        Check(bounce.State == ViewportMotionState.Running,
+            "Out-of-bounds Camera starts a timed Bounce");
+        viewport.Update(ViewportInputFrame.Empty, 0.5d);
+        Near(new Vector2(viewport.VisibleWorldBounds.Left, viewport.VisibleWorldBounds.Top),
+            Vector2.Zero, 0.001f);
+        Check(bounce.State == ViewportMotionState.Completed && !decelerate.IsActive,
+            "Bounce lands exactly inside bounds and stops conflicting inertia axes");
+    }
+
+    private static void SnapZoomBehavior()
+    {
+        var viewport = CreateViewport();
+        var snapZoom = new ViewportSnapZoomPlugin(new ViewportSnapZoomOptions(
+            visibleWidth: 400f,
+            durationSeconds: 1d,
+            easing: EasingKind.Linear));
+        viewport.Plugins.Add(snapZoom);
+        viewport.Update(ViewportInputFrame.Empty, 0.5d);
+        Near(viewport.Zoom, 1.5f);
+        viewport.Update(ViewportInputFrame.Empty, 0.5d);
+        Near(viewport.Zoom, 2f);
+        Check(snapZoom.State == ViewportMotionState.Completed,
+            "SnapZoom completes at the visible-width target");
+        viewport.SetZoom(1f);
+        viewport.Update(ViewportInputFrame.Empty, 0.5d);
+        Near(viewport.Zoom, 1.5f);
+        Check(snapZoom.State == ViewportMotionState.Running,
+            "SnapZoom reacts when another owner moves Zoom away from its target");
+    }
+
     private static void ClampZoomBehavior()
     {
         var viewport = CreateViewport(1_200f, 800f);
@@ -278,6 +381,32 @@ internal static class Program
             Vector2.Zero);
     }
 
+    private static void SnapBehavior()
+    {
+        var viewport = CreateViewport();
+        var snap = new ViewportSnapPlugin(new ViewportSnapOptions(
+            new Vector2(1_000f, 900f),
+            durationSeconds: 1d,
+            easing: EasingKind.Linear));
+        viewport.Plugins.Add(snap);
+        viewport.Update(ViewportInputFrame.Empty, 0.5d);
+        Near(viewport.Center, new Vector2(700f, 600f));
+        viewport.Update(ViewportInputFrame.Empty, 0.5d);
+        Near(viewport.Center, new Vector2(1_000f, 900f));
+        Check(snap.State == ViewportMotionState.Completed,
+            "Snap reaches the exact center target");
+
+        var corner = CreateViewport();
+        corner.Plugins.Add(new ViewportSnapPlugin(new ViewportSnapOptions(
+            new Vector2(100f, 80f),
+            useTopLeft: true,
+            durationSeconds: 0.25d,
+            easing: EasingKind.Linear)));
+        corner.Update(ViewportInputFrame.Empty, 0.25d);
+        Near(new Vector2(corner.VisibleWorldBounds.Left, corner.VisibleWorldBounds.Top),
+            new Vector2(100f, 80f));
+    }
+
     private static void DeclarativeConfiguration()
     {
         ViewportNavigationConfiguration configuration = new ViewportNavigationBuilder()
@@ -296,18 +425,40 @@ internal static class Program
               viewport.Plugins.Get<ViewportClampPlugin>(ViewportPluginKeys.Clamp) is not null,
             "Builder creates the desktop golden plugin chain");
         Near(viewport.Zoom, 1f);
+
+        ViewportNavigationConfiguration motionConfiguration = new ViewportNavigationBuilder()
+            .MouseEdges()
+            .Decelerate()
+            .Bounce(new ViewportBounceOptions(
+                new Bounds2D(0f, 0f, 12_000f, 12_000f)))
+            .SnapZoom(new ViewportSnapZoomOptions(visibleWidth: 1_200f))
+            .Build();
+        ViewportController motion = motionConfiguration.CreateController(
+            new Camera2D(new Vector2(1_200f, 800f)));
+        Check(motion.Plugins.Count == 4 &&
+              motion.Plugins.Get<ViewportMouseEdgesPlugin>(ViewportPluginKeys.MouseEdges) is not null &&
+              motion.Plugins.Get<ViewportBouncePlugin>(ViewportPluginKeys.Bounce) is not null &&
+              motion.Plugins.Get<ViewportSnapZoomPlugin>(ViewportPluginKeys.SnapZoom) is not null,
+            "Builder freezes and instantiates the extended motion plugin chain");
     }
 
     private static void Validation()
     {
         Throws<ArgumentOutOfRangeException>(() => new ViewportWheelOptions(percent: 0f));
         Throws<ArgumentOutOfRangeException>(() => new ViewportPinchOptions(zoomSpeed: 0f));
+        Throws<ArgumentOutOfRangeException>(() => new ViewportMouseEdgesOptions(
+            speedPixelsPerSecond: 0f));
+        Throws<ArgumentException>(() => new ViewportSnapZoomPlugin(default));
         Throws<ArgumentOutOfRangeException>(() => new ViewportDecelerateOptions(friction: 1f));
         Throws<ArgumentException>(() => new ViewportClampZoomOptions(
             minWidth: 100f, maxWidth: 50f));
         Throws<ArgumentException>(() => new ViewportClampPlugin(new ViewportClampOptions(
             new Bounds2D(0f, 0f, 0f, 10f))));
         Throws<InvalidOperationException>(() => new ViewportNavigationBuilder().Build());
+        Throws<InvalidOperationException>(() => new ViewportNavigationBuilder()
+            .Bounce(new ViewportBounceOptions(new Bounds2D(0f, 0f, 100f, 100f)))
+            .Clamp(new ViewportClampOptions(new Bounds2D(0f, 0f, 100f, 100f)))
+            .Build());
         Throws<ArgumentOutOfRangeException>(() => CreateViewport().Update(
             ViewportInputFrame.Empty, -1d));
     }
@@ -362,6 +513,39 @@ internal static class Program
         allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Check(allocated == 0,
             $"Stable multi-pointer Pinch updates allocate 0 B, actual {allocated:N0} B");
+
+        var motionViewport = CreateViewport();
+        motionViewport.Plugins.Add(new ViewportMouseEdgesPlugin(
+            ViewportMouseEdgesOptions.Default));
+        motionViewport.Plugins.Add(new ViewportAnimatePlugin(new ViewportAnimateOptions(
+            center: motionViewport.Center,
+            durationSeconds: 0.1d)));
+        motionViewport.Plugins.Add(new ViewportBouncePlugin(new ViewportBounceOptions(
+            new Bounds2D(0f, 0f, 12_000f, 12_000f))));
+        motionViewport.Plugins.Add(new ViewportSnapZoomPlugin(new ViewportSnapZoomOptions(
+            zoom: 1f,
+            durationSeconds: 0.1d)));
+        motionViewport.Plugins.Add(new ViewportSnapPlugin(new ViewportSnapOptions(
+            motionViewport.Center,
+            durationSeconds: 0.1d)));
+        Span<ViewportPointer> mouse = stackalloc ViewportPointer[1];
+        mouse[0] = new ViewportPointer(
+            PointerId.Mouse,
+            PointerKind.Mouse,
+            new Vector2(400f, 300f),
+            isInside: true,
+            isCaptured: false,
+            isDown: false,
+            isPrimary: true);
+        var motionFrame = new ViewportInputFrame(mouse, new Vector2(400f, 300f), true, 0f);
+        for (int i = 0; i < 256; i++)
+            motionViewport.Update(in motionFrame, 1d / 60d);
+        before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 10_000; i++)
+            motionViewport.Update(in motionFrame, 1d / 60d);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated == 0,
+            $"Stable motion plugin chains allocate 0 B, actual {allocated:N0} B");
     }
 
     private static ViewportController CreateViewport(float width = 800f, float height = 600f) =>

@@ -7,6 +7,8 @@ public abstract class ViewportPlugin
     public string Key { get; }
     public int Order { get; }
     public bool IsPaused { get; private set; }
+    protected ViewportController Controller => _owner ??
+        throw new InvalidOperationException("Viewport plugin is not attached to a controller.");
 
     protected ViewportPlugin(string key, int order)
     {

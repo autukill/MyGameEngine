@@ -121,6 +121,6 @@ second.Camera.Zoom = 0.75f;
 - 次级 View 的 Stencil；HDR、Bloom 和 Tone Mapping 已可独立声明。
 - 跨 View 可见性缓存或通用空间索引；当前 Layer 候选已索引并逐 View 粗剔除，但各 View 仍独立检查、排序并绘制可见实例。
 - 多窗口与多个默认 framebuffer 终端。
-- Bounce/Animate/Snap/SnapZoom/MouseEdges；统一多 Pointer 与 Pinch 已完成。
+- 独立 `WorldChunkStreamer` 与 LOD 消费者；统一 Pointer/Pinch 和 Bounce/Animate/Snap/SnapZoom/MouseEdges 已完成。
 - 跨窗口鼠标捕获与编辑器 Dock。
 - Chunk Streaming、异步 IO、LOD 和显存预算；它们将作为 ViewportSnapshot 的独立消费者。

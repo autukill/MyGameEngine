@@ -93,6 +93,31 @@ Provider 可以在释放帧保留 `IsDown=false` 的 Contact，也可以立即�
 
 `ViewportUnderflow` 决定世界比视野小时贴在哪一侧。`Center` 是大地图常用默认值，也支持八方向和 `None`。
 
+## 运动与约束插件
+
+- `MouseEdges` 支持四边统一/独立 Insets 或中心 Radius 两种热区，速度按秒表达；离开热区时可把世界速度交给 `Decelerate`。
+- `Animate` 是一次性 Center/Zoom/可见宽高过渡，完成后保持静止；可选择 Pointer 交互时 Pause、Cancel 或 Ignore。
+- `Snap` 是持续位置目标，可锁定 Center 或左上角；目标被其他逻辑移开后会重新收敛。
+- `SnapZoom` 是持续 Zoom/可见宽高目标；Resize 后重新解析目标 Zoom，并可指定屏幕锚点。
+- `Bounce` 允许 Drag/Pinch 暂时越界，释放后以指定 Easing 回弹；它与硬 `Clamp` 是两种互斥的边界策略，Builder 会拒绝同时声明。
+
+```csharp
+viewport
+    .Drag()
+    .Pinch()
+    .Wheel()
+    .MouseEdges(new ViewportMouseEdgesOptions(
+        insets: ViewportEdgeInsets.Uniform(36),
+        speedPixelsPerSecond: 720))
+    .Decelerate()
+    .Bounce(new ViewportBounceOptions(world))
+    .SnapZoom(new ViewportSnapZoomOptions(
+        visibleWidth: 1_600,
+        durationSeconds: 0.35));
+```
+
+固定执行顺序为 Drag → Pinch → Wheel → MouseEdges → Decelerate → Animate → Bounce → SnapZoom → ClampZoom → Snap → Clamp。后置约束可以校正前置运动；同一 Key 仍只有一个插件实例。`Animate` 与对应的持续 Snap 所有权冲突、Bounce 与硬 Clamp 冲突会在组合期失败。
+
 ## 与 Chunk Streaming 的关系
 
 正确依赖方向是：
@@ -121,7 +146,7 @@ Input → ViewportController → Camera2D
 | ClampZoom | 已实现 |
 | Clamp 与 Underflow | 已实现 |
 | 统一 Mouse/Touch/Pen Pointer 与 Pinch | 已实现；桌面 Silk 后端当前提供 Mouse，Android/触控后端可直接提供多 Pointer |
-| Bounce、Animate、Snap、SnapZoom、MouseEdges | 下一 Viewport 阶段 |
+| Bounce、Animate、Snap、SnapZoom、MouseEdges | 已实现；共享交互中断与固定执行顺序 |
 | Follow | 现有 `CameraFollowController` 已覆盖玩法跟随；后续统一中断语义 |
 | Chunk Streaming、LOD | 独立后续切片，不属于 Viewport |
 
@@ -139,4 +164,4 @@ dotnet run --project src/Engine.Features/ViewportNavigation.VisualTests/Viewport
 dotnet run --project src/Engine.Features/ViewportNavigation.VisualTests/ViewportNavigation.VisualTests.csproj -c Release -- --smoke
 ```
 
-VisualTests 使用 12,000 × 12,000、20 × 20 分块网格验证拖拽、锚点缩放、惯性、最大可见范围、世界边界、Resize 和隐藏窗口释放；它只绘制网格，不冒充已经实现 Chunk Streaming。
+VisualTests 使用 12,000 × 12,000、20 × 20 分块网格验证拖拽、锚点缩放、MouseEdges、惯性、最大可见范围、世界边界、Resize 和隐藏窗口释放；它只绘制网格，不冒充已经实现 Chunk Streaming。
