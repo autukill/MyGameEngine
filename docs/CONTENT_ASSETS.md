@@ -20,12 +20,12 @@ Content 系统刻意复用同一份运行时 Manifest Schema，但把“准备�
 
 ```text
 Authoring Assets/
-  assets.json + PNG/WebP/WAV/TileMap
+  assets.json + PNG/WebP/WAV/TileMap/TileWorld source
         ↓ Engine.Tools.AssetCompiler（Build/Publish）
 CompiledAssets/
-  标准 assets.json + Atlas 页/旁路图片/WAV/OGG/TileMap + 修订元数据
+  标准 assets.json + Atlas 页/旁路图片/WAV/OGG/TileMap/.mgworld + 修订元数据
         ↓ ContentPackageManager（游戏启动/加载包）
-Texture/Sprite/Animation/Audio/TileSet/TileMap Library
+Texture/Sprite/Animation/Audio/TileSet/TileMap/TileWorld Library
         ↓ 逻辑 Ref
 Gameplay 与 Renderer
 ```
@@ -111,7 +111,7 @@ var player = scene.Add(new PlayerInstance
 - `tileSets`：本包拥有的 Tile ID → Sprite/sub-image/collision 定义，可为空。
 - `tileMaps`：本包拥有的外部稀疏 Chunk 地图定义，可为空。
 - `atlas`：可选的离线构建配置；运行时加载源包时不会自动执行打包。
-- 一个包至少需要声明一个 Texture、Sprite、Animation、Audio Clip、TileSet 或 TileMap。
+- 一个包至少需要声明一个 Texture、Sprite、Animation、Audio Clip、TileSet、TileMap 或 TileWorld。
 - 未知 JSON 字段会被拒绝，以便尽早发现拼写错误。
 
 资源名称采用区分大小写的全局名称。建议使用包前缀，例如 `player.idle`、`boss.attack.0`。
@@ -363,14 +363,14 @@ Resolve manifest under packagesRoot
   → Texture 解码并上传
   → Sprite 注册逐帧 TextureRef + PixelRect
   → Animation 注册 Sprite sub-image 序列
-  → TileSet / TileMap 注册
+  → TileSet / TileMap / TileWorld 索引注册
   → WAV 同步解码，或为 OGG 注册流式 Factory
   → 写入 PackageState 并返回 LoadedContentPackage 租约
 ```
 
 关键实现决策：
 
-- 依赖 Manifest 始终相对 Manager 的 `packagesRoot`；Texture、WAV 和 TileMap 相对各自所属包目录。
+- 依赖 Manifest 始终相对 Manager 的 `packagesRoot`；Texture、WAV、TileMap 和 `.mgworld` 相对各自所属包目录。
 - 路径经过 `GetFullPath + GetRelativePath` 再确认仍位于安全根内；绝对路径和 `..` 逃逸都会在打开文件前失败。
 - `PackageState` 只记录该包自己注册的 Ref 和直接依赖状态；`GetTexture/GetSprite/...` 递归查询自身与依赖，不会因为某个名称恰好存在于全局 Library 就越权可见。
 - Sprite/Animation/TileSet 的引用在注册时再次用真实 Texture/Sprite 元数据验证，因此编译器输出损坏或被手工修改也不能绕过运行时边界。
@@ -378,7 +378,7 @@ Resolve manifest under packagesRoot
 
 ## 生命周期与所有权
 
-`TextureLibrary` 拥有 GPU Texture；`SpriteLibrary` 保存逻辑帧映射；`AnimationLibrary` 和 `AudioLibrary` 保存逻辑 Clip；`TileSetLibrary/TileMapLibrary` 保存世界资源；`LoadedContentPackage` 是外部租约。
+`TextureLibrary` 拥有 GPU Texture；`SpriteLibrary` 保存逻辑帧映射；`AnimationLibrary` 和 `AudioLibrary` 保存逻辑 Clip；`TileSetLibrary/TileMapLibrary` 保存整体驻留世界资源；`TileWorldLibrary` 保存借用归档的位置和小型索引元数据；`LoadedContentPackage` 是外部租约。大型地图格式见 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)。
 
 ```text
 Load root package
@@ -388,7 +388,7 @@ Load root package
   → Animation 校验并注册
 
 Dispose root lease
-  → TileMap / TileSet 卸载
+  → TileWorld / TileMap / TileSet 卸载
   → Audio / Animation 卸载
   → Sprite 卸载
   → Texture 卸载并释放 GPU Handle
@@ -412,7 +412,7 @@ shader.Dispose();
 
 ## 失败与回滚
 
-图片解码、GPU 上传、Sprite 帧范围、Animation sub-image、WAV/OGG 验证、Tile 资源或注册中的任一步失败，Manager 都会逆序移除本次新增的 TileMap、TileSet、Audio、Animation、Sprite 和 Texture，再释放本次取得的依赖持有。预先存在且不属于该包的资源不会被删除；已经缓存的依赖只恢复引用计数，不会被误卸载。
+图片解码、GPU 上传、Sprite 帧范围、Animation sub-image、WAV/OGG 验证、Tile/TileWorld 资源或注册中的任一步失败，Manager 都会逆序移除本次新增的 TileWorld、TileMap、TileSet、Audio、Animation、Sprite 和 Texture，再释放本次取得的依赖持有。预先存在且不属于该包的资源不会被删除；已经缓存的依赖只恢复引用计数，不会被误卸载。
 
 显存不足、图片超过解码器/GPU 尺寸上限或 WebP/PNG 数据损坏都会使整个包加载失败；v1 不提供部分成功状态。
 

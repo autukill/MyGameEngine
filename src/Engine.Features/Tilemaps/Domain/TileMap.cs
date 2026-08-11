@@ -143,8 +143,10 @@ public sealed class TileLayer
     public bool TryGetChunk(TileChunkCoordinate coordinate, out TileChunk chunk) =>
         _chunks.TryGetValue(coordinate, out chunk!);
 
-    internal KeyValuePair<TileChunkCoordinate, TileChunk> GetAllocatedChunk(int index)
+    public KeyValuePair<TileChunkCoordinate, TileChunk> GetAllocatedChunk(int index)
     {
+        if ((uint)index >= (uint)_chunkOrder.Count)
+            throw new ArgumentOutOfRangeException(nameof(index));
         TileChunkCoordinate coordinate = _chunkOrder[index];
         return new KeyValuePair<TileChunkCoordinate, TileChunk>(coordinate, _chunks[coordinate]);
     }

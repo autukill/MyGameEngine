@@ -18,6 +18,7 @@
     <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\TextureAtlas\TextureAtlas.csproj" />
+    <ProjectReference Include="..\Engine.Features\TileWorlds\TileWorlds.csproj" />
     <ProjectReference Include="..\Engine.Tools.AssetCompiler\Engine.Tools.AssetCompiler.csproj" />
   </ItemGroup>
 </Project>

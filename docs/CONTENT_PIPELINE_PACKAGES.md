@@ -20,7 +20,7 @@ MyGameEngine 内容工具链提供两个同版本包：
 | `Program` | 把上述能力暴露为 `--incremental/rebuild/check/generate-references` 等稳定 CLI。 |
 | `GameEngine.Content.targets` | 把 CLI 排到 `CoreCompile` 之前，并接入 Build、Run、Publish。 |
 
-Compiler 直接引用 ContentAssets、TextureAssets、TextureAtlas、Tilemaps 等正式模块的 Domain/Parser，而不是复制一份 Schema。这保证开发工具与 Runtime 对包 ID、Sprite 帧、TileMap 和逻辑名称的理解一致。反向依赖不存在：Runtime Feature 不引用 Tool。
+Compiler 直接引用 ContentAssets、TextureAssets、TextureAtlas、Tilemaps、TileWorlds 等正式模块的 Domain/Parser，而不是复制一份 Schema。这保证开发工具与 Runtime 对包 ID、Sprite 帧、TileMap、`.mgworld` 和逻辑名称的理解一致。反向依赖不存在：Runtime Feature 不引用 Tool。
 
 核心实现可从 [`ContentBuildPipeline.cs`](../src/Engine.Tools.AssetCompiler/ContentBuildPipeline.cs)、[`ContentAssetCompiler.cs`](../src/Engine.Tools.AssetCompiler/ContentAssetCompiler.cs)、[`ContentReferenceCodeGenerator.cs`](../src/Engine.Tools.AssetCompiler/ContentReferenceCodeGenerator.cs) 与 [`GameEngine.Content.targets`](../build/GameEngine.Content.targets) 顺序阅读。
 
@@ -111,7 +111,7 @@ dotnet publish Game.csproj -c Release
   → .mygame-assets.json 最后复制，发布修订
 ```
 
-强类型引用从编译后图生成非常重要：Atlas 内部页、旁路 Texture 和规范化帧已经确定，生成器会隐藏 `__atlas.*` 内部 Texture，并只为编译后仍属于 Runtime Package 的 Package/Texture/Sprite/Animation/Audio/TileSet/TileMap 生成成员。被 Atlas 完全取代的源 Texture 是构建输入，不会错误地成为可加载 API。生成器按逻辑名称排序，把 `boss.attack-heavy` 转成 `BossAttackHeavy`；重复逻辑名或两个名称映射到同一 C# 标识符会让 Build 失败。
+强类型引用从编译后图生成非常重要：Atlas 内部页、旁路 Texture、规范化帧和 TileWorld 归档路径已经确定，生成器会隐藏 `__atlas.*` 内部 Texture，并只为编译后仍属于 Runtime Package 的 Package/Texture/Sprite/Animation/Audio/TileSet/TileMap/TileWorld 生成成员。被 Atlas 完全取代的源 Texture 是构建输入，不会错误地成为可加载 API。生成器按逻辑名称排序，把 `boss.attack-heavy` 转成 `BossAttackHeavy`；重复逻辑名或两个名称映射到同一 C# 标识符会让 Build 失败。
 
 `GameEngine.Content.g.cs` 是普通的 MSBuild 生成源码，不是 Roslyn `ISourceGenerator`。Target 把它标记为 `AutoGen/DesignTime/Visible=false`，因此 IDE 可补全但文件保存在 `obj`；生成器使用 UTF-8 临时文件加覆盖移动，并在内容未变化时不重写，避免无意义时间戳和增量 C# 重编译。
 
@@ -122,8 +122,8 @@ Compiler 首先在不写输出的阶段递归读取完整依赖图：
 - 依赖 Manifest 相对 `packagesRoot`，资源文件相对所属 Package 目录。
 - DFS 检测循环、expected ID 不匹配和同 ID 多 Manifest。
 - 所有输入路径通过完整路径归一化，拒绝绝对路径和根目录逃逸。
-- 全图拒绝 Texture/Sprite/Animation/Audio/TileSet/TileMap 重名与输出路径冲突。
-- Sprite、Animation、TileSet、TileMap 只能引用当前 Package 的依赖闭包。
+- 全图拒绝 Texture/Sprite/Animation/Audio/TileSet/TileMap/TileWorld 重名与输出路径冲突。
+- Sprite、Animation、TileSet、TileMap、TileWorld 只能引用当前 Package 的依赖闭包。
 - Atlas 输入 Texture 属于依赖时有更严格边界：下游不能直接依赖另一个 Package 的 build-only Atlas Texture，应依赖其逻辑 Sprite。
 
 只有图和所有引用规则通过后才创建 staging 输出；因此多数作者错误不会留下半成品目录。
@@ -134,7 +134,7 @@ Fingerprint 使用确定性 SHA-256 输入流；字符串字段带长度前缀�
 
 - Compiler owner 与 `CompilerVersion`；
 - Package ID、Manifest 相对路径和 Manifest 文件内容；
-- 按逻辑名称排序的 Texture/WAV/TileMap 路径与文件内容；
+- 按逻辑名称排序的 Texture/WAV/TileMap/TileWorld source 路径与文件内容；
 - 每个直接依赖的 Package ID 与递归 Fingerprint。
 
 根 Fingerprint 表示完整依赖闭包，Package Fingerprint 则允许局部复用。默认 `incremental` 的判断分两层：
@@ -146,14 +146,14 @@ Fingerprint 使用确定性 SHA-256 输入流；字符串字段带长度前缀�
 
 ## Atlas 编译与标准输出
 
-没有 `atlas` 配置的 Package 原样复制 Manifest、Texture、WAV 和 TileMap。启用 Atlas 时，`ContentAssetCompiler`：
+没有 `atlas` 配置的 Package 原样复制普通 Manifest 资源；TileWorld source 始终由完整 `ContentBuildPipeline` 编译为 `.mgworld` 并重写清单，而不会复制进运行时输出。启用 Atlas 时，`ContentAssetCompiler`：
 
 1. 把 `single/grid/frames` 全部规范化为 `(TextureName, PixelRectI)` 帧。
 2. 延迟解码图片，只解码被选中并实际引用的来源；相同 Texture/Rect 只裁剪一次。
 3. 按 `pixelArt/smooth` 采样状态分组，避免一个 Atlas 页混用互斥 Sampler。
 4. 交给 `TextureAtlasBuilder` 生成多页 RGBA8，应用 padding/extrude。
 5. 已放置帧重映射到内部 Atlas 页；放不下的帧保留原 Texture 旁路。
-6. 按包配置输出默认 PNG 或 exact 无损 WebP 页面，并把 Sprite 统一重写为显式 `frames`，保留逻辑尺寸、原点、FPS、Animation、Audio、TileSet 和 TileMap。
+6. 按包配置输出默认 PNG 或 exact 无损 WebP 页面，并把 Sprite 统一重写为显式 `frames`，保留逻辑尺寸、原点、FPS、Animation、Audio、TileSet、TileMap 和待编译 TileWorld 声明。
 
 输出仍是 Runtime 可以直接解析的标准 Package，而不是只能由 Compiler 理解的数据库。这个边界让一个动画可以跨 Atlas 页，过大帧也可以继续引用独立 Texture，而 `SpriteRef` 和 Gameplay API 不变。
 

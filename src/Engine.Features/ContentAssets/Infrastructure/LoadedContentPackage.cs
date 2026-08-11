@@ -4,6 +4,7 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.Animation;
 using GameEngine.Features.Audio;
 using GameEngine.Features.Tilemaps.Domain;
+using GameEngine.Features.TileWorlds.Domain;
 
 /// <summary>An external lease over a loaded package and its transitive dependencies.</summary>
 public sealed class LoadedContentPackage : IDisposable
@@ -41,6 +42,10 @@ public sealed class LoadedContentPackage : IDisposable
     public TileMapRef GetTileMap(string name) =>
         (_manager ?? throw new ObjectDisposedException(nameof(LoadedContentPackage)))
             .GetTileMap(Id, name);
+
+    public TileWorldRef GetTileWorld(string name) =>
+        (_manager ?? throw new ObjectDisposedException(nameof(LoadedContentPackage)))
+            .GetTileWorld(Id, name);
 
     public void Dispose()
     {

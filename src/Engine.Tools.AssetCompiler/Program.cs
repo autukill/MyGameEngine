@@ -37,6 +37,8 @@ internal static class Program
             Console.WriteLine($"Atlas pages: {result.AtlasPageCount}");
             Console.WriteLine($"Packed frames: {result.PackedFrameCount}");
             Console.WriteLine($"Passthrough frames: {result.PassthroughFrameCount}");
+            Console.WriteLine($"TileWorlds: {result.TileWorldCount}");
+            Console.WriteLine($"TileWorld Chunks: {result.TileWorldChunkCount}");
             Console.WriteLine($"Fingerprint: {result.InputFingerprint}");
             return result.Status == ContentBuildStatus.Stale ? 3 : 0;
         }
@@ -102,6 +104,7 @@ internal static class Program
             Console.WriteLine($"Animation events: {result.AnimationEventCount}");
             Console.WriteLine($"TileSets: {result.TileSetCount}");
             Console.WriteLine($"TileMaps: {result.TileMapCount}");
+            Console.WriteLine($"TileWorlds: {result.TileWorldCount}");
             return 0;
         }
         catch (Exception ex)

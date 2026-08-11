@@ -8,6 +8,8 @@ using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.Tilemaps.Domain;
+using GameEngine.Features.TileWorlds.Domain;
+using GameEngine.Features.TileWorlds.Infrastructure;
 using GameEngine.Tools.AssetCompiler;
 using SkiaSharp;
 using OggVorbisEncoder;
@@ -21,6 +23,7 @@ internal static class Program
         Console.WriteLine("=== Asset Compiler Smoke Test ===\n");
         VerifyCompileAndRuntimeLoad();
         VerifyLosslessWebpAggregatePackage();
+        VerifyTileWorldCompilation();
         VerifyShaderReferenceGeneration();
 
         Console.WriteLine();
@@ -28,6 +31,85 @@ internal static class Program
             ? "=== All Asset Compiler smoke tests passed ==="
             : $"=== {_failures} Asset Compiler test(s) FAILED ===");
         Environment.ExitCode = _failures == 0 ? 0 : 1;
+    }
+
+    private static void VerifyTileWorldCompilation()
+    {
+        Console.WriteLine("5. Deterministic offline TileWorld LOD0 compilation");
+        string workspace = Directory.CreateTempSubdirectory("mygame-tileworld-").FullName;
+        string source = Path.Combine(workspace, "source");
+        string output = Path.Combine(workspace, "compiled");
+        Directory.CreateDirectory(source);
+        try
+        {
+            WriteSolid(Path.Combine(source, "tile.png"), 2, 2, SKColors.Green);
+            File.WriteAllText(Path.Combine(source, "world.tilemap.json"), TileWorldMapManifest);
+            File.WriteAllText(Path.Combine(source, "assets.json"), TileWorldPackageManifest);
+            var pipeline = new ContentBuildPipeline();
+            ContentBuildResult first = pipeline.Build(new ContentBuildRequest(
+                source, "assets.json", output, ContentBuildMode.Incremental));
+            ContentBuildResult cached = pipeline.Build(new ContentBuildRequest(
+                source, "assets.json", output, ContentBuildMode.Incremental));
+
+            string archivePath = Path.Combine(output, "world.mgworld");
+            string compiledManifest = File.ReadAllText(Path.Combine(output, "assets.json"));
+            Check(first.TileWorldCount == 1 && first.TileWorldChunkCount == 2 &&
+                  cached.Status == ContentBuildStatus.UpToDate && File.Exists(archivePath),
+                "Pipeline compiles two sparse LOD0 Chunks and reuses an unchanged package");
+            Check(compiledManifest.Contains("world.mgworld", StringComparison.Ordinal) &&
+                  !compiledManifest.Contains("\"build\"", StringComparison.Ordinal) &&
+                  !File.Exists(Path.Combine(output, "world.tilemap.json")),
+                "Runtime manifest exposes only the compiled archive path");
+
+            using (var archive = new TileWorldArchiveReader(File.OpenRead(archivePath)))
+            {
+                Check(archive.Metadata.Name == "compiler.world" &&
+                      archive.Metadata.DeclaredLodCount == 3 &&
+                      archive.Contains(new TileWorldChunkKey(0, -1, 0)) &&
+                      archive.ReadChunk(new TileWorldChunkKey(0, 0, 0))
+                          .Layers[0].CollisionRects.Length == 1,
+                    "Compiled archive is runtime-readable and retains authoritative collision");
+            }
+
+            var backend = new FakeTextureBackend();
+            using (var textures = new TextureLibrary(backend))
+            {
+                var sprites = new SpriteLibrary(textures);
+                using var manager = new ContentPackageManager(textures, sprites, output);
+                using (LoadedContentPackage package = manager.Load("assets.json"))
+                {
+                    TileWorldRef world = package.GetTileWorld("compiler.world");
+                    using TileWorldArchiveReader archive = manager.TileWorlds.Open(world);
+                    Check(world == new TileWorldRef("compiler.world") &&
+                          manager.TileWorlds.Count == 1 && archive.ChunkCount == 2,
+                        "Content package exposes a borrowed TileWorld archive through a logical ref");
+                }
+                Check(manager.TileWorlds.Count == 0,
+                    "Final package lease unregisters TileWorld before lower-level Tile assets");
+            }
+
+            string generated = Path.Combine(workspace, "generated", "GameEngine.Content.g.cs");
+            ContentReferenceGenerationResult references = new ContentReferenceCodeGenerator().Generate(
+                new ContentReferenceGenerationRequest(
+                    output, "assets.json", generated, "Compiler.TileWorld.Content"));
+            Check(references.TileWorldCount == 1 && File.ReadAllText(generated).Contains(
+                    "TileWorldRef CompilerWorld", StringComparison.Ordinal),
+                "Strongly typed TileWorldRef is generated from the runtime manifest");
+
+            string firstFingerprint = first.InputFingerprint;
+            File.WriteAllText(
+                Path.Combine(source, "world.tilemap.json"),
+                TileWorldMapManifest.Replace("[1, 0, 0, 0]", "[1, 1, 0, 0]", StringComparison.Ordinal));
+            ContentBuildResult changed = pipeline.Build(new ContentBuildRequest(
+                source, "assets.json", output, ContentBuildMode.Incremental));
+            Check(changed.Status == ContentBuildStatus.Built &&
+                  changed.InputFingerprint != firstFingerprint && changed.TileWorldChunkCount == 2,
+                "A TileWorld source edit invalidates its owning package fingerprint");
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
     }
 
     private static void VerifyLosslessWebpAggregatePackage()
@@ -652,6 +734,56 @@ internal static class Program
             "name": "ground",
             "tileSet": "compiler.tiles",
             "chunks": [{ "x": 0, "y": 0, "tiles": [1, 0, 0, 0] }]
+          }]
+        }
+        """;
+
+    private const string TileWorldPackageManifest = """
+        {
+          "schemaVersion": 1,
+          "id": "compiler.tileworld.assets",
+          "dependencies": [],
+          "textures": [
+            { "name": "compiler.world.texture", "path": "tile.png", "sampling": "pixelArt" }
+          ],
+          "sprites": [{
+            "name": "compiler.world.tile", "layout": "single",
+            "texture": "compiler.world.texture", "origin": { "x": 0, "y": 0 }
+          }],
+          "tileSets": [{
+            "name": "compiler.world.tiles",
+            "tileSize": { "width": 2, "height": 2 },
+            "tiles": [{
+              "id": 1, "sprite": "compiler.world.tile", "collision": "solid"
+            }]
+          }],
+          "tileWorlds": [{
+            "name": "compiler.world",
+            "path": "world.tilemap.json",
+            "build": {
+              "bounds": { "minX": -1, "minY": 0, "maxX": 1, "maxY": 1 },
+              "lodCount": 3,
+              "rasterChunkSize": { "width": 256, "height": 256 },
+              "encoding": "webpLossless",
+              "sampling": "pixelArt",
+              "gutter": 2
+            }
+          }]
+        }
+        """;
+
+    private const string TileWorldMapManifest = """
+        {
+          "schemaVersion": 1,
+          "name": "compiler.world",
+          "chunkSize": { "width": 2, "height": 2 },
+          "layers": [{
+            "name": "ground",
+            "tileSet": "compiler.world.tiles",
+            "chunks": [
+              { "x": -1, "y": 0, "tiles": [1, 0, 0, 0] },
+              { "x": 0, "y": 0, "tiles": [1, 0, 0, 0] }
+            ]
           }]
         }
         """;

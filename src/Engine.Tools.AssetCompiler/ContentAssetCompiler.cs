@@ -118,6 +118,13 @@ public sealed class ContentAssetCompiler
         var contexts = new Dictionary<string, ManifestContext>(StringComparer.Ordinal);
         var textures = new Dictionary<string, SourceTexture>(StringComparer.Ordinal);
         ManifestContext package = ReadGraph(root, manifestPath, null, contexts, textures, []);
+        if (copyDependencies && contexts.Values.Any(context => context.Manifest.TileWorlds.Count > 0))
+        {
+            throw new InvalidDataException(
+                "TileWorld assets require ContentBuildPipeline so their source manifests can be " +
+                "compiled and rewritten atomically. Use the GameEngineAssetCompiler CLI or " +
+                "ContentBuildPipeline.Build instead of ContentAssetCompiler.Compile.");
+        }
         AtlasAssetBuildDefinition? atlas = package.Manifest.Atlas;
         if (atlas is null)
             throw new InvalidDataException(
@@ -208,7 +215,8 @@ public sealed class ContentAssetCompiler
                 temporary,
                 retainedTextures,
                 package.Manifest.AudioClips,
-                package.Manifest.TileMaps);
+                package.Manifest.TileMaps,
+                package.Manifest.TileWorlds);
             CopyRetainedTextures(package, retainedTextures, generatedTextures, temporary);
             CopyAudioClips(package, temporary);
             CopyTileMaps(package, temporary);
@@ -428,7 +436,8 @@ public sealed class ContentAssetCompiler
         string output,
         IEnumerable<TextureAssetDefinition> textures,
         IEnumerable<AudioAssetDefinition> audioClips,
-        IEnumerable<TileMapAssetDefinition> tileMaps)
+        IEnumerable<TileMapAssetDefinition> tileMaps,
+        IEnumerable<TileWorldAssetDefinition> tileWorlds)
     {
         var paths = new HashSet<string>(
             OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
@@ -452,6 +461,13 @@ public sealed class ContentAssetCompiler
             string path = ResolveOutputPath(output, tileMap.Path);
             if (!paths.Add(path))
                 throw new InvalidDataException($"Asset output path '{tileMap.Path}' is used more than once.");
+        }
+        foreach (TileWorldAssetDefinition tileWorld in tileWorlds)
+        {
+            string relative = CompiledTileWorldPath(tileWorld.Path);
+            string path = ResolveOutputPath(output, relative);
+            if (!paths.Add(path))
+                throw new InvalidDataException($"Asset output path '{relative}' is used more than once.");
         }
     }
 
@@ -681,7 +697,45 @@ public sealed class ContentAssetCompiler
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
+
+        writer.WritePropertyName("tileWorlds");
+        writer.WriteStartArray();
+        foreach (TileWorldAssetDefinition tileWorld in source.TileWorlds)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("name", tileWorld.Name);
+            writer.WriteString("path", tileWorld.Path.Replace('\\', '/'));
+            if (tileWorld.Build is { } build)
+            {
+                writer.WritePropertyName("build");
+                writer.WriteStartObject();
+                writer.WritePropertyName("bounds");
+                writer.WriteStartObject();
+                writer.WriteNumber("minX", build.Bounds.MinX);
+                writer.WriteNumber("minY", build.Bounds.MinY);
+                writer.WriteNumber("maxX", build.Bounds.MaxX);
+                writer.WriteNumber("maxY", build.Bounds.MaxY);
+                writer.WriteEndObject();
+                writer.WriteNumber("lodCount", build.LodCount);
+                WriteSize(writer, "rasterChunkSize", build.RasterChunkSize.Width, build.RasterChunkSize.Height);
+                writer.WriteString("encoding", build.Encoding == AtlasPageEncoding.Png ? "png" : "webpLossless");
+                writer.WriteString("sampling", build.Sampling == TextureSampler.PixelArt ? "pixelArt" : "smooth");
+                writer.WriteNumber("gutter", build.Gutter);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
         writer.WriteEndObject();
+    }
+
+    internal static string CompiledTileWorldPath(string sourcePath)
+    {
+        string normalized = sourcePath.Replace('\\', '/');
+        const string tileMapSuffix = ".tilemap.json";
+        return normalized.EndsWith(tileMapSuffix, StringComparison.OrdinalIgnoreCase)
+            ? normalized[..^tileMapSuffix.Length] + ".mgworld"
+            : Path.ChangeExtension(normalized, ".mgworld").Replace('\\', '/');
     }
 
     private static void WriteRect(Utf8JsonWriter writer, PixelRectI rect)

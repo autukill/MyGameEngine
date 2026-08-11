@@ -143,7 +143,8 @@ public sealed partial class ContentPackageManager
         GraphNode[] ordered = TopologicalOrder(root);
         if (ordered.Any(node => node.Manifest.AudioClips.Count > 0 ||
                                 node.Manifest.TileSets.Count > 0 ||
-                                node.Manifest.TileMaps.Count > 0))
+                                node.Manifest.TileMaps.Count > 0 ||
+                                node.Manifest.TileWorlds.Count > 0))
         {
             throw new NotSupportedException(
                 "Audio, TileSet and TileMap hot reload are not part of their first slices. " +

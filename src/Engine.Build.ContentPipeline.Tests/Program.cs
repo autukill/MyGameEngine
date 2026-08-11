@@ -75,8 +75,10 @@ internal static class Program
         RunProcess(toolCommand, workspace,
             "--rebuild", sourceRoot, "assets.json", toolOutput);
         Check(File.Exists(Path.Combine(toolOutput, "assets.json")) &&
-              File.Exists(Path.Combine(toolOutput, "white.webp")),
-            "Installed Tool compiles a real image package from paths containing spaces");
+              File.Exists(Path.Combine(toolOutput, "white.webp")) &&
+              File.Exists(Path.Combine(toolOutput, "package-world.mgworld")) &&
+              !File.Exists(Path.Combine(toolOutput, "package-world.tilemap.json")),
+            "Installed Tool compiles real image and TileWorld assets from paths containing spaces");
 
         ProcessResult checkCurrent = RunProcess(toolCommand, workspace,
             "--check", sourceRoot, "assets.json", toolOutput);
@@ -105,6 +107,7 @@ internal static class Program
               firstBuild.Output.Contains("Generated content references:", StringComparison.Ordinal) &&
               firstBuild.Output.Contains("Generated Shader references:", StringComparison.Ordinal) &&
               File.Exists(Path.Combine(debugAssets, "assets.json")) &&
+              File.Exists(Path.Combine(debugAssets, "package-world.mgworld")) &&
               File.Exists(Path.Combine(
                   consumer, "obj", "Debug", "net10.0", "GameEngine.Content.g.cs")) &&
               File.Exists(Path.Combine(
@@ -121,7 +124,8 @@ internal static class Program
         RunDotNet(consumer,
             "build", "Consumer.csproj", "--configuration", "Release", "--no-restore");
         string releaseAssets = Path.Combine(consumer, "bin", "Release", "net10.0", "AssetsCompiled");
-        Check(File.Exists(Path.Combine(releaseAssets, "assets.json")),
+        Check(File.Exists(Path.Combine(releaseAssets, "assets.json")) &&
+              File.Exists(Path.Combine(releaseAssets, "package-world.mgworld")),
             "Release uses an isolated content output and receives runtime files");
 
         string publish = Path.Combine(workspace, "published consumer");
@@ -129,6 +133,7 @@ internal static class Program
             "publish", "Consumer.csproj", "--configuration", "Release",
             "--no-restore", "--output", publish);
         Check(File.Exists(Path.Combine(publish, "AssetsCompiled", "assets.json")) &&
+              File.Exists(Path.Combine(publish, "AssetsCompiled", "package-world.mgworld")) &&
               File.Exists(Path.Combine(publish, "AssetsCompiled", ".mygame-assets.json")) &&
               !File.Exists(Path.Combine(publish, "GameEngine.Content.g.cs")) &&
               !File.Exists(Path.Combine(publish, "GameEngine.Shaders.g.cs")),
@@ -163,12 +168,13 @@ internal static class Program
         Check(toolEntries.Contains("tools/net10.0/any/DotnetToolSettings.xml", StringComparer.Ordinal) &&
               toolEntries.Contains("tools/net10.0/any/GameEngineAssetCompiler.dll", StringComparer.Ordinal) &&
               toolEntries.Contains("tools/net10.0/any/ShaderAssets.dll", StringComparer.Ordinal) &&
+              toolEntries.Contains("tools/net10.0/any/TileWorlds.dll", StringComparer.Ordinal) &&
               toolEntries.Contains("tools/net10.0/any/Imazen.WebP.dll", StringComparer.Ordinal) &&
               toolEntries.Contains(
                   "tools/net10.0/any/runtimes/win-x64/native/libwebp.dll",
                   StringComparer.Ordinal) &&
               toolEntries.Contains("README.md", StringComparer.Ordinal),
-            "Tool package contains compiler, Shader support, and exact WebP runtime");
+            "Tool package contains compiler, Shader/TileWorld support, and exact WebP runtime");
         Check(!toolEntries.Any(entry => entry.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)),
             "Tool package excludes compiler and dependency symbols");
 
@@ -182,6 +188,8 @@ internal static class Program
                   "tools/net10.0/any/GameEngineAssetCompiler.dll", StringComparer.Ordinal) &&
               buildEntries.Contains(
                   "tools/net10.0/any/ShaderAssets.dll", StringComparer.Ordinal) &&
+              buildEntries.Contains(
+                  "tools/net10.0/any/TileWorlds.dll", StringComparer.Ordinal) &&
               buildEntries.Contains(
                   "tools/net10.0/any/Imazen.WebP.dll", StringComparer.Ordinal) &&
               buildEntries.Contains(
@@ -218,6 +226,7 @@ internal static class Program
         File.Copy(
             Path.Combine(repositoryRoot, "src", "MyGame.Runner", "Assets", "white.webp"),
             Path.Combine(target, "white.webp"));
+        File.WriteAllText(Path.Combine(target, "package-world.tilemap.json"), TileWorldMapManifest);
         File.WriteAllText(Path.Combine(target, "assets.json"), AssetManifest);
     }
 
@@ -349,6 +358,7 @@ internal static class Program
         System.Console.WriteLine(GameAssets.Packages.Root.Id);
         System.Console.WriteLine(GameAssets.Textures.PackageWhite.Name);
         System.Console.WriteLine(GameAssets.Sprites.PackageWhite.Name);
+        System.Console.WriteLine(GameAssets.TileWorlds.PackageWorld.Name);
         System.Console.WriteLine(GameShaders.ManifestPath);
         System.Console.WriteLine(GameShaders.Shaders.PackageSprite.Name);
         System.Console.WriteLine(GameShaders.Materials.PackageMaterial.Name);
@@ -365,6 +375,16 @@ internal static class Program
         namespace GameEngine.Features.ContentAssets.Domain
         {
             public readonly record struct ContentPackageRef(string Id, string Manifest);
+        }
+
+        namespace GameEngine.Features.Tilemaps.Domain
+        {
+            public readonly record struct TileSetRef(string Name);
+        }
+
+        namespace GameEngine.Features.TileWorlds.Domain
+        {
+            public readonly record struct TileWorldRef(string Name);
         }
 
         namespace GameEngine.Core.Domain.Graphics
@@ -390,7 +410,33 @@ internal static class Program
               "texture": "package.white",
               "origin": { "x": 0, "y": 0 }
             }
-          ]
+          ],
+          "tileSets": [{
+            "name": "package.tiles",
+            "tileSize": { "width": 1, "height": 1 },
+            "tiles": [{ "id": 1, "sprite": "package.white", "collision": "solid" }]
+          }],
+          "tileWorlds": [{
+            "name": "package.world",
+            "path": "package-world.tilemap.json",
+            "build": {
+              "bounds": { "minX": 0, "minY": 0, "maxX": 1, "maxY": 1 },
+              "lodCount": 2
+            }
+          }]
+        }
+        """;
+
+    private const string TileWorldMapManifest = """
+        {
+          "schemaVersion": 1,
+          "name": "package.world",
+          "chunkSize": { "width": 2, "height": 2 },
+          "layers": [{
+            "name": "ground",
+            "tileSet": "package.tiles",
+            "chunks": [{ "x": 0, "y": 0, "tiles": [1, 0, 0, 0] }]
+          }]
         }
         """;
 

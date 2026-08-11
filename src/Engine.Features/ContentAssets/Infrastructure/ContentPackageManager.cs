@@ -12,6 +12,8 @@ using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.Tilemaps.Infrastructure;
+using GameEngine.Features.TileWorlds.Domain;
+using GameEngine.Features.TileWorlds.Infrastructure;
 
 /// <summary>
 /// Synchronously loads versioned content packages and owns only the resources assembled by them.
@@ -36,6 +38,7 @@ public sealed partial class ContentPackageManager : IDisposable
         public required IReadOnlyList<AudioClipRef> AudioClips { get; set; }
         public required IReadOnlyList<TileSetRef> TileSets { get; set; }
         public required IReadOnlyList<TileMapRef> TileMaps { get; set; }
+        public IReadOnlyList<TileWorldRef> TileWorlds { get; set; } = [];
         public required IReadOnlyList<PackageState> Dependencies { get; init; }
         public required long LoadOrder { get; init; }
         public int ReferenceCount { get; set; }
@@ -47,6 +50,7 @@ public sealed partial class ContentPackageManager : IDisposable
     private readonly AudioLibrary _audio;
     private readonly TileSetLibrary _tileSets;
     private readonly TileMapLibrary _tileMaps;
+    private readonly TileWorldLibrary _tileWorlds;
     private readonly string _packagesRoot;
     private readonly Dictionary<string, PackageState> _packagesById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PackageState> _packagesByPath = new(PathComparer);
@@ -102,6 +106,7 @@ public sealed partial class ContentPackageManager : IDisposable
         _audio = audioLibrary ?? throw new ArgumentNullException(nameof(audioLibrary));
         _tileSets = tileSetLibrary ?? throw new ArgumentNullException(nameof(tileSetLibrary));
         _tileMaps = tileMapLibrary ?? throw new ArgumentNullException(nameof(tileMapLibrary));
+        _tileWorlds = new TileWorldLibrary();
         ArgumentException.ThrowIfNullOrWhiteSpace(packagesRoot);
 
         _packagesRoot = Path.GetFullPath(packagesRoot);
@@ -115,6 +120,7 @@ public sealed partial class ContentPackageManager : IDisposable
     public AudioLibrary Audio => _audio;
     public TileSetLibrary TileSets => _tileSets;
     public TileMapLibrary TileMaps => _tileMaps;
+    public TileWorldLibrary TileWorlds => _tileWorlds;
 
     public LoadedContentPackage Load(string rootRelativeManifestPath) =>
         LoadCore(rootRelativeManifestPath, expectedId: null);
@@ -216,6 +222,17 @@ public sealed partial class ContentPackageManager : IDisposable
                 $"TileMap '{name}' is not visible from package '{packageId}'.");
     }
 
+    internal TileWorldRef GetTileWorld(string packageId, string name)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        PackageState state = GetLivePackage(packageId);
+        return TryFindTileWorld(state, name, out TileWorldRef tileWorld)
+            ? tileWorld
+            : throw new KeyNotFoundException(
+                $"TileWorld '{name}' is not visible from package '{packageId}'.");
+    }
+
     internal void Release(string packageId)
     {
         if (_disposed || !_packagesById.TryGetValue(packageId, out var state))
@@ -232,6 +249,8 @@ public sealed partial class ContentPackageManager : IDisposable
             .ToArray();
         foreach (var state in states)
         {
+            for (int i = state.TileWorlds.Count - 1; i >= 0; i--)
+                _tileWorlds.Remove(state.TileWorlds[i]);
             for (int i = state.TileMaps.Count - 1; i >= 0; i--)
                 _tileMaps.Remove(state.TileMaps[i]);
             for (int i = state.TileSets.Count - 1; i >= 0; i--)
@@ -325,6 +344,7 @@ public sealed partial class ContentPackageManager : IDisposable
         var audioNames = new HashSet<string>(StringComparer.Ordinal);
         var tileSetNames = new HashSet<string>(StringComparer.Ordinal);
         var tileMapNames = new HashSet<string>(StringComparer.Ordinal);
+        var tileWorldNames = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var node in graph)
         {
@@ -411,6 +431,23 @@ public sealed partial class ContentPackageManager : IDisposable
                         $"TileMap name '{definition.Name}' conflicts with an existing package or resource.");
                 }
             }
+            foreach (TileWorldAssetDefinition definition in node.Manifest.TileWorlds)
+            {
+                if (definition.Build is not null)
+                    throw new InvalidDataException(
+                        $"Runtime package contains uncompiled TileWorld '{definition.Name}'.");
+                string path = ResolveUnderRoot(packageDirectory, definition.Path, "TileWorld");
+                if (!File.Exists(path))
+                    throw new FileNotFoundException($"TileWorld asset '{definition.Path}' does not exist.", path);
+                using var reader = new TileWorldArchiveReader(File.OpenRead(path));
+                if (!StringComparer.Ordinal.Equals(reader.Metadata.Name, definition.Name))
+                    throw new InvalidDataException(
+                        $"TileWorld declaration '{definition.Name}' does not match archive name '{reader.Metadata.Name}'.");
+                if (!tileWorldNames.Add(definition.Name) ||
+                    _tileWorlds.TryGet(new TileWorldRef(definition.Name), out _))
+                    throw new InvalidDataException(
+                        $"TileWorld name '{definition.Name}' conflicts with an existing package or resource.");
+            }
         }
 
         foreach (var node in graph)
@@ -451,6 +488,18 @@ public sealed partial class ContentPackageManager : IDisposable
                 if (!visibleTileSets.Contains(layer.TileSet.Name))
                     throw new InvalidDataException(
                         $"TileMap '{map.Name}' layer '{layer.Name}' references TileSet '{layer.TileSet}' outside its package dependency closure.");
+            }
+        }
+        foreach (TileWorldAssetDefinition definition in node.Manifest.TileWorlds)
+        {
+            string path = ResolveUnderRoot(directory, definition.Path, "TileWorld");
+            using var reader = new TileWorldArchiveReader(File.OpenRead(path));
+            foreach (TileWorldLayerMetadata layer in reader.Metadata.Layers)
+            {
+                if (!visibleTileSets.Contains(layer.TileSet.Name))
+                    throw new InvalidDataException(
+                        $"TileWorld '{definition.Name}' layer '{layer.Name}' references TileSet " +
+                        $"'{layer.TileSet}' outside its package dependency closure.");
             }
         }
     }
@@ -553,6 +602,7 @@ public sealed partial class ContentPackageManager : IDisposable
         var audioClips = new List<AudioClipRef>();
         var tileSets = new List<TileSetRef>();
         var tileMaps = new List<TileMapRef>();
+        var tileWorlds = new List<TileWorldRef>();
         try
         {
             foreach (var dependency in node.Dependencies)
@@ -582,6 +632,16 @@ public sealed partial class ContentPackageManager : IDisposable
                 string packageDirectory = Path.GetDirectoryName(node.ManifestPath)!;
                 foreach (TileMapAssetDefinition definition in node.Manifest.TileMaps)
                     tileMaps.Add(RegisterTileMap(definition, packageDirectory, tileSets, dependencies));
+            }
+
+            if (node.Manifest.TileWorlds.Count > 0)
+            {
+                string packageDirectory = Path.GetDirectoryName(node.ManifestPath)!;
+                foreach (TileWorldAssetDefinition definition in node.Manifest.TileWorlds)
+                {
+                    string path = ResolveUnderRoot(packageDirectory, definition.Path, "TileWorld");
+                    tileWorlds.Add(_tileWorlds.Register(definition.Name, path));
+                }
             }
 
             if (node.Manifest.AudioClips.Count > 0)
@@ -617,6 +677,7 @@ public sealed partial class ContentPackageManager : IDisposable
                 AudioClips = audioClips.ToArray(),
                 TileSets = tileSets.ToArray(),
                 TileMaps = tileMaps.ToArray(),
+                TileWorlds = tileWorlds.ToArray(),
                 Dependencies = dependencies.ToArray(),
                 ReferenceCount = 1,
                 LoadOrder = ++_nextLoadOrder
@@ -628,6 +689,8 @@ public sealed partial class ContentPackageManager : IDisposable
         }
         catch
         {
+            for (int i = tileWorlds.Count - 1; i >= 0; i--)
+                _tileWorlds.Remove(tileWorlds[i]);
             for (int i = tileMaps.Count - 1; i >= 0; i--)
                 _tileMaps.Remove(tileMaps[i]);
             for (int i = tileSets.Count - 1; i >= 0; i--)
@@ -1003,6 +1066,25 @@ public sealed partial class ContentPackageManager : IDisposable
         return false;
     }
 
+    private static bool TryFindTileWorld(
+        PackageState state,
+        string name,
+        out TileWorldRef tileWorld)
+    {
+        foreach (TileWorldRef candidate in state.TileWorlds)
+        {
+            if (StringComparer.Ordinal.Equals(candidate.Name, name))
+            {
+                tileWorld = candidate;
+                return true;
+            }
+        }
+        foreach (PackageState dependency in state.Dependencies)
+            if (TryFindTileWorld(dependency, name, out tileWorld)) return true;
+        tileWorld = default;
+        return false;
+    }
+
     private void Release(PackageState state)
     {
         if (state.ReferenceCount <= 0)
@@ -1011,6 +1093,8 @@ public sealed partial class ContentPackageManager : IDisposable
         if (state.ReferenceCount != 0)
             return;
 
+        for (int i = state.TileWorlds.Count - 1; i >= 0; i--)
+            _tileWorlds.Remove(state.TileWorlds[i]);
         for (int i = state.TileMaps.Count - 1; i >= 0; i--)
             _tileMaps.Remove(state.TileMaps[i]);
         for (int i = state.TileSets.Count - 1; i >= 0; i--)

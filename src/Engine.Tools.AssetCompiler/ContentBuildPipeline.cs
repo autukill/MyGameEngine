@@ -4,19 +4,22 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ContentAssets.Infrastructure;
 using GameEngine.Features.Audio;
 using GameEngine.Features.Audio.Vorbis;
 using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.Tilemaps.Infrastructure;
+using GameEngine.Features.TileWorlds.Domain;
+using GameEngine.Features.TileWorlds.Infrastructure;
 
 /// <summary>
 /// Builds a complete content dependency graph into an owned, fingerprinted runtime packages root.
 /// </summary>
 public sealed class ContentBuildPipeline
 {
-    public const string CompilerVersion = "6";
+    public const string CompilerVersion = "7";
     public const string MetadataFileName = ".mygame-assets.json";
     private const string OwnerName = "MyGameEngine.AssetCompiler";
     private const int MetadataSchemaVersion = 1;
@@ -42,6 +45,8 @@ public sealed class ContentBuildPipeline
         public int AtlasPageCount { get; init; }
         public int PackedFrameCount { get; init; }
         public int PassthroughFrameCount { get; init; }
+        public int TileWorldCount { get; init; }
+        public int TileWorldChunkCount { get; init; }
         public List<OutputFileHash> Outputs { get; init; } = [];
         public List<PackageBuildMetadata> Packages { get; init; } = [];
     }
@@ -56,6 +61,8 @@ public sealed class ContentBuildPipeline
         public int AtlasPageCount { get; init; }
         public int PackedFrameCount { get; init; }
         public int PassthroughFrameCount { get; init; }
+        public int TileWorldCount { get; init; }
+        public int TileWorldChunkCount { get; init; }
         public List<OutputFileHash> Outputs { get; init; } = [];
     }
 
@@ -141,6 +148,8 @@ public sealed class ContentBuildPipeline
         int atlasPages = 0;
         int packedFrames = 0;
         int passthroughFrames = 0;
+        int tileWorlds = 0;
+        int tileWorldChunks = 0;
         int builtPackages = 0;
         int reusedPackages = 0;
         var packageMetadata = new List<PackageBuildMetadata>(graph.Length);
@@ -162,6 +171,8 @@ public sealed class ContentBuildPipeline
                     atlasPages += cachedPackage.AtlasPageCount;
                     packedFrames += cachedPackage.PackedFrameCount;
                     passthroughFrames += cachedPackage.PassthroughFrameCount;
+                    tileWorlds += cachedPackage.TileWorldCount;
+                    tileWorldChunks += cachedPackage.TileWorldChunkCount;
                     reusedPackages++;
                     continue;
                 }
@@ -169,10 +180,13 @@ public sealed class ContentBuildPipeline
                 int packageAtlasPages = 0;
                 int packagePackedFrames = 0;
                 int packagePassthroughFrames = 0;
+                int packageTileWorlds = 0;
+                int packageTileWorldChunks = 0;
                 if (node.Manifest.Atlas is null)
                 {
                     CopyRawPackage(staging, node);
                 }
+
                 else
                 {
                     string isolatedPackage = output + $".package-{Guid.NewGuid():N}";
@@ -198,9 +212,13 @@ public sealed class ContentBuildPipeline
                     }
                 }
 
+                (packageTileWorlds, packageTileWorldChunks) = CompileTileWorlds(staging, node);
+
                 atlasPages += packageAtlasPages;
                 packedFrames += packagePackedFrames;
                 passthroughFrames += packagePassthroughFrames;
+                tileWorlds += packageTileWorlds;
+                tileWorldChunks += packageTileWorldChunks;
                 packageMetadata.Add(new PackageBuildMetadata
                 {
                     Id = node.Manifest.Id,
@@ -209,6 +227,8 @@ public sealed class ContentBuildPipeline
                     AtlasPageCount = packageAtlasPages,
                     PackedFrameCount = packagePackedFrames,
                     PassthroughFrameCount = packagePassthroughFrames,
+                    TileWorldCount = packageTileWorlds,
+                    TileWorldChunkCount = packageTileWorldChunks,
                     Outputs = HashPackageOutput(staging, node)
                 });
                 builtPackages++;
@@ -232,6 +252,8 @@ public sealed class ContentBuildPipeline
                 AtlasPageCount = atlasPages,
                 PackedFrameCount = packedFrames,
                 PassthroughFrameCount = passthroughFrames,
+                TileWorldCount = tileWorlds,
+                TileWorldChunkCount = tileWorldChunks,
                 Outputs = HashOutputFiles(staging),
                 Packages = packageMetadata
                     .OrderBy(item => item.Manifest, StringComparer.Ordinal)
@@ -250,7 +272,9 @@ public sealed class ContentBuildPipeline
                 reusedPackages,
                 atlasPages,
                 packedFrames,
-                passthroughFrames);
+                passthroughFrames,
+                tileWorlds,
+                tileWorldChunks);
         }
         catch
         {
@@ -282,7 +306,9 @@ public sealed class ContentBuildPipeline
             status == ContentBuildStatus.UpToDate ? packageCount : 0,
             metadata?.AtlasPageCount ?? 0,
             metadata?.PackedFrameCount ?? 0,
-            metadata?.PassthroughFrameCount ?? 0);
+            metadata?.PassthroughFrameCount ?? 0,
+            metadata?.TileWorldCount ?? 0,
+            metadata?.TileWorldChunkCount ?? 0);
 
     private static GraphNode ReadGraph(
         string packagesRoot,
@@ -355,6 +381,7 @@ public sealed class ContentBuildPipeline
         var audioNames = new HashSet<string>(StringComparer.Ordinal);
         var tileSetNames = new HashSet<string>(StringComparer.Ordinal);
         var tileMapNames = new HashSet<string>(StringComparer.Ordinal);
+        var tileWorldNames = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var node in graph)
         {
@@ -417,6 +444,21 @@ public sealed class ContentBuildPipeline
                 if (StringComparer.OrdinalIgnoreCase.Equals(outputPath, MetadataFileName))
                     throw new InvalidDataException($"TileMap '{tileMap.Name}' uses reserved build metadata path.");
             }
+            foreach (TileWorldAssetDefinition tileWorld in node.Manifest.TileWorlds)
+            {
+                if (!tileWorldNames.Add(tileWorld.Name))
+                    throw new InvalidDataException($"TileWorld '{tileWorld.Name}' appears in multiple packages.");
+                if (tileWorld.Build is null)
+                    throw new InvalidDataException($"Source TileWorld '{tileWorld.Name}' requires build settings.");
+                string path = ResolveUnderRoot(node.PackageDirectory, tileWorld.Path, "TileWorld source");
+                if (!File.Exists(path))
+                    throw new FileNotFoundException($"TileWorld source '{tileWorld.Path}' does not exist.", path);
+                string relativeDirectory = Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
+                string outputPath = NormalizeRelativePath(Path.Combine(
+                    relativeDirectory, ContentAssetCompiler.CompiledTileWorldPath(tileWorld.Path)));
+                if (StringComparer.OrdinalIgnoreCase.Equals(outputPath, MetadataFileName))
+                    throw new InvalidDataException($"TileWorld '{tileWorld.Name}' uses reserved build metadata path.");
+            }
         }
 
         foreach (var consumer in graph)
@@ -475,6 +517,28 @@ public sealed class ContentBuildPipeline
                     }
                 }
             }
+            foreach (TileWorldAssetDefinition definition in consumer.Manifest.TileWorlds)
+            {
+                string path = ResolveUnderRoot(consumer.PackageDirectory, definition.Path, "TileWorld source");
+                using var stream = File.OpenRead(path);
+                TileMap map = TileMapManifestParser.Parse(stream);
+                if (!StringComparer.Ordinal.Equals(map.Name, definition.Name))
+                    throw new InvalidDataException(
+                        $"TileWorld declaration '{definition.Name}' does not match document name '{map.Name}'.");
+                System.Numerics.Vector2? commonTileSize = null;
+                foreach (TileLayer layer in map.Layers)
+                {
+                    TileSetAssetDefinition? tileSet = FindVisibleTileSet(
+                        consumer, layer.TileSet.Name, new HashSet<string>(PathComparer));
+                    if (tileSet is null)
+                        throw new InvalidDataException(
+                            $"TileWorld '{map.Name}' references TileSet '{layer.TileSet}' outside its package dependency closure.");
+                    if (commonTileSize is { } known && known != tileSet.TileSize)
+                        throw new InvalidDataException(
+                            $"TileWorld '{map.Name}' requires one common Tile size across streamed layers.");
+                    commonTileSize = tileSet.TileSize;
+                }
+            }
         }
     }
 
@@ -502,6 +566,23 @@ public sealed class ContentBuildPipeline
         foreach (GraphNode dependency in node.Dependencies)
             if (HasVisibleTileSet(dependency, tileSetName, visited)) return true;
         return false;
+    }
+
+    private static TileSetAssetDefinition? FindVisibleTileSet(
+        GraphNode node,
+        string tileSetName,
+        HashSet<string> visited)
+    {
+        if (!visited.Add(node.ManifestPath)) return null;
+        TileSetAssetDefinition? local = node.Manifest.TileSets.FirstOrDefault(tileSet =>
+            StringComparer.Ordinal.Equals(tileSet.Name, tileSetName));
+        if (local is not null) return local;
+        foreach (GraphNode dependency in node.Dependencies)
+        {
+            TileSetAssetDefinition? found = FindVisibleTileSet(dependency, tileSetName, visited);
+            if (found is not null) return found;
+        }
+        return null;
     }
 
     private static bool HasVisibleSprite(
@@ -579,6 +660,16 @@ public sealed class ContentBuildPipeline
                 AppendFile(hash, source);
             }
 
+            foreach (TileWorldAssetDefinition tileWorld in node.Manifest.TileWorlds
+                         .OrderBy(item => item.Name, StringComparer.Ordinal))
+            {
+                string source = ResolveUnderRoot(node.PackageDirectory, tileWorld.Path, "TileWorld source");
+                string relative = NormalizeRelativePath(Path.GetRelativePath(packagesRoot, source));
+                AppendString(hash, tileWorld.Name);
+                AppendString(hash, relative);
+                AppendFile(hash, source);
+            }
+
             foreach (var dependency in node.Dependencies)
             {
                 AppendString(hash, dependency.Manifest.Id);
@@ -636,6 +727,87 @@ public sealed class ContentBuildPipeline
             string target = ResolveOutputPath(staging, Path.Combine(relativeDirectory, tileMap.Path));
             CopyFileExclusive(source, target);
         }
+    }
+
+    private static (int WorldCount, int ChunkCount) CompileTileWorlds(string staging, GraphNode node)
+    {
+        if (node.Manifest.TileWorlds.Count == 0) return (0, 0);
+        var tileSets = new TileSetLibrary();
+        AddVisibleTileSets(node, tileSets, new HashSet<string>(PathComparer));
+        string relativeDirectory = Path.GetDirectoryName(node.RelativeManifestPath) ?? string.Empty;
+        int chunks = 0;
+        foreach (TileWorldAssetDefinition definition in node.Manifest.TileWorlds)
+        {
+            TileWorldAssetBuildDefinition buildDefinition = definition.Build
+                ?? throw new InvalidDataException($"Source TileWorld '{definition.Name}' requires build settings.");
+            string source = ResolveUnderRoot(node.PackageDirectory, definition.Path, "TileWorld source");
+            using var sourceStream = File.OpenRead(source);
+            TileMap map = TileMapManifestParser.Parse(sourceStream);
+            TileWorldArchiveBuild archive = TileWorldArchiveBuilder.BuildLod0(
+                map, tileSets, buildDefinition.Bounds, buildDefinition.LodCount);
+            string compiledRelative = ContentAssetCompiler.CompiledTileWorldPath(definition.Path);
+            string output = ResolveOutputPath(staging, Path.Combine(relativeDirectory, compiledRelative));
+            Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+            if (File.Exists(output))
+                throw new InvalidDataException(
+                    $"TileWorld output path '{compiledRelative}' is already produced by another asset.");
+            using var destination = File.Create(output);
+            TileWorldArchiveWriter.Write(destination, archive);
+            chunks += archive.Chunks.Count;
+        }
+        RewriteCompiledTileWorldManifest(
+            ResolveOutputPath(staging, node.RelativeManifestPath), node.Manifest.TileWorlds);
+        return (node.Manifest.TileWorlds.Count, chunks);
+    }
+
+    private static void AddVisibleTileSets(
+        GraphNode node,
+        TileSetLibrary library,
+        HashSet<string> visited)
+    {
+        if (!visited.Add(node.ManifestPath)) return;
+        foreach (GraphNode dependency in node.Dependencies)
+            AddVisibleTileSets(dependency, library, visited);
+        foreach (TileSetAssetDefinition definition in node.Manifest.TileSets)
+        {
+            if (library.TryGet(new TileSetRef(definition.Name), out _)) continue;
+            library.Register(new TileSet(
+                definition.Name,
+                definition.TileSize,
+                definition.Tiles.Select(tile => new TileDefinition(
+                    new TileId(tile.Id),
+                    new GameEngine.Core.Domain.ValueObjects.SpriteRef(tile.SpriteName),
+                    tile.SubImage,
+                    tile.Collision))));
+        }
+    }
+
+    private static void RewriteCompiledTileWorldManifest(
+        string manifestPath,
+        IReadOnlyList<TileWorldAssetDefinition> definitions)
+    {
+        JsonNode root = JsonNode.Parse(File.ReadAllText(manifestPath))
+            ?? throw new InvalidDataException("Compiled package manifest is empty.");
+        JsonObject rootObject = root as JsonObject
+            ?? throw new InvalidDataException("Compiled package manifest root is invalid.");
+        KeyValuePair<string, JsonNode?> property = rootObject.FirstOrDefault(item =>
+            StringComparer.OrdinalIgnoreCase.Equals(item.Key, "tileWorlds"));
+        JsonArray array = property.Value as JsonArray
+            ?? throw new InvalidDataException("Compiled package manifest omitted TileWorld declarations.");
+        if (array.Count != definitions.Count)
+            throw new InvalidDataException("Compiled package TileWorld declaration count changed unexpectedly.");
+        for (int i = 0; i < definitions.Count; i++)
+        {
+            JsonObject item = array[i] as JsonObject
+                ?? throw new InvalidDataException("Compiled package contains an invalid TileWorld declaration.");
+            string pathProperty = item.Select(pair => pair.Key).FirstOrDefault(key =>
+                StringComparer.OrdinalIgnoreCase.Equals(key, "path")) ?? "path";
+            item[pathProperty] = ContentAssetCompiler.CompiledTileWorldPath(definitions[i].Path);
+            string? buildProperty = item.Select(pair => pair.Key).FirstOrDefault(key =>
+                StringComparer.OrdinalIgnoreCase.Equals(key, "build"));
+            if (buildProperty is not null) item.Remove(buildProperty);
+        }
+        File.WriteAllText(manifestPath, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private static List<OutputFileHash> HashPackageOutput(string staging, GraphNode node)

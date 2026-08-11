@@ -7,6 +7,7 @@ using GameEngine.Core.Domain.Graphics;
 using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.Animation;
 using GameEngine.Features.Tilemaps.Domain;
+using GameEngine.Features.TileWorlds.Domain;
 using GameEngine.Features.TextureAssets.Domain;
 
 public static class AssetPackageManifestParser
@@ -43,11 +44,12 @@ public static class AssetPackageManifestParser
         var audioClips = ParseAudioClips(document.AudioClips);
         var tileSets = ParseTileSets(document.TileSets);
         var tileMaps = ParseTileMaps(document.TileMaps);
+        var tileWorlds = ParseTileWorlds(document.TileWorlds);
         var atlas = ParseAtlas(document.Atlas, textures);
         if (dependencies.Count == 0 && textures.Count == 0 && sprites.Count == 0 && animations.Count == 0 &&
-            audioClips.Count == 0 && tileSets.Count == 0 && tileMaps.Count == 0)
+            audioClips.Count == 0 && tileSets.Count == 0 && tileMaps.Count == 0 && tileWorlds.Count == 0)
             throw new InvalidDataException(
-                "An asset package must contain at least one dependency, Texture, Sprite, Animation, Audio clip, TileSet or TileMap.");
+                "An asset package must contain at least one dependency, Texture, Sprite, Animation, Audio clip, TileSet, TileMap or TileWorld.");
 
         return new AssetPackageManifest(
             document.SchemaVersion,
@@ -59,7 +61,70 @@ public static class AssetPackageManifestParser
             audioClips,
             atlas,
             tileSets,
-            tileMaps);
+            tileMaps,
+            tileWorlds);
+    }
+
+    private static IReadOnlyList<TileWorldAssetDefinition> ParseTileWorlds(List<TileWorldDto?>? source)
+    {
+        if (source is null) return Array.Empty<TileWorldAssetDefinition>();
+        var result = new TileWorldAssetDefinition[source.Count];
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < source.Count; i++)
+        {
+            TileWorldDto item = source[i]
+                ?? throw new InvalidDataException($"TileWorld entry {i} is null.");
+            if (string.IsNullOrWhiteSpace(item.Name))
+                throw new InvalidDataException($"TileWorld entry {i} has no name.");
+            if (!names.Add(item.Name))
+                throw new InvalidDataException($"TileWorld '{item.Name}' appears more than once.");
+            if (string.IsNullOrWhiteSpace(item.Path))
+                throw new InvalidDataException($"TileWorld '{item.Name}' has no path.");
+
+            TileWorldAssetBuildDefinition? build = null;
+            if (item.Build is { } sourceBuild)
+            {
+                if (sourceBuild.Bounds is null)
+                    throw new InvalidDataException($"TileWorld '{item.Name}' build requires bounds.");
+                TileWorldBoundsDto bounds = sourceBuild.Bounds;
+                TileWorldChunkBounds parsedBounds;
+                try
+                {
+                    parsedBounds = new TileWorldChunkBounds(
+                        bounds.MinX, bounds.MinY, bounds.MaxX, bounds.MaxY);
+                }
+                catch (ArgumentOutOfRangeException exception)
+                {
+                    throw new InvalidDataException($"TileWorld '{item.Name}' has invalid bounds.", exception);
+                }
+                int lodCount = sourceBuild.LodCount ?? 1;
+                if (lodCount is <= 0 or > 8)
+                    throw new InvalidDataException($"TileWorld '{item.Name}' lodCount must be in 1..8.");
+                PixelSizeI rasterSize = sourceBuild.RasterChunkSize is { } size
+                    ? ParsePositiveSize(size, $"TileWorld '{item.Name}' rasterChunkSize")
+                    : new PixelSizeI(512, 512);
+                AtlasPageEncoding encoding = sourceBuild.Encoding?.Trim().ToLowerInvariant() switch
+                {
+                    null or "" or "webplossless" => AtlasPageEncoding.WebpLossless,
+                    "png" => AtlasPageEncoding.Png,
+                    _ => throw new InvalidDataException(
+                        $"TileWorld '{item.Name}' has unknown encoding '{sourceBuild.Encoding}'.")
+                };
+                TextureSampler sampling = ParseSampler(sourceBuild.Sampling);
+                int gutter = sourceBuild.Gutter ?? 2;
+                if (gutter is < 0 or > 16)
+                    throw new InvalidDataException($"TileWorld '{item.Name}' gutter must be in 0..16.");
+                build = new TileWorldAssetBuildDefinition(
+                    parsedBounds, lodCount, rasterSize, encoding, sampling, gutter);
+            }
+            else if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetExtension(item.Path), ".mgworld"))
+            {
+                throw new InvalidDataException(
+                    $"Authored TileWorld '{item.Name}' requires build settings; compiled paths must use .mgworld.");
+            }
+            result[i] = new TileWorldAssetDefinition(item.Name, item.Path, build);
+        }
+        return result;
     }
 
     private static IReadOnlyList<TileSetAssetDefinition> ParseTileSets(List<TileSetDto?>? source)
@@ -467,6 +532,7 @@ public static class AssetPackageManifestParser
         public List<AudioClipDto?>? AudioClips { get; init; }
         public List<TileSetDto?>? TileSets { get; init; }
         public List<TileMapDto?>? TileMaps { get; init; }
+        public List<TileWorldDto?>? TileWorlds { get; init; }
         public AtlasDto? Atlas { get; init; }
     }
 
@@ -545,6 +611,31 @@ public static class AssetPackageManifestParser
     {
         public string? Name { get; init; }
         public string? Path { get; init; }
+    }
+
+    internal sealed class TileWorldDto
+    {
+        public string? Name { get; init; }
+        public string? Path { get; init; }
+        public TileWorldBuildDto? Build { get; init; }
+    }
+
+    internal sealed class TileWorldBuildDto
+    {
+        public TileWorldBoundsDto? Bounds { get; init; }
+        public int? LodCount { get; init; }
+        public SizeIntDto? RasterChunkSize { get; init; }
+        public string? Encoding { get; init; }
+        public string? Sampling { get; init; }
+        public int? Gutter { get; init; }
+    }
+
+    internal sealed class TileWorldBoundsDto
+    {
+        public int MinX { get; init; }
+        public int MinY { get; init; }
+        public int MaxX { get; init; }
+        public int MaxY { get; init; }
     }
 
     internal sealed class RectDto

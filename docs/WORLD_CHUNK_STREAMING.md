@@ -99,7 +99,7 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 
 ## 与 LOD、Content 和绘制的边界
 
-当前切片只决定 Chunk 的空间驻留，不选择 LOD。下一阶段的离线多级 LOD/切片编译器可以为同一个 `WorldChunkCoordinate` 生成多级产物；运行时 LOD 策略再根据 `ViewportSnapshot.Zoom` 选择具体 lease。该扩展不应把 Content 或 GPU 所有权塞回 Viewport。
+当前切片只决定 Chunk 的空间驻留，不选择 LOD。离线编译器已经提供权威 LOD0 `.mgworld` Chunk、碰撞、索引校验和逻辑 Package 租约；下一阶段生成 LOD1+ WebP Layer，再由运行时策略根据 `ViewportSnapshot.Zoom` 选择具体 lease。该扩展不应把 Content 或 GPU 所有权塞回 Viewport。格式与使用见 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)。
 
 推荐每个 Chunk 的资源边界如下：
 

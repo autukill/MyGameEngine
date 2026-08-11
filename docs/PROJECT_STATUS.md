@@ -2,7 +2,7 @@
 
 更新日期：2026-08-11
 
-项目处于 Phase 1.x：最小引擎闭环已经可运行，并开始由真实游戏灰盒反向验证开发体验。当前解决方案共 80 个 .NET 项目、仓库共 81 个项目；22 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
+项目处于 Phase 1.x：最小引擎闭环已经可运行，并开始由真实游戏灰盒反向验证开发体验。当前解决方案共 82 个 .NET 项目、仓库共 83 个项目；23 个正式/基础 Feature 模块保持垂直切片，`Engine.Hosting` 作为开发者入口组合根。
 
 ## 已完成
 
@@ -29,13 +29,13 @@
 - `StencilMaskGroupRef` 支持多 owner 共享组；`RequestStencilMasks` 允许单 owner 批量提交几何，同时保持一套 Pass/RenderTarget。
 - `GameApplicationBuilder`、默认 2D 渲染预设与强类型 `Default2DGameContext` 已统一接管窗口事件、内容、Scene 帧循环、resize 和逆序资源清理。
 - Runner 已迁移到 Hosting API，不再手工持有 Shader、Batch、Library、RenderTarget、Pipeline 或窗口回调。
-- 24 个无窗口冒烟/集成项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、Shader/Material 清单、编译产物、动态 owner、Hosting、Bloom/Tone Mapping/Presentation 设置、池所有权、CLI 诊断、外部分发以及 Animation/Audio/Text/Transform/WorldStreaming 基础。
+- 25 个无窗口冒烟/集成项目覆盖领域值、生命周期、渲染状态、资源资产、Atlas、Shader/Material 清单、编译产物、动态 owner、Hosting、Bloom/Tone Mapping/Presentation 设置、池所有权、CLI 诊断、外部分发以及 Animation/Audio/Text/Transform/WorldStreaming/TileWorld 基础。
 - `Engine.Testing.Visual` 提供隐藏固定步长窗口、RGBA8 framebuffer 捕获、PNG 编解码和像素容差比较。
 - 自动 GPU 回归覆盖 Sprite、Shader Program 成功/失败替换、真实圆形/Sprite Alpha Stencil、动态 resize、Bloom、双 Bloom Surface 串联，以及 HDR、LDR GUI、ACES/Reinhard、曝光、resize 和释放，共 17 个 checkpoint。
 - AssetCompiler 可打包为 `gameengine-assets` .NET Tool；ContentPipeline NuGet 包通过 `buildTransitive` 为外部项目提供内置编译器、增量 Build 与 Publish 接入。
 - 内容构建从编译后 Manifest 图生成 `GameAssets.Packages/Sprites/Textures`；Atlas 内部页和已吞并源 Texture 不进入公开 API，标识符冲突在构建期失败。
 - 包集成测试使用临时本地 Feed，真实验证 Tool 安装、带空格路径、Debug/Release、缓存命中与 Publish 边界。
-- `MyGameEngine.GameSdk` 已聚合 24 个正式运行时程序集（包含 Replay、ViewportNavigation 与 WorldStreaming）并声明 Silk.NET/SkiaSharp 依赖；包内不包含源码项目依赖、符号或仓库绝对路径。
+- `MyGameEngine.GameSdk` 已聚合 25 个正式运行时程序集（包含 Replay、ViewportNavigation、WorldStreaming 与 TileWorlds）并声明 Silk.NET/SkiaSharp 依赖；包内不包含源码项目依赖、符号或仓库绝对路径。
 - `MyGameEngine.Templates` 已提供 `dotnet new mygameengine-game`；生成项目包含 Hosting、GameInstance、声明式 WebP 内容与强类型引用，不包含 `ProjectReference`。
 - 分发集成测试使用隔离 CLI Home、NuGet 包目录和临时本地 Feed，真实验证 Pack、模板安装、仓库外 Restore/Build、三帧 smoke run 与 Publish。
 - `MyGameEngine.Cli` 提供 `gameengine doctor`：默认执行无图形副作用的项目与内容诊断，`--probe-opengl` 显式创建隐藏 OpenGL 3.3 Context。
@@ -93,7 +93,7 @@
 - Layer 索引现已在实例加入、切层和改 Depth 时维护稳定有序关系，普通 View Draw 不再重复排序；相同 Depth 保持 Scene 加入顺序，同帧后续 Layer 仍能看到变更。10,000 实例双 View 本机调度由 Layer 索引阶段约 1.185 ms 进一步降至 0.470 ms，排序比较为 0/0。
 - Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；`UseRenderViews` 可声明每个 View 的静态跟随策略，Hosting 惰性创建控制器，Gameplay 仍显式提供和切换运行时目标。
 - Interactive Viewport 提供 `ViewportController` 与固定顺序插件链：Core 以 `PointerId/PointerContact` 统一 Mouse、Touch、Pen，Hosting 按 Pointer 独立捕获到最上层 Render View；主 Camera 或每个 Render View 可声明 Drag、双指 Pinch/平移、Wheel、MouseEdges、Decelerate、Animate、Bounce、SnapZoom、ClampZoom、Snap 和 Clamp。运动统一使用秒与 `EasingKind`，交互中断可选 Pause/Cancel/Ignore，持续目标在 Resize/外部偏移后重新收敛；`ViewportSnapshot` 以 Revision 暴露可见世界边界，稳定更新保持 0 B。
-- 独立 `Engine.Features.WorldStreaming` 消费 `ViewportSnapshot`，以确定性行优先顺序管理 Visible/Preloaded/Retained 三层 Chunk；异步并发、单次 Update 启动量、最大跟踪数、取消、失败重试和唯一 lease 释放均有明确边界，完全加载的稳定 Snapshot 更新保持 0 B。具体 Content/Tile/GPU lease 由游戏 Loader 适配，下一阶段进入离线多级 LOD/切片编译。
+- 独立 `Engine.Features.WorldStreaming` 消费 `ViewportSnapshot`，以确定性行优先顺序管理 Visible/Preloaded/Retained 三层 Chunk；异步并发、单次 Update 启动量、最大跟踪数、取消、失败重试和唯一 lease 释放均有明确边界，完全加载的稳定 Snapshot 更新保持 0 B。独立 `Engine.Features.TileWorlds` 已提供权威 LOD0 RLE/碰撞、版本化 `.mgworld`、SHA-256 Chunk 校验、Content 租约和强类型引用；下一阶段生成 LOD1+ WebP Layer，再连接运行时 LOD 选择与 Loader。
 - 独立 `Engine.PerformanceBenchmarks` 已把多 View 性能实验与 DDD 烟测分离：100/1,000/10,000 实例场景同时报告无剔除/剔除耗时、每 View 候选/Draw/拒绝数与分配量，并以确定性计数、零排序和 `0 B/frame` 作为回归守卫。
 - GPU 回归新增 `multi-render-view-lifecycle`：真实组合主 View HDR Bloom + Tone Mapping 与 0.75 RenderScale observer Tone Mapping，resize 后验证五个活动租约的精确尺寸，逐 View 释放后验证活动效果和租约归零、缓存全部回到 Pool。
 - `games/TheGodTheyMade` 的 Gate 4 工程切片已完成：30 分钟场景状态机组合水闸、湿遗迹、葬礼价值选择、无操作恢复和有限三联壁画；Game 呈现相应灰盒视觉并用程序短音反馈钟/雨/闸/葬礼。40 项无窗口检查覆盖三条完整 108,000 Tick 历史、确定性、版本化 Gameplay Command Journal 与 Gate 聚合判定；结构化 Playtest Report 可留存终局、学习轨迹和 Hash，严格审计 CLI 可输出逐项 Gate 结论，Gate 仍等待 5 人外部盲测证据后正式关闭。
@@ -120,7 +120,7 @@
 1. 已建立逻辑 TileSet/TileLayer/TileMap、稀疏 Chunk、负坐标和相机可见 Chunk 渲染，不依赖编辑器 UI。
 2. `assets.json`、ContentPackageManager、AssetCompiler 和强类型生成器已贯通 TileSet/TileMap，复用现有 Texture/Sprite/Atlas 生命周期。
 3. 已提供 Chunk 内静态碰撞贪心烘焙、复用 Buffer、多 Camera 显式可见边界和无窗口回归。
-4. 当前 TileMap 编译产物仍为严格 JSON；Tiled 导入、版本化二进制 Chunk、地图热重载和流式驻留留待后续真实规模驱动。
+4. 小型 TileMap 编译产物继续保留严格 JSON；大型 `tileWorlds` 已编译为版本化 `.mgworld`，包含精确 LOD0 Tile/碰撞与随机读取索引。LOD1+ 视觉 WebP、异步 Loader、地图热重载和流式驻留仍留在后续切片。
 
 ## 当前真实游戏里程碑：《神意难测》Gate 4 外部盲测
 

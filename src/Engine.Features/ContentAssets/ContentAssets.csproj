@@ -13,6 +13,7 @@
     <ProjectReference Include="..\Audio.Vorbis\Audio.Vorbis.csproj" />
     <ProjectReference Include="..\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\Tilemaps\Tilemaps.csproj" />
+    <ProjectReference Include="..\TileWorlds\TileWorlds.csproj" />
     <ProjectReference Include="..\TextureAssets\TextureAssets.csproj" />
   </ItemGroup>
 </Project>

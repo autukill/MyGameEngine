@@ -5,6 +5,7 @@ using GameEngine.Core.Domain.Graphics;
 using GameEngine.Features.Animation;
 using GameEngine.Features.Audio;
 using GameEngine.Features.Tilemaps.Domain;
+using GameEngine.Features.TileWorlds.Domain;
 using GameEngine.Features.TextureAssets.Domain;
 
 public sealed record AssetPackageDependency(
@@ -91,6 +92,19 @@ public sealed record TileMapAssetDefinition(
     string Name,
     string Path);
 
+public sealed record TileWorldAssetBuildDefinition(
+    TileWorldChunkBounds Bounds,
+    int LodCount,
+    PixelSizeI RasterChunkSize,
+    AtlasPageEncoding Encoding,
+    TextureSampler Sampling,
+    int Gutter);
+
+public sealed record TileWorldAssetDefinition(
+    string Name,
+    string Path,
+    TileWorldAssetBuildDefinition? Build);
+
 public sealed class AssetPackageManifest
 {
     public const int CurrentSchemaVersion = 1;
@@ -105,7 +119,8 @@ public sealed class AssetPackageManifest
         IEnumerable<AudioAssetDefinition> audioClips,
         AtlasAssetBuildDefinition? atlas = null,
         IEnumerable<TileSetAssetDefinition>? tileSets = null,
-        IEnumerable<TileMapAssetDefinition>? tileMaps = null)
+        IEnumerable<TileMapAssetDefinition>? tileMaps = null,
+        IEnumerable<TileWorldAssetDefinition>? tileWorlds = null)
     {
         SchemaVersion = schemaVersion;
         Id = id;
@@ -116,6 +131,7 @@ public sealed class AssetPackageManifest
         AudioClips = audioClips.ToArray();
         TileSets = tileSets?.ToArray() ?? [];
         TileMaps = tileMaps?.ToArray() ?? [];
+        TileWorlds = tileWorlds?.ToArray() ?? [];
         Atlas = atlas;
     }
 
@@ -128,5 +144,6 @@ public sealed class AssetPackageManifest
     public IReadOnlyList<AudioAssetDefinition> AudioClips { get; }
     public IReadOnlyList<TileSetAssetDefinition> TileSets { get; }
     public IReadOnlyList<TileMapAssetDefinition> TileMaps { get; }
+    public IReadOnlyList<TileWorldAssetDefinition> TileWorlds { get; }
     public AtlasAssetBuildDefinition? Atlas { get; }
 }

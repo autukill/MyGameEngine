@@ -12,6 +12,7 @@ using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.Tilemaps.Infrastructure;
+using GameEngine.Features.TileWorlds.Domain;
 using SkiaSharp;
 using OggVorbisEncoder;
 
@@ -157,6 +158,57 @@ internal static class Program
             "Packages without dependencies or local assets remain invalid");
         CheckThrows<InvalidDataException>(() => Parse(string.Empty),
             "Empty manifests retain the InvalidDataException contract");
+        var authoredWorld = Parse("""
+            {
+              "schemaVersion": 1,
+              "id": "world.assets",
+              "tileWorlds": [{
+                "name": "world.overworld",
+                "path": "maps/overworld.tilemap.json",
+                "build": {
+                  "bounds": { "minX": -4, "minY": -2, "maxX": 7, "maxY": 5 },
+                  "lodCount": 4,
+                  "rasterChunkSize": { "width": 512, "height": 256 },
+                  "encoding": "webpLossless",
+                  "sampling": "pixelArt",
+                  "gutter": 3
+                }
+              }]
+            }
+            """);
+        Check(authoredWorld.TileWorlds[0].Build is { } worldBuild &&
+              worldBuild.Bounds == new TileWorldChunkBounds(-4, -2, 7, 5) &&
+              worldBuild.LodCount == 4 && worldBuild.RasterChunkSize == new PixelSizeI(512, 256) &&
+              worldBuild.Encoding == AtlasPageEncoding.WebpLossless && worldBuild.Gutter == 3,
+            "Authored TileWorld build policy parses as a strict versioned asset declaration");
+        var compiledWorld = Parse("""
+            {
+              "schemaVersion": 1,
+              "id": "world.runtime",
+              "tileWorlds": [{ "name": "world.overworld", "path": "maps/overworld.mgworld" }]
+            }
+            """);
+        Check(compiledWorld.TileWorlds[0].Build is null,
+            "Compiled TileWorld manifests retain only the runtime archive path");
+        CheckThrows<InvalidDataException>(() => Parse("""
+            {
+              "schemaVersion": 1,
+              "id": "bad.world",
+              "tileWorlds": [{
+                "name": "bad", "path": "bad.tilemap.json",
+                "build": { "bounds": { "minX": 2, "minY": 0, "maxX": 1, "maxY": 1 } }
+              }]
+            }
+            """),
+            "TileWorld build bounds must be ordered");
+        CheckThrows<InvalidDataException>(() => Parse("""
+            {
+              "schemaVersion": 1,
+              "id": "bad.world",
+              "tileWorlds": [{ "name": "bad", "path": "bad.tilemap.json" }]
+            }
+            """),
+            "Uncompiled TileWorld sources cannot omit build settings");
         CheckThrows<InvalidDataException>(() => Parse("""
             { "schemaVersion": 1, "id": "bad", "textures": [], "sprites": [
               { "name": "bad", "layout": "frames", "frames": [{}],

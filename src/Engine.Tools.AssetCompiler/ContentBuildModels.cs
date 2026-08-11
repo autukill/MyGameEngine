@@ -30,4 +30,6 @@ public sealed record ContentBuildResult(
     int ReusedPackageCount,
     int AtlasPageCount,
     int PackedFrameCount,
-    int PassthroughFrameCount);
+    int PassthroughFrameCount,
+    int TileWorldCount = 0,
+    int TileWorldChunkCount = 0);
