@@ -16,6 +16,7 @@ internal static class Program
     private static int Main()
     {
         VerifyRegisteredPcmPlayback();
+        VerifyStreamingPcmQueuePlayback();
         VerifyDeclarativeWavPackagePlayback();
 
         Console.WriteLine(_failures == 0
@@ -49,9 +50,39 @@ internal static class Program
         Check(library.Remove(clip), "Registered PCM Clip can be removed");
     }
 
+    private static void VerifyStreamingPcmQueuePlayback()
+    {
+        Console.WriteLine("2. Queued streaming PCM playback/lifetime or silent fallback");
+        var library = new AudioLibrary();
+        var factory = new GeneratedStreamFactory(frameCount: 48_000, channels: 2, sampleRate: 48_000);
+        var metadata = new AudioClipMetadata(
+            TimeSpan.FromSeconds(1),
+            Channels: 2,
+            SampleRate: 48_000,
+            Streaming: true);
+        AudioClipRef clip = library.RegisterStreaming(
+            "backend.streaming",
+            "generated://streaming",
+            in metadata,
+            factory);
+
+        using IAudioBackend backend = OpenAlAudioBackend.CreateOrSilent(out _, library);
+        AudioVoiceMix mix = new(0f, 0f, 1f, Loop: true);
+        AudioClipDescriptor descriptor = library.Get(clip);
+        AudioBackendVoice voice = backend.Play(in descriptor, in mix);
+        backend.Update();
+        Check(!voice.IsEmpty && backend.IsPlaying(voice),
+            "Streaming Clip starts and remains live while queued data is serviced");
+        backend.Stop(voice);
+        Check(!backend.IsPlaying(voice), "Stopping a streaming Voice releases its playback instance");
+        Check(backend is SilentAudioBackend || factory.OpenCount == 1 && factory.DisposeCount == 1,
+            "OpenAL owns exactly one decoder per streaming Voice and disposes it on Stop");
+        Check(library.Remove(clip), "Streaming Clip registration can be removed independently");
+    }
+
     private static void VerifyDeclarativeWavPackagePlayback()
     {
-        Console.WriteLine("2. Declarative assets.json WAV package -> backend playback");
+        Console.WriteLine("3. Declarative assets.json WAV package -> backend playback");
         string root = Directory.CreateTempSubdirectory("mygame-openal-assets-").FullName;
         try
         {
@@ -203,6 +234,63 @@ internal static class Program
 
         public void DeleteTexture(uint handle)
         {
+        }
+    }
+
+    private sealed class GeneratedStreamFactory(int frameCount, int channels, int sampleRate) : IAudioStreamFactory
+    {
+        public int OpenCount { get; private set; }
+        public int DisposeCount { get; private set; }
+
+        public IAudioStreamSource Open()
+        {
+            OpenCount++;
+            return new GeneratedStreamSource(frameCount, channels, sampleRate, () => DisposeCount++);
+        }
+    }
+
+    private sealed class GeneratedStreamSource(
+        int frameCount,
+        int channels,
+        int sampleRate,
+        Action disposed) : IAudioStreamSource
+    {
+        private bool _disposed;
+
+        public AudioSampleFormat Format => AudioSampleFormat.Signed16;
+        public int Channels { get; } = channels;
+        public int SampleRate { get; } = sampleRate;
+        public long FrameCount { get; } = frameCount;
+        public long PositionFrames { get; private set; }
+        public int BytesPerFrame => Channels * sizeof(short);
+
+        public int ReadFrames(Span<byte> destination)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (destination.Length % BytesPerFrame != 0)
+                throw new ArgumentException("Destination must contain complete frames.", nameof(destination));
+            int read = (int)Math.Min(destination.Length / BytesPerFrame, FrameCount - PositionFrames);
+            Span<short> samples = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, short>(
+                destination[..(read * BytesPerFrame)]);
+            for (var i = 0; i < samples.Length; i++)
+                samples[i] = (short)((PositionFrames + i / Channels) % 128);
+            PositionFrames += read;
+            return read;
+        }
+
+        public void Seek(long frameOffset)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (frameOffset < 0 || frameOffset > FrameCount)
+                throw new ArgumentOutOfRangeException(nameof(frameOffset));
+            PositionFrames = frameOffset;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            disposed();
         }
     }
 }
