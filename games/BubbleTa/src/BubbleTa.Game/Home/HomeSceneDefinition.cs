@@ -5,130 +5,98 @@ using BubbleTa.Game.Content;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Hosting;
 
-internal static class HomeSceneDefinition
-{
-    public static void Configure(Default2DGameContext context, bool smoke)
-    {
+internal static class HomeSceneDefinition {
+    public static void Configure( Default2DGameContext context, bool smoke ) {
         context.Camera.Position = new Vector2(
             HomeSceneLayout.CameraPosition.X,
-            HomeSceneLayout.CameraPosition.Y);
+            HomeSceneLayout.CameraPosition.Y );
         context.Camera.Zoom = 1f;
         context.Scene.Background = BackgroundConfig.Black;
 
-        context.Scene.Add(new StaticHomeSpriteInstance(
-            GameAssets.Sprites.BubbletaHomeBackground,
-            HomeSceneLayout.BackgroundPosition,
-            Vector2D.One,
-            10_000));
+        context.Scene.Add( new StaticHomeSpriteInstance( GameAssets.Sprites.BubbletaHomeBackground, HomeSceneLayout.BackgroundPosition,
+            Vector2D.One, 10_000 ) );
 
-        AddMeteors(context);
-        AddSpots(context);
-        AddStars(context);
+        AddMeteors( context );
+        AddSpots( context );
+        AddStars( context );
 
-        context.Scene.Add(new HomeBubbleInstance(
-            GameAssets.Sprites.BubbletaHomeBubble,
-            HomeSceneLayout.BubblePosition));
-        context.Scene.Add(new HomeCloudInstance(
-            GameAssets.Sprites.BubbletaHomeCloud,
-            HomeSceneLayout.CloudPosition));
-        context.Scene.Add(HomeCharacterInstance.CreateHero(
-            GameAssets.Sprites.BubbletaHomeHeroBase,
-            GameAssets.Sprites.BubbletaHomeHeroEffect));
-        context.Scene.Add(HomeCharacterInstance.CreateSnow(
-            GameAssets.Sprites.BubbletaHomeSnow));
-        context.Scene.Add(HomeCharacterInstance.CreateKing(
-            GameAssets.Sprites.BubbletaHomeKing));
+        context.Scene.Add( new HomeBubbleInstance( GameAssets.Sprites.BubbletaHomeBubble, HomeSceneLayout.BubblePosition ) );
+        context.Scene.Add( new HomeCloudInstance( GameAssets.Sprites.BubbletaHomeCloud, HomeSceneLayout.CloudPosition ) );
+        context.Scene.Add(
+            HomeCharacterInstance.CreateHero( GameAssets.Sprites.BubbletaHomeHeroBase, GameAssets.Sprites.BubbletaHomeHeroEffect ) );
+        context.Scene.Add( HomeCharacterInstance.CreateSnow( GameAssets.Sprites.BubbletaHomeSnow ) );
+        context.Scene.Add( HomeCharacterInstance.CreateKing( GameAssets.Sprites.BubbletaHomeKing ) );
 
-        AddLogos(context);
+        AddLogos( context );
 
-        context.Scene.Add(new HomeWorldButtonInstance(
-            GameAssets.Sprites.BubbletaHomeWorldEnter,
-            screen => context.TryScreenToWorld(screen, out Vector2D world, out _)
+        context.Scene.Add( new HomeWorldButtonInstance( GameAssets.Sprites.BubbletaHomeWorldEnter,
+            screen => context.TryScreenToWorld( screen, out Vector2D world, out _ )
                 ? world
                 : null,
-            () => context.Scenes.SwitchTo(GameScenes.WorldMap)));
-        context.Scene.Add(new StaticHomeSpriteInstance(
+            () => context.Scenes.SwitchTo( GameScenes.WorldMap ) ) );
+        context.Scene.Add( new StaticHomeSpriteInstance(
             GameAssets.Sprites.BubbletaHomeSettings,
             HomeSceneLayout.SettingsPosition,
             Vector2D.One,
-            -18));
-        context.Scene.Add(new HomeSceneController(context.Close));
+            -18 ) );
+        context.Scene.Add( new HomeSceneController( context.Close ) );
 
-        if (smoke) context.Scene.Add(new HomeSmokeProbe());
+        if ( smoke ) context.Scene.Add( new HomeSmokeProbe() );
     }
 
-    private static void AddMeteors(Default2DGameContext context)
-    {
+    private static void AddMeteors( Default2DGameContext context ) {
         ReadOnlySpan<Vector2D> placements = HomeSceneLayout.Meteors;
-        for (int i = 0; i < placements.Length; i++)
-        {
-            context.Scene.Add(new HomeMeteorInstance(
+        for (int i = 0; i < placements.Length; i++) {
+            context.Scene.Add( new HomeMeteorInstance(
                 GameAssets.Sprites.BubbletaHomeMeteor,
                 placements[i],
-                HomeSceneLayout.SeedFor(i)));
+                HomeSceneLayout.SeedFor( i ) ) );
         }
     }
 
-    private static void AddSpots(Default2DGameContext context)
-    {
+    private static void AddSpots( Default2DGameContext context ) {
         ReadOnlySpan<Vector2D> placements = HomeSceneLayout.Spots;
-        for (int i = 0; i < placements.Length; i++)
-        {
-            context.Scene.Add(new HomeSpotInstance(
+        for (int i = 0; i < placements.Length; i++) {
+            context.Scene.Add( new HomeSpotInstance(
                 GameAssets.Sprites.BubbletaHomeSpot,
                 placements[i],
-                HomeSceneLayout.SeedFor(100 + i)));
+                HomeSceneLayout.SeedFor( 100 + i ) ) );
         }
     }
 
-    private static void AddStars(Default2DGameContext context)
-    {
-        foreach (SpritePlacement placement in HomeSceneLayout.Stars)
-        {
-            context.Scene.Add(new HomeStarInstance(
+    private static void AddStars( Default2DGameContext context ) {
+        foreach ( SpritePlacement placement in HomeSceneLayout.Stars ) {
+            context.Scene.Add( new HomeStarInstance(
                 GameAssets.Sprites.BubbletaHomeStar,
-                placement));
+                placement ) );
         }
     }
 
-    private static void AddLogos(Default2DGameContext context)
-    {
-        var sprites = new SpriteRef[]
-        {
-            GameAssets.Sprites.BubbletaHomeLogo01,
-            GameAssets.Sprites.BubbletaHomeLogo02,
-            GameAssets.Sprites.BubbletaHomeLogo03,
-            GameAssets.Sprites.BubbletaHomeLogo04,
-            GameAssets.Sprites.BubbletaHomeLogo05,
-            GameAssets.Sprites.BubbletaHomeLogo06,
-            GameAssets.Sprites.BubbletaHomeLogo07,
-            GameAssets.Sprites.BubbletaHomeLogo08,
-            GameAssets.Sprites.BubbletaHomeLogo09,
-            GameAssets.Sprites.BubbletaHomeLogo10,
-            GameAssets.Sprites.BubbletaHomeLogo11,
-            GameAssets.Sprites.BubbletaHomeLogo12
+    private static void AddLogos( Default2DGameContext context ) {
+        var sprites = new[] {
+            GameAssets.Sprites.BubbletaHomeLogo01, GameAssets.Sprites.BubbletaHomeLogo02, GameAssets.Sprites.BubbletaHomeLogo03,
+            GameAssets.Sprites.BubbletaHomeLogo04, GameAssets.Sprites.BubbletaHomeLogo05, GameAssets.Sprites.BubbletaHomeLogo06,
+            GameAssets.Sprites.BubbletaHomeLogo07, GameAssets.Sprites.BubbletaHomeLogo08, GameAssets.Sprites.BubbletaHomeLogo09,
+            GameAssets.Sprites.BubbletaHomeLogo10, GameAssets.Sprites.BubbletaHomeLogo11, GameAssets.Sprites.BubbletaHomeLogo12
         };
         ReadOnlySpan<LogoPlacement> placements = HomeSceneLayout.Logos;
         for (int i = 0; i < placements.Length; i++)
-            context.Scene.Add(new LogoRevealInstance(sprites[i], placements[i]));
+            context.Scene.Add( new LogoRevealInstance( sprites[i], placements[i] ) );
     }
 }
 
-internal static class WorldMapPlaceholderScene
-{
-    public static void Configure(Default2DGameContext context, bool smoke)
-    {
+internal static class WorldMapPlaceholderScene {
+    public static void Configure( Default2DGameContext context, bool smoke ) {
         context.Camera.Position = Vector2.Zero;
         context.Camera.Zoom = 1f;
         context.Scene.Background = BackgroundConfig.FromColor(
-            new Vector4(.035f, .12f, .24f, 1f));
-        context.Scene.Add(new StaticHomeSpriteInstance(
+            new Vector4( .035f, .12f, .24f, 1f ) );
+        context.Scene.Add( new StaticHomeSpriteInstance(
             GameAssets.Sprites.BubbletaHomeWorldEnter,
-            new Vector2D(360f, 640f),
+            new Vector2D( 360f, 640f ),
             Vector2D.One,
-            0));
-        context.Scene.Add(new WorldMapPlaceholderController(
-            () => context.Scenes.SwitchTo(GameScenes.Home)));
-        if (smoke) context.Scene.Add(new WorldMapSmokeProbe(context.Close));
+            0 ) );
+        context.Scene.Add( new WorldMapPlaceholderController( () => context.Scenes.SwitchTo( GameScenes.Home ) ) );
+        if ( smoke ) context.Scene.Add( new WorldMapSmokeProbe( context.Close ) );
     }
 }

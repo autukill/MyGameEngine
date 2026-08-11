@@ -75,6 +75,19 @@ internal static class Program
         bubble.OnStep(.16d);
         Check(bubble.Scale.X >= 1f, "Bubble must enter its pulse after reveal.");
 
+        var synchronizedBubble = new HomeBubbleInstance(
+            new SpriteRef("test.bubble.synchronized"), HomeSceneLayout.BubblePosition);
+        var synchronizedSnow = HomeCharacterInstance.CreateSnow(
+            new SpriteRef("test.snow.synchronized"));
+        synchronizedBubble.OnStep(.95d);
+        synchronizedSnow.OnStep(.95d);
+        AssertBubbleAndSnowPhase(synchronizedBubble, synchronizedSnow,
+            "Bubble and Snow must share their idle phase after reveal.");
+        synchronizedBubble.OnStep(1d);
+        synchronizedSnow.OnStep(1d);
+        AssertBubbleAndSnowPhase(synchronizedBubble, synchronizedSnow,
+            "Bubble and Snow must remain synchronized at the far endpoint.");
+
         var cloud = new HomeCloudInstance(
             new SpriteRef("test.cloud"), HomeSceneLayout.CloudPosition);
         cloud.OnStep(2d);
@@ -83,6 +96,16 @@ internal static class Program
         cloud.OnStep(1.2d);
         Near(cloud.Position.Y, HomeSceneLayout.CloudPosition.Y + 20f, .001f,
             "Cloud must reach the bottom of its bob.");
+    }
+
+    private static void AssertBubbleAndSnowPhase(
+        HomeBubbleInstance bubble,
+        HomeCharacterInstance snow,
+        string message)
+    {
+        float bubblePhase = (1.02f - bubble.Scale.X) / .02f;
+        float snowPhase = (snow.Position.Y - HomeSceneLayout.SnowPosition.Y) / 20f;
+        Near(bubblePhase, snowPhase, .001f, message);
     }
 
     private static void CharacterEntranceAndIdle()

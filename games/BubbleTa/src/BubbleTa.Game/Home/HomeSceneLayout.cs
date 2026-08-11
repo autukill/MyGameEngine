@@ -88,6 +88,19 @@ internal static class HomeSceneLayout
 
 internal static class HomeAnimationMath
 {
+    public const double CharacterIdleStart = .75d;
+    public const double CharacterBobOneWayDuration = 1.2d;
+
+    public static double CharacterBobPhase(double elapsed)
+    {
+        if (!double.IsFinite(elapsed) || elapsed < 0d)
+            throw new ArgumentOutOfRangeException(nameof(elapsed));
+
+        return elapsed < CharacterIdleStart
+            ? 0d
+            : PingPong(elapsed - CharacterIdleStart, CharacterBobOneWayDuration);
+    }
+
     public static double PingPong(double elapsed, double oneWayDuration)
     {
         if (!double.IsFinite(elapsed) || elapsed < 0d)
