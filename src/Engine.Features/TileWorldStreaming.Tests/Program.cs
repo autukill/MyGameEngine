@@ -34,6 +34,8 @@ internal static class Program
             VerifyNonBlockingLodRetirement(fixture));
         Run("Zoom-out freezes detailed residency until coarse LOD takes over", () =>
             VerifyZoomOutDoesNotExpandDetailedResidency(fixture));
+        Run("Single-LOD panorama uses Preview when Chunk budget is exceeded", () =>
+            VerifySingleLodBudgetFallback(fixture));
         Run("Session retains coarse fallback until detailed coverage is complete", () => VerifySession(fixture));
         Console.WriteLine(_failures == 0
             ? "=== All TileWorldStreaming smoke tests passed ==="
@@ -229,6 +231,53 @@ internal static class Program
         TileWorldStreamingUpdateResult result = session.Update(panorama);
         Check(result.DesiredLevel == 2 && session.ActiveLevel == 2,
             "Coarsest LOD should take over without expanding LOD0 beyond its tracked-chunk cap.");
+    }
+
+    private static void VerifySingleLodBudgetFallback(WorldFixture fixture)
+    {
+        var decoder = new FakeDecoder();
+        var backend = new FakeTextureBackend();
+        using var textures = new TextureLibrary(backend, decoder);
+        var options = new TileWorldStreamingOptions(
+            new TileWorldLodSelectionOptions(1f, 0.1f),
+            new WorldChunkStreamingOptions(
+                preloadMarginChunks: 0,
+                retainMarginChunks: 0,
+                maximumConcurrentLoads: 1,
+                maximumTrackedChunks: 2,
+                retryFailedOnViewportChange: true,
+                maximumLoadsStartedPerUpdate: 1),
+            TileWorldChunkLoadMode.Inline,
+            new TileWorldTextureUploadBudget(4, 1_024 * 1_024));
+        using var session = new TileWorldStreamingSession(
+            fixture.SingleLodDescriptor,
+            fixture.TileSets,
+            textures,
+            decoder,
+            options);
+
+        ViewportSnapshot panorama = Snapshot(0f, 0f, 16f, 4f, 0.1f, 600);
+        TileWorldStreamingUpdateResult panoramaUpdate = session.Update(panorama);
+        TileWorldStreamingDiagnostics panoramaDiagnostics = session.CaptureDiagnostics();
+        var batch = new RecordingBatch();
+        TileWorldDrawStatistics panoramaDraw = session.Draw(batch);
+        Check(panoramaUpdate.IsUsingBudgetFallback &&
+              panoramaUpdate.RequiredRetainedChunks == 4 &&
+              panoramaDiagnostics.IsUsingBudgetFallback &&
+              panoramaDiagnostics.Fallback.TrackedCount == 0 &&
+              panoramaDraw.FallbackSurfaceQuads == 4,
+            "An oversized single-LOD panorama should stay within the hard Chunk budget and draw Preview regions");
+        long fallbackAllocated = MeasureStableUpdates(session, panorama);
+        Check(fallbackAllocated == 0,
+            $"A stable Preview budget fallback should allocate 0 B, actual {fallbackAllocated:N0} B");
+
+        ViewportSnapshot detail = Snapshot(0f, 0f, 4f, 4f, 1f, 601);
+        TileWorldStreamingUpdateResult detailUpdate = session.Update(detail);
+        TileWorldStreamingDiagnostics detailDiagnostics = session.CaptureDiagnostics();
+        Check(!detailUpdate.IsUsingBudgetFallback &&
+              detailUpdate.RequiredRetainedChunks == 0 &&
+              detailDiagnostics.Fallback.TrackedCount == 1,
+            "Zooming into a budget-sized region should automatically resume LOD0 Chunk streaming");
     }
 
     private static async Task VerifyNonBlockingLodRetirement(WorldFixture fixture)
@@ -567,10 +616,41 @@ internal static class Program
                         [rasterLod1, rasterLod2],
                         [fallback]));
             Descriptor = new TileWorldDescriptor(metadata.Ref, archivePath, metadata);
+
+            TileWorldArchiveBuild singleLod0 = TileWorldArchiveBuilder.BuildLod0(
+                map,
+                TileSets,
+                new TileWorldChunkBounds(0, 0, 3, 0),
+                1,
+                new TileWorldRasterSettings(4, 4, 1, TileWorldRasterSampling.PixelArt));
+            var singleLodMetadata = new TileWorldMetadata(
+                "stream.single-lod",
+                singleLod0.Metadata.ChunkWidth,
+                singleLod0.Metadata.ChunkHeight,
+                singleLod0.Metadata.TileSize,
+                singleLod0.Metadata.Bounds,
+                singleLod0.Metadata.DeclaredLodCount,
+                singleLod0.Metadata.RasterSettings,
+                singleLod0.Metadata.Layers,
+                [fallback.Metadata]);
+            string singleLodArchivePath = Path.Combine(_directory, "stream-single-lod.mgworld");
+            using (FileStream stream = File.Create(singleLodArchivePath))
+                TileWorldArchiveWriter.Write(
+                    stream,
+                    new TileWorldArchiveBuild(
+                        singleLodMetadata,
+                        singleLod0.Chunks,
+                        [],
+                        [fallback]));
+            SingleLodDescriptor = new TileWorldDescriptor(
+                singleLodMetadata.Ref,
+                singleLodArchivePath,
+                singleLodMetadata);
         }
 
         public TileSetLibrary TileSets { get; }
         public TileWorldDescriptor Descriptor { get; }
+        public TileWorldDescriptor SingleLodDescriptor { get; }
 
         public void Dispose()
         {

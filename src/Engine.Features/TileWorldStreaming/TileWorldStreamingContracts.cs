@@ -79,7 +79,9 @@ public readonly record struct TileWorldStreamingUpdateResult(
     int FailuresObserved,
     int TexturesUploaded = 0,
     long TextureBytesUploaded = 0,
-    int RetiringLevels = 0);
+    int RetiringLevels = 0,
+    bool IsUsingBudgetFallback = false,
+    long RequiredRetainedChunks = 0);
 
 public readonly record struct TileWorldStreamingDiagnostics(
     int DesiredLevel,
@@ -92,7 +94,9 @@ public readonly record struct TileWorldStreamingDiagnostics(
     bool HasFallbackSurfaces = false,
     bool FallbackSurfacesReady = false,
     int ResidentFallbackSurfaces = 0,
-    int RetiringLevels = 0);
+    int RetiringLevels = 0,
+    bool IsUsingBudgetFallback = false,
+    long RequiredRetainedChunks = 0);
 
 public readonly record struct TileWorldDrawStatistics(
     int RasterQuads,

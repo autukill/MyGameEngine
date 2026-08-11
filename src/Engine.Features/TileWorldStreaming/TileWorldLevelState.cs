@@ -43,6 +43,12 @@ internal sealed class TileWorldLevelState : IDisposable
     public WorldChunkLayout Layout { get; }
     public WorldChunkStreamer<TileWorldChunkLease> Streamer { get; }
 
+    public long GetRequiredRetainedChunkCount(in ViewportSnapshot viewport) =>
+        Layout.GetRange(viewport.VisibleWorldBounds, _options.RetainMarginChunks).Count;
+
+    public bool CanTrack(in ViewportSnapshot viewport) =>
+        GetRequiredRetainedChunkCount(viewport) <= _options.MaximumTrackedChunks;
+
     public WorldChunkUpdateResult Update(
         in ViewportSnapshot viewport,
         TextureLibrary textures,
@@ -52,6 +58,12 @@ internal sealed class TileWorldLevelState : IDisposable
         WorldChunkUpdateResult result = Streamer.Update(viewport);
         CommitLoadedRange(viewport, textures, ref uploadBudget);
         return result;
+    }
+
+    public WorldChunkUpdateResult Suspend()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return Streamer.Suspend();
     }
 
     public bool IsVisibleReady(in ViewportSnapshot viewport)

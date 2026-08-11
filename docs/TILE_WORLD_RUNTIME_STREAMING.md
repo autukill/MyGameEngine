@@ -117,6 +117,25 @@ Texture 上传仍超预算，再独立评估 PBO 或共享上传 Context/Fence�
 `Inline` 模式主要用于无窗口测试、离线工具或确定知道 Chunk 很小的场景。它仍保持显式 Commit
 边界，但归档读取和图片解码会占用调用线程，不建议作为大型地图默认值。
 
+## 单 LOD、Preview 与 Chunk 预算
+
+`lodCount: 1` 是合法配置，但意味着从局部细节到全景都只能使用 LOD0。以 `20×20` Chunk 地图为例，
+全景可能需要数百个 LOD0 Chunk；若它超过 `MaximumTrackedChunks`，运行时不会为了填满画面而偷偷突破
+硬预算。
+
+当清单声明了 `fallbackSurfaces` 时，`TileWorldStreamingSession` 会暂停超预算 Level 的 Chunk 流，取消
+在途工作并释放已加载 Lease，画面由 Preview Surface 保底。放大到所需 Retained Chunk 数重新落入预算后，
+同一个 Session 会自动恢复 LOD0 流式加载。可通过以下字段观察这次降级：
+
+- `TileWorldStreamingUpdateResult.IsUsingBudgetFallback`
+- `TileWorldStreamingUpdateResult.RequiredRetainedChunks`
+- `TileWorldStreamingDiagnostics.IsUsingBudgetFallback`
+- `TileWorldStreamingDiagnostics.RequiredRetainedChunks`
+
+若没有 Preview Surface，超预算仍明确抛错，因为引擎没有能够保证画面完整的替代来源。此时应增加离线
+LOD、声明 Preview、缩小可见范围，或经过内存/显存测量后提高 `MaximumTrackedChunks`；不建议把提高上限
+作为默认解法。
+
 ## Preview、Fallback 与无空洞替换
 
 当前 Fallback 是 `.mgworld` 中最粗的生成 LOD，其 Streamer 状态在 Session 生命周期内始终保留，

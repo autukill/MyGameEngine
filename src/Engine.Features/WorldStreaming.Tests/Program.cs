@@ -20,6 +20,7 @@ internal static class Program
         Run("Failure retry on Viewport revision", FailureRetry);
         Run("Observer failures preserve loaded state", ObserverFailureIsolation);
         Run("Tracked budget is atomic", TrackedBudget);
+        Run("Suspension releases residency and permits resume", SuspensionAndResume);
         Run("Lease lifecycle and idempotent Dispose", LeaseLifecycle);
         Run("Stable snapshot allocation", StableAllocation);
 
@@ -171,6 +172,27 @@ internal static class Program
             streamer.Update(Snapshot(0f, 0f, 1_024f, 1_024f, 1)));
         Check(streamer.TrackedCount == 0 && streamer.LastViewportRevision == 0,
             "An oversized desired set fails before mutating streamer state");
+    }
+
+    private static void SuspensionAndResume()
+    {
+        var loader = new ImmediateLoader();
+        using var streamer = new WorldChunkStreamer<TestLease>(
+            new WorldChunkLayout(new Vector2(256f)),
+            loader,
+            new WorldChunkStreamingOptions(0, 0, 4, 16));
+        ViewportSnapshot snapshot = Snapshot(0f, 0f, 512f, 512f, 1);
+        streamer.Update(snapshot);
+
+        WorldChunkUpdateResult suspended = streamer.Suspend();
+        Check(suspended.DesiredSetChanged && suspended.ChunksUnloaded == 4 &&
+              streamer.TrackedCount == 0 && loader.DisposedCount == 4,
+            "Suspend should release loaded residency without retiring the Streamer");
+
+        WorldChunkUpdateResult resumed = streamer.Update(snapshot);
+        Check(resumed.DesiredSetChanged && streamer.TrackedCount == 4 &&
+              loader.CreatedCount == 8,
+            "A suspended Streamer should resume from the next Viewport update");
     }
 
     private static void ObserverFailureIsolation()

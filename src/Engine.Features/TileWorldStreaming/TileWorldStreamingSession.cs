@@ -38,6 +38,8 @@ public sealed class TileWorldStreamingSession : IDisposable
     private TileWorldLevelState? _pending;
     private ViewportSnapshot _lastViewport;
     private int _desiredLevel;
+    private bool _isUsingBudgetFallback;
+    private long _requiredRetainedChunks;
     private bool _hasViewport;
     private bool _disposed;
 
@@ -122,14 +124,29 @@ public sealed class TileWorldStreamingSession : IDisposable
         int failures = 0;
         bool levelChanged = false;
 
-        Accumulate(_fallback.Update(viewport, _textures, ref uploadBudget),
-            ref started, ref completed, ref unloaded, ref failures);
+        _isUsingBudgetFallback = false;
+        _requiredRetainedChunks = 0;
+
+        bool fallbackTrackable = TryUpdateOrUseBudgetFallback(
+            _fallback,
+            viewport,
+            ref uploadBudget,
+            ref started,
+            ref completed,
+            ref unloaded,
+            ref failures);
         // When zoom selects another LOD, keep the current level frozen as a visual bridge. Updating
         // it with the new Viewport can make a detailed level expand across the whole zoomed-out
         // world before the coarse candidate takes over, defeating both the residency cap and LOD.
         if (!ReferenceEquals(_active, _fallback) && _desiredLevel == _active.Level)
-            Accumulate(_active.Update(viewport, _textures, ref uploadBudget),
-                ref started, ref completed, ref unloaded, ref failures);
+            TryUpdateOrUseBudgetFallback(
+                _active,
+                viewport,
+                ref uploadBudget,
+                ref started,
+                ref completed,
+                ref unloaded,
+                ref failures);
 
         if (_desiredLevel == _active.Level)
         {
@@ -138,7 +155,8 @@ public sealed class TileWorldStreamingSession : IDisposable
         else if (_desiredLevel == _fallback.Level)
         {
             RetirePending();
-            if (_fallback.IsVisibleReady(viewport))
+            if ((fallbackTrackable && _fallback.IsVisibleReady(viewport)) ||
+                (!fallbackTrackable && FallbackSurfacesReady))
             {
                 TileWorldLevelState previous = _active;
                 _active = _fallback;
@@ -153,9 +171,15 @@ public sealed class TileWorldStreamingSession : IDisposable
                 RetirePending();
                 _pending = CreateLevel(_desiredLevel);
             }
-            Accumulate(_pending.Update(viewport, _textures, ref uploadBudget),
-                ref started, ref completed, ref unloaded, ref failures);
-            if (_pending.IsVisibleReady(viewport))
+            bool pendingTrackable = TryUpdateOrUseBudgetFallback(
+                _pending,
+                viewport,
+                ref uploadBudget,
+                ref started,
+                ref completed,
+                ref unloaded,
+                ref failures);
+            if (pendingTrackable && _pending.IsVisibleReady(viewport))
             {
                 TileWorldLevelState previous = _active;
                 _active = _pending;
@@ -176,7 +200,9 @@ public sealed class TileWorldStreamingSession : IDisposable
             failures,
             uploadBudget.TexturesUploaded,
             uploadBudget.BytesUploaded,
-            _retiredLevels.Count);
+            _retiredLevels.Count,
+            _isUsingBudgetFallback,
+            _requiredRetainedChunks);
     }
 
     public TileWorldDrawStatistics Draw(
@@ -274,7 +300,9 @@ public sealed class TileWorldStreamingSession : IDisposable
             HasFallbackSurfaces,
             FallbackSurfacesReady,
             ResidentFallbackSurfaceCount,
-            _retiredLevels.Count);
+            _retiredLevels.Count,
+            _isUsingBudgetFallback,
+            _requiredRetainedChunks);
     }
 
     public void Dispose()
@@ -325,6 +353,37 @@ public sealed class TileWorldStreamingSession : IDisposable
         (!ReferenceEquals(_active, _fallback) && _desiredLevel == _fallback.Level
             ? _fallback.Level
             : null);
+
+    private bool TryUpdateOrUseBudgetFallback(
+        TileWorldLevelState level,
+        in ViewportSnapshot viewport,
+        ref TileWorldTextureUploadBudgetState uploadBudget,
+        ref int started,
+        ref int completed,
+        ref int unloaded,
+        ref int failures)
+    {
+        long required = level.GetRequiredRetainedChunkCount(viewport);
+        if (required <= _options.ChunkStreaming.MaximumTrackedChunks)
+        {
+            Accumulate(level.Update(viewport, _textures, ref uploadBudget),
+                ref started, ref completed, ref unloaded, ref failures);
+            return true;
+        }
+
+        if (!HasFallbackSurfaces)
+        {
+            // Preserve WorldChunkStreamer's explicit hard failure when no visual fallback exists.
+            Accumulate(level.Update(viewport, _textures, ref uploadBudget),
+                ref started, ref completed, ref unloaded, ref failures);
+            return false;
+        }
+
+        Accumulate(level.Suspend(), ref started, ref completed, ref unloaded, ref failures);
+        _isUsingBudgetFallback = true;
+        _requiredRetainedChunks = Math.Max(_requiredRetainedChunks, required);
+        return false;
+    }
 
     private int CountMissingActive(WorldChunkRange range)
     {

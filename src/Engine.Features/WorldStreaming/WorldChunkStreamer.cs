@@ -82,6 +82,49 @@ public sealed class WorldChunkStreamer<TChunk> : IDisposable
         return new WorldChunkUpdateResult(changed, started, completed, unloaded, failures);
     }
 
+    /// <summary>
+    /// Clears the current desired set without retiring the Streamer. Loaded leases are released,
+    /// in-flight work is cancelled, and a later <see cref="Update"/> can resume normal streaming.
+    /// </summary>
+    public WorldChunkUpdateResult Suspend()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_retiring)
+            throw new InvalidOperationException(
+                "A retiring WorldChunkStreamer cannot be suspended.");
+
+        bool changed = _hasDesiredSet;
+        _hasDesiredSet = false;
+        int completed = 0;
+        int failures = 0;
+        int unloaded = 0;
+        HarvestCompleted(ref completed, ref failures, ref unloaded);
+
+        _removeScratch.Clear();
+        foreach ((WorldChunkCoordinate coordinate, Entry entry) in _entries)
+        {
+            if (entry.State == WorldChunkLoadState.Loading)
+            {
+                entry.Cancellation!.Cancel();
+                continue;
+            }
+            if (entry.Chunk is { } chunk)
+            {
+                entry.Chunk = null;
+                chunk.Dispose();
+                unloaded++;
+                ChunkUnloaded?.Invoke(new WorldChunkUnloadedEvent(coordinate));
+            }
+            entry.Cancellation?.Dispose();
+            entry.Cancellation = null;
+            _removeScratch.Add(coordinate);
+        }
+        for (int index = 0; index < _removeScratch.Count; index++)
+            _entries.Remove(_removeScratch[index]);
+
+        return new WorldChunkUpdateResult(changed, 0, completed, unloaded, failures);
+    }
+
     public bool TryGetChunk(WorldChunkCoordinate coordinate, out TChunk? chunk)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);

@@ -102,6 +102,8 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 - 失败默认只在 Viewport Revision 再次变化且 Chunk 仍被需要时重试，避免稳定画面每帧重试损坏资源。
 - `Dispose` 幂等。Scene 通常拥有自己的 Streamer，并应在销毁 Scene 内容之前先释放它。
 - `BeginRetirement/DrainRetirement` 保证热替换不等待在途 Loader，同时让最终 lease 仍在调用线程释放。
+- `Suspend()` 清空当前 Desired Set、取消在途加载并释放已完成 Lease，但不终结 Streamer；后续
+  `Update(snapshot)` 会重新建立驻留集。它适合上层 LOD/Preview 策略在硬预算降级期间临时停流。
 
 `CaptureDiagnostics()` 提供 Pending、Loading、Loaded、Failed 以及三层驻留计数，不暴露 Loader 或 GPU 句柄。相同且已完全加载的 Snapshot 重复更新保持 `0 B` 托管分配。
 
