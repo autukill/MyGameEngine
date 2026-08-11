@@ -164,15 +164,25 @@ internal static class TileWorldLosslessWebpEncoder
     public static byte[] Encode(TileWorldRasterLayerImage image)
     {
         ArgumentNullException.ThrowIfNull(image);
+        return Encode(image.EncodedWidth, image.EncodedHeight, image.RgbaPixels);
+    }
+
+    public static byte[] Encode(int width, int height, byte[] rgbaPixels)
+    {
+        ArgumentNullException.ThrowIfNull(rgbaPixels);
+        if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
+        if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
+        if (rgbaPixels.Length != checked(width * height * 4))
+            throw new ArgumentException("RGBA pixel length does not match dimensions.", nameof(rgbaPixels));
         using var destination = new MemoryStream();
         var config = new WebPEncoderConfig()
             .SetLosslessPreset(9)
             .SetExact();
         WebPEncoder.Encode(
-            image.RgbaPixels,
-            image.EncodedWidth,
-            image.EncodedHeight,
-            checked(image.EncodedWidth * 4),
+            rgbaPixels,
+            width,
+            height,
+            checked(width * 4),
             WebPPixelFormat.Rgba,
             config,
             destination);

@@ -10,16 +10,19 @@ public sealed class TileWorldArchiveBuild
     public TileWorldArchiveBuild(
         TileWorldMetadata metadata,
         IReadOnlyList<TileWorldChunkData> chunks,
-        IReadOnlyList<TileWorldRasterChunkData>? rasterChunks = null)
+        IReadOnlyList<TileWorldRasterChunkData>? rasterChunks = null,
+        IReadOnlyList<TileWorldFallbackSurfaceData>? fallbackSurfaces = null)
     {
         Metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
         Chunks = chunks ?? throw new ArgumentNullException(nameof(chunks));
         RasterChunks = rasterChunks ?? [];
+        FallbackSurfaces = fallbackSurfaces ?? [];
     }
 
     public TileWorldMetadata Metadata { get; }
     public IReadOnlyList<TileWorldChunkData> Chunks { get; }
     public IReadOnlyList<TileWorldRasterChunkData> RasterChunks { get; }
+    public IReadOnlyList<TileWorldFallbackSurfaceData> FallbackSurfaces { get; }
     public int TotalChunkCount => checked(Chunks.Count + RasterChunks.Count);
 }
 
@@ -43,10 +46,20 @@ public static class TileWorldArchiveWriter
             .Concat(build.RasterChunks.Select(chunk => EncodeRasterChunk(build.Metadata, chunk)))
             .OrderBy(chunk => chunk.Key)
             .ToArray();
+        TileWorldFallbackSurfaceData[] fallbackSurfaces = build.FallbackSurfaces
+            .OrderBy(surface => surface.LayerIndex)
+            .ToArray();
         if (chunks.Length > TileWorldArchiveFormat.MaximumChunks)
             throw new InvalidDataException("TileWorld contains too many Chunk payloads.");
         if (chunks.Select(chunk => chunk.Key).Distinct().Count() != chunks.Length)
             throw new InvalidDataException("TileWorld contains duplicate Chunk keys.");
+        if (fallbackSurfaces.Select(surface => surface.LayerIndex).Distinct().Count() !=
+            fallbackSurfaces.Length)
+            throw new InvalidDataException("TileWorld contains duplicate fallback surface layers.");
+        if (!fallbackSurfaces.Select(surface => surface.Metadata).SequenceEqual(
+                build.Metadata.FallbackSurfaces))
+            throw new InvalidDataException(
+                "TileWorld fallback surface payloads do not match metadata.");
         foreach (EncodedChunk chunk in chunks)
         {
             if (chunk.Key.Level >= build.Metadata.DeclaredLodCount)
@@ -82,8 +95,22 @@ public static class TileWorldArchiveWriter
             TileWorldArchiveFormat.WriteUInt32(index, BitConverter.SingleToUInt32Bits(layer.Offset.Y));
             index.WriteByte(layer.Visible ? (byte)1 : (byte)0);
         }
+        TileWorldArchiveFormat.WriteInt32(index, fallbackSurfaces.Length);
+        foreach (TileWorldFallbackSurfaceData surface in fallbackSurfaces)
+        {
+            TileWorldArchiveFormat.WriteInt32(index, surface.LayerIndex);
+            TileWorldArchiveFormat.WriteInt32(index, surface.Width);
+            TileWorldArchiveFormat.WriteInt32(index, surface.Height);
+            TileWorldArchiveFormat.WriteInt32(index, (int)surface.Encoding);
+            TileWorldArchiveFormat.WriteInt32(index, (int)surface.Sampling);
+            TileWorldArchiveFormat.WriteInt32(index, surface.EncodedBytes.Length);
+            index.Write(SHA256.HashData(surface.EncodedBytes));
+        }
         TileWorldArchiveFormat.WriteInt32(index, chunks.Length);
-        long payloadOffset = checked(index.Length + (long)chunks.Length * TileWorldArchiveFormat.EntryLength);
+        long payloadOffset = checked(
+            index.Length +
+            (long)chunks.Length * TileWorldArchiveFormat.EntryLength +
+            fallbackSurfaces.Sum(surface => (long)surface.EncodedBytes.Length));
         foreach (EncodedChunk chunk in chunks)
         {
             TileWorldArchiveFormat.WriteInt32(index, chunk.Key.Level);
@@ -100,6 +127,8 @@ public static class TileWorldArchiveWriter
         destination.Position = 0;
         index.Position = 0;
         index.CopyTo(destination);
+        foreach (TileWorldFallbackSurfaceData surface in fallbackSurfaces)
+            destination.Write(surface.EncodedBytes);
         foreach (EncodedChunk chunk in chunks) destination.Write(chunk.Payload);
         destination.Flush();
     }

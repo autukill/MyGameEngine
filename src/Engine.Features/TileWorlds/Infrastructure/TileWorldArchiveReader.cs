@@ -14,13 +14,21 @@ public sealed class TileWorldArchiveReader : IDisposable
         int Length,
         byte[] Hash);
 
+    private sealed record FallbackEntry(
+        TileWorldFallbackSurfaceMetadata Metadata,
+        long Offset,
+        int Length,
+        byte[] Hash);
+
     private readonly Stream _stream;
     private readonly bool _leaveOpen;
     private readonly Dictionary<TileWorldChunkKey, Entry> _entries = [];
+    private readonly FallbackEntry[] _fallbackEntries = [];
     private bool _disposed;
 
     public TileWorldMetadata Metadata { get; }
     public int ChunkCount => _entries.Count;
+    public int FallbackSurfaceCount => _fallbackEntries.Length;
 
     public TileWorldArchiveReader(Stream stream, bool leaveOpen = false)
     {
@@ -72,15 +80,66 @@ public sealed class TileWorldArchiveReader : IDisposable
                 layers[i] = new TileWorldLayerMetadata(
                     layerName, new TileSetRef(tileSetName), depth, new Vector2(offsetX, offsetY), visible == 1);
             }
+            int fallbackCount = TileWorldArchiveFormat.ReadInt32(stream);
+            if (fallbackCount is < 0 or > TileWorldArchiveFormat.MaximumLayers)
+                throw new InvalidDataException("TileWorld fallback surface count exceeds the format limit.");
+            var fallbackMetadata = new TileWorldFallbackSurfaceMetadata[fallbackCount];
+            var fallbackLengths = new int[fallbackCount];
+            var fallbackHashes = new byte[fallbackCount][];
+            int previousFallbackLayer = -1;
+            for (int index = 0; index < fallbackCount; index++)
+            {
+                int layerIndex = TileWorldArchiveFormat.ReadInt32(stream);
+                int width = TileWorldArchiveFormat.ReadInt32(stream);
+                int height = TileWorldArchiveFormat.ReadInt32(stream);
+                int encodingValue = TileWorldArchiveFormat.ReadInt32(stream);
+                int samplingValue = TileWorldArchiveFormat.ReadInt32(stream);
+                int length = TileWorldArchiveFormat.ReadInt32(stream);
+                if (layerIndex <= previousFallbackLayer || (uint)layerIndex >= (uint)layerCount ||
+                    !Enum.IsDefined((TileWorldRasterEncoding)encodingValue) ||
+                    !Enum.IsDefined((TileWorldRasterSampling)samplingValue) ||
+                    length is <= 0 or > TileWorldArchiveFormat.MaximumPayloadBytes)
+                    throw new InvalidDataException("TileWorld fallback surface metadata is invalid.");
+                byte[] hash = new byte[TileWorldArchiveFormat.HashLength];
+                stream.ReadExactly(hash);
+                fallbackMetadata[index] = new TileWorldFallbackSurfaceMetadata(
+                    layerIndex,
+                    width,
+                    height,
+                    (TileWorldRasterEncoding)encodingValue,
+                    (TileWorldRasterSampling)samplingValue);
+                fallbackLengths[index] = length;
+                fallbackHashes[index] = hash;
+                previousFallbackLayer = layerIndex;
+            }
             Metadata = new TileWorldMetadata(
-                name, chunkWidth, chunkHeight, tileSize, bounds, lodCount, rasterSettings, layers);
+                name,
+                chunkWidth,
+                chunkHeight,
+                tileSize,
+                bounds,
+                lodCount,
+                rasterSettings,
+                layers,
+                fallbackMetadata);
             int chunkCount = TileWorldArchiveFormat.ReadInt32(stream);
             if (chunkCount is < 0 or > TileWorldArchiveFormat.MaximumChunks)
                 throw new InvalidDataException("TileWorld Chunk count exceeds the format limit.");
             long indexEnd = checked(stream.Position + (long)chunkCount * TileWorldArchiveFormat.EntryLength);
             if (indexEnd > stream.Length)
                 throw new InvalidDataException("TileWorld Chunk index is truncated.");
+            _fallbackEntries = new FallbackEntry[fallbackCount];
             long previousEnd = indexEnd;
+            for (int index = 0; index < fallbackCount; index++)
+            {
+                int length = fallbackLengths[index];
+                long end = checked(previousEnd + length);
+                if (end > stream.Length)
+                    throw new InvalidDataException("TileWorld fallback surface payload is truncated.");
+                _fallbackEntries[index] = new FallbackEntry(
+                    fallbackMetadata[index], previousEnd, length, fallbackHashes[index]);
+                previousEnd = end;
+            }
             TileWorldChunkKey? previousKey = null;
             for (int i = 0; i < chunkCount; i++)
             {
@@ -105,7 +164,7 @@ public sealed class TileWorldArchiveReader : IDisposable
                 if ((key.Level == 0) != (kind == TileWorldChunkPayloadKind.AuthoritativeTiles))
                     throw new InvalidDataException($"TileWorld Chunk '{key}' has an invalid payload kind for its level.");
                 if (length < 0 || length > TileWorldArchiveFormat.MaximumPayloadBytes ||
-                    offset < indexEnd || offset < previousEnd || checked(offset + length) > stream.Length)
+                    offset < indexEnd || offset != previousEnd || checked(offset + length) > stream.Length)
                     throw new InvalidDataException($"TileWorld Chunk '{key}' has invalid payload bounds.");
                 if (!_entries.TryAdd(key, new Entry(kind, offset, length, hash)))
                     throw new InvalidDataException($"TileWorld Chunk key '{key}' appears more than once.");
@@ -140,6 +199,39 @@ public sealed class TileWorldArchiveReader : IDisposable
         return _entries.TryGetValue(key, out Entry? entry)
             ? entry.Kind
             : throw new KeyNotFoundException($"TileWorld Chunk '{key}' does not exist.");
+    }
+
+    public TileWorldFallbackSurfaceData ReadFallbackSurface(int layerIndex)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        FallbackEntry? entry = null;
+        for (int index = 0; index < _fallbackEntries.Length; index++)
+        {
+            if (_fallbackEntries[index].Metadata.LayerIndex != layerIndex) continue;
+            entry = _fallbackEntries[index];
+            break;
+        }
+        if (entry is null)
+            throw new KeyNotFoundException(
+                $"TileWorld fallback surface for layer '{layerIndex}' does not exist.");
+        byte[] payload = ReadAndValidatePayload(
+            entry.Offset,
+            entry.Length,
+            entry.Hash,
+            $"TileWorld fallback surface for layer '{layerIndex}'");
+        if (entry.Metadata.Encoding != TileWorldRasterEncoding.WebpLossless ||
+            payload.Length < 12 ||
+            !payload.AsSpan(0, 4).SequenceEqual("RIFF"u8) ||
+            !payload.AsSpan(8, 4).SequenceEqual("WEBP"u8))
+            throw new InvalidDataException(
+                $"TileWorld fallback surface for layer '{layerIndex}' is not a WebP payload.");
+        return new TileWorldFallbackSurfaceData(
+            entry.Metadata.LayerIndex,
+            entry.Metadata.Width,
+            entry.Metadata.Height,
+            entry.Metadata.Encoding,
+            entry.Metadata.Sampling,
+            payload);
     }
 
     public TileWorldChunkData ReadChunk(TileWorldChunkKey key)
@@ -183,22 +275,33 @@ public sealed class TileWorldArchiveReader : IDisposable
     }
 
     private byte[] ReadAndValidatePayload(TileWorldChunkKey key, Entry entry)
+        => ReadAndValidatePayload(
+            entry.Offset,
+            entry.Length,
+            entry.Hash,
+            $"TileWorld Chunk '{key}'");
+
+    private byte[] ReadAndValidatePayload(
+        long offset,
+        int length,
+        byte[] hash,
+        string subject)
     {
-        byte[] payload = new byte[entry.Length];
+        byte[] payload = new byte[length];
         try
         {
             lock (_stream)
             {
-                _stream.Position = entry.Offset;
+                _stream.Position = offset;
                 _stream.ReadExactly(payload);
             }
         }
         catch (EndOfStreamException exception)
         {
-            throw new InvalidDataException($"TileWorld Chunk '{key}' was truncated after opening.", exception);
+            throw new InvalidDataException($"{subject} was truncated after opening.", exception);
         }
-        if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(payload), entry.Hash))
-            throw new InvalidDataException($"TileWorld Chunk '{key}' failed its integrity check.");
+        if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(payload), hash))
+            throw new InvalidDataException($"{subject} failed its integrity check.");
         return payload;
     }
 

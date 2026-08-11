@@ -56,10 +56,14 @@ public readonly record struct TileWorldStreamingDiagnostics(
     int? PendingLevel,
     WorldChunkStreamingDiagnostics Fallback,
     WorldChunkStreamingDiagnostics Active,
-    WorldChunkStreamingDiagnostics? Pending);
+    WorldChunkStreamingDiagnostics? Pending,
+    bool HasFallbackSurfaces = false,
+    bool FallbackSurfacesReady = false,
+    int ResidentFallbackSurfaces = 0);
 
 public readonly record struct TileWorldDrawStatistics(
     int RasterQuads,
     int TileSprites,
     int MissingActiveChunks,
-    int FallbackQuads);
+    int FallbackQuads,
+    int FallbackSurfaceQuads = 0);

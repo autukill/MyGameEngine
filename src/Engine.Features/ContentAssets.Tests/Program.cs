@@ -171,7 +171,12 @@ internal static class Program
                   "rasterChunkSize": { "width": 512, "height": 256 },
                   "encoding": "webpLossless",
                   "sampling": "pixelArt",
-                  "gutter": 3
+                  "gutter": 3,
+                  "fallbackSurfaces": [{
+                    "layer": "ground",
+                    "path": "maps/preview.webp",
+                    "sampling": "smooth"
+                  }]
                 }
               }]
             }
@@ -179,8 +184,29 @@ internal static class Program
         Check(authoredWorld.TileWorlds[0].Build is { } worldBuild &&
               worldBuild.Bounds == new TileWorldChunkBounds(-4, -2, 7, 5) &&
               worldBuild.LodCount == 4 && worldBuild.RasterChunkSize == new PixelSizeI(512, 256) &&
-              worldBuild.Encoding == AtlasPageEncoding.WebpLossless && worldBuild.Gutter == 3,
+              worldBuild.Encoding == AtlasPageEncoding.WebpLossless && worldBuild.Gutter == 3 &&
+              worldBuild.FallbackSurfaces.SequenceEqual([
+                  new TileWorldFallbackSurfaceAssetDefinition(
+                      "ground", "maps/preview.webp", TextureSampler.Smooth)
+              ]),
             "Authored TileWorld build policy parses as a strict versioned asset declaration");
+        CheckThrows<InvalidDataException>(() => Parse("""
+            {
+              "schemaVersion": 1,
+              "id": "bad.world.fallback",
+              "tileWorlds": [{
+                "name": "bad", "path": "bad.tilemap.json",
+                "build": {
+                  "bounds": { "minX": 0, "minY": 0, "maxX": 1, "maxY": 1 },
+                  "fallbackSurfaces": [
+                    { "layer": "ground", "path": "first.webp" },
+                    { "layer": "ground", "path": "second.webp" }
+                  ]
+                }
+              }]
+            }
+            """),
+            "TileWorld fallback surfaces reject duplicate Layer bindings");
         var compiledWorld = Parse("""
             {
               "schemaVersion": 1,

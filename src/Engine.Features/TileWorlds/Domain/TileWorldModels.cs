@@ -98,9 +98,17 @@ public sealed record TileWorldLayerMetadata(
     Vector2 Offset,
     bool Visible);
 
+public sealed record TileWorldFallbackSurfaceMetadata(
+    int LayerIndex,
+    int Width,
+    int Height,
+    TileWorldRasterEncoding Encoding,
+    TileWorldRasterSampling Sampling);
+
 public sealed class TileWorldMetadata
 {
     private readonly TileWorldLayerMetadata[] _layers;
+    private readonly TileWorldFallbackSurfaceMetadata[] _fallbackSurfaces;
 
     public TileWorldMetadata(
         string name,
@@ -110,7 +118,8 @@ public sealed class TileWorldMetadata
         TileWorldChunkBounds bounds,
         int declaredLodCount,
         TileWorldRasterSettings rasterSettings,
-        IEnumerable<TileWorldLayerMetadata> layers)
+        IEnumerable<TileWorldLayerMetadata> layers,
+        IEnumerable<TileWorldFallbackSurfaceMetadata>? fallbackSurfaces = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("TileWorld name cannot be empty.", nameof(name));
@@ -136,6 +145,21 @@ public sealed class TileWorldMetadata
                 !float.IsFinite(layer.Offset.X) || !float.IsFinite(layer.Offset.Y))
                 throw new ArgumentException("TileWorld layer metadata is invalid.", nameof(layers));
         }
+        _fallbackSurfaces = fallbackSurfaces?.OrderBy(surface => surface.LayerIndex).ToArray() ?? [];
+        if (_fallbackSurfaces.Select(surface => surface.LayerIndex).Distinct().Count() !=
+            _fallbackSurfaces.Length)
+            throw new ArgumentException(
+                "TileWorld fallback surface layer indices must be unique.", nameof(fallbackSurfaces));
+        foreach (TileWorldFallbackSurfaceMetadata surface in _fallbackSurfaces)
+        {
+            if ((uint)surface.LayerIndex >= (uint)_layers.Length ||
+                !_layers[surface.LayerIndex].Visible ||
+                surface.Width is <= 0 or > 16_384 || surface.Height is <= 0 or > 16_384 ||
+                (long)surface.Width * surface.Height > 67_108_864L ||
+                !Enum.IsDefined(surface.Encoding) || !Enum.IsDefined(surface.Sampling))
+                throw new ArgumentException(
+                    "TileWorld fallback surface metadata is invalid.", nameof(fallbackSurfaces));
+        }
         Name = name;
         ChunkWidth = chunkWidth;
         ChunkHeight = chunkHeight;
@@ -154,6 +178,7 @@ public sealed class TileWorldMetadata
     public int DeclaredLodCount { get; }
     public TileWorldRasterSettings RasterSettings { get; }
     public IReadOnlyList<TileWorldLayerMetadata> Layers => _layers;
+    public IReadOnlyList<TileWorldFallbackSurfaceMetadata> FallbackSurfaces => _fallbackSurfaces;
 
     public Vector2 BaseChunkWorldSize => new(ChunkWidth * TileSize.X, ChunkHeight * TileSize.Y);
 
@@ -260,4 +285,42 @@ public sealed class TileWorldRasterChunkData
 
     public TileWorldChunkKey Key { get; }
     public IReadOnlyList<TileWorldRasterLayerData> Layers => _layers;
+}
+
+public sealed record TileWorldFallbackSurfaceData
+{
+    public TileWorldFallbackSurfaceData(
+        int layerIndex,
+        int width,
+        int height,
+        TileWorldRasterEncoding encoding,
+        TileWorldRasterSampling sampling,
+        byte[] encodedBytes)
+    {
+        if (layerIndex < 0) throw new ArgumentOutOfRangeException(nameof(layerIndex));
+        if (width is <= 0 or > 16_384) throw new ArgumentOutOfRangeException(nameof(width));
+        if (height is <= 0 or > 16_384) throw new ArgumentOutOfRangeException(nameof(height));
+        if ((long)width * height > 67_108_864L)
+            throw new ArgumentOutOfRangeException(nameof(width), "Fallback surface exceeds the pixel limit.");
+        if (!Enum.IsDefined(encoding)) throw new ArgumentOutOfRangeException(nameof(encoding));
+        if (!Enum.IsDefined(sampling)) throw new ArgumentOutOfRangeException(nameof(sampling));
+        ArgumentNullException.ThrowIfNull(encodedBytes);
+        if (encodedBytes.Length == 0)
+            throw new ArgumentException("Encoded fallback surface cannot be empty.", nameof(encodedBytes));
+        LayerIndex = layerIndex;
+        Width = width;
+        Height = height;
+        Encoding = encoding;
+        Sampling = sampling;
+        EncodedBytes = encodedBytes;
+    }
+
+    public int LayerIndex { get; }
+    public int Width { get; }
+    public int Height { get; }
+    public TileWorldRasterEncoding Encoding { get; }
+    public TileWorldRasterSampling Sampling { get; }
+    public byte[] EncodedBytes { get; }
+    public TileWorldFallbackSurfaceMetadata Metadata =>
+        new(LayerIndex, Width, Height, Encoding, Sampling);
 }

@@ -44,6 +44,7 @@ internal static class Program
         try
         {
             WriteSolid(Path.Combine(source, "tile.png"), 2, 2, SKColors.Green);
+            WriteSolid(Path.Combine(source, "preview.png"), 3, 2, SKColors.CornflowerBlue);
             File.WriteAllText(Path.Combine(source, "world.tilemap.json"), TileWorldMapManifest);
             File.WriteAllText(Path.Combine(source, "assets.json"), TileWorldPackageManifest);
             var pipeline = new ContentBuildPipeline();
@@ -74,12 +75,28 @@ internal static class Program
             {
                 Check(archive.Metadata.Name == "compiler.world" &&
                       archive.Metadata.DeclaredLodCount == 3 &&
+                      archive.Metadata.FallbackSurfaces.SequenceEqual([
+                          new TileWorldFallbackSurfaceMetadata(
+                              0, 3, 2, TileWorldRasterEncoding.WebpLossless,
+                              TileWorldRasterSampling.Smooth)
+                      ]) &&
                       archive.Metadata.RasterSettings == new TileWorldRasterSettings(
                           256, 256, 2, TileWorldRasterSampling.PixelArt) &&
                       archive.Contains(new TileWorldChunkKey(0, -1, 0)) &&
                       archive.ReadChunk(new TileWorldChunkKey(0, 0, 0))
                           .Layers[0].CollisionRects.Length == 1,
                     "Compiled archive is runtime-readable and retains authoritative collision");
+                TileWorldFallbackSurfaceData fallback = archive.ReadFallbackSurface(0);
+                DecodedImage fallbackDecoded = new SkiaImageDecoder().Decode(
+                    new MemoryStream(fallback.EncodedBytes, writable: false));
+                Check(archive.FallbackSurfaceCount == 1 &&
+                      fallbackDecoded.Width == 3 && fallbackDecoded.Height == 2 &&
+                      fallbackDecoded.RgbaPixels[0] == SKColors.CornflowerBlue.Red &&
+                      fallbackDecoded.RgbaPixels[1] == SKColors.CornflowerBlue.Green &&
+                      fallbackDecoded.RgbaPixels[2] == SKColors.CornflowerBlue.Blue &&
+                      fallbackDecoded.RgbaPixels[3] == 255 &&
+                      !File.Exists(Path.Combine(output, "preview.png")),
+                    "Fallback source is embedded as exact lossless WebP without a loose runtime copy");
                 TileWorldRasterChunkData raster = archive.ReadRasterChunk(
                     new TileWorldChunkKey(1, 0, 0));
                 TileWorldRasterLayerData rasterLayer = raster.Layers.Single();
@@ -123,6 +140,13 @@ internal static class Program
                 "Strongly typed TileWorldRef is generated from the runtime manifest");
 
             string firstFingerprint = first.InputFingerprint;
+            WriteSolid(Path.Combine(source, "preview.png"), 3, 2, SKColors.OrangeRed);
+            ContentBuildResult previewChanged = pipeline.Build(new ContentBuildRequest(
+                source, "assets.json", output, ContentBuildMode.Incremental));
+            Check(previewChanged.Status == ContentBuildStatus.Built &&
+                  previewChanged.InputFingerprint != firstFingerprint,
+                "A fallback surface edit invalidates its owning package fingerprint");
+            firstFingerprint = previewChanged.InputFingerprint;
             File.WriteAllText(
                 Path.Combine(source, "world.tilemap.json"),
                 TileWorldMapManifest.Replace("[1, 0, 0, 0]", "[1, 1, 0, 0]", StringComparison.Ordinal));
@@ -809,7 +833,12 @@ internal static class Program
               "rasterChunkSize": { "width": 256, "height": 256 },
               "encoding": "webpLossless",
               "sampling": "pixelArt",
-              "gutter": 2
+              "gutter": 2,
+              "fallbackSurfaces": [{
+                "layer": "ground",
+                "path": "preview.png",
+                "sampling": "smooth"
+              }]
             }
           }]
         }

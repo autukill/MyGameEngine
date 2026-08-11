@@ -9,7 +9,8 @@ Camera 或 OpenGL。
 ViewportSnapshot
   → TileWorldLodSelector                 Zoom → DesiredLevel，带滞回
   → TileWorldStreamingSession
-       ├─ 常驻最粗生成 LOD 状态          加载/失败/快速移动时的回退
+       ├─ 可选逐 Layer Preview Surface   独立解码并常驻的最后保底
+       ├─ 常驻最粗生成 LOD 状态          加载/失败/快速移动时的首选回退
        ├─ Active Level                   当前稳定绘制层
        └─ Pending Level                  可见 Chunk 全部就绪后原子替换 Active
             → WorldChunkStreamer<TileWorldChunkLease>
@@ -58,7 +59,7 @@ stream.Dispose();
 
 `TileWorldStreamingSession` 不拥有 `TileSetLibrary`、`TextureLibrary` 或 Content Package。推荐由
 GameInstance/Scene Controller 在 `OnCreate` 创建，在 `OnDestroy` 释放。Session 释放顺序固定为
-Pending → Active → Fallback；每个 Chunk Lease 再移除自己注册的 Texture。
+Preview → Pending → Active → Fallback；每个 Lease 再移除自己注册的 Texture。
 
 ## LOD 选择与滞回
 
@@ -98,7 +99,7 @@ Fallback 不受影响。
 `Inline` 模式主要用于无窗口测试、离线工具或确定知道 Chunk 很小的场景。它仍保持显式 Commit
 边界，但归档读取和图片解码会占用调用线程，不建议作为大型地图默认值。
 
-## Fallback 与无空洞替换
+## Preview、Fallback 与无空洞替换
 
 当前 Fallback 是 `.mgworld` 中最粗的生成 LOD，其 Streamer 状态在 Session 生命周期内始终保留，
 具体 Chunk 仍按 Visible/Preloaded/Retained 范围流式驻留。Pending Level 只有在
@@ -112,6 +113,14 @@ Active Level。
 加载失败时旧 Active 保留；通用 Streamer 按 Viewport Revision 的既有策略重试。若旧 Active 的新
 可见区域也尚未到达，则只在缺失区域显示最粗 Fallback。`CaptureDiagnostics()` 可读取 Desired、
 Active、Pending、Fallback Level 及各自 Pending/Loading/Loaded/Failed 计数。
+
+若清单声明 `build.fallbackSurfaces[]`，Session 会独立后台读取并解码这些全世界低清图片，再在
+`Update` 调用线程通过 `TileWorldFallbackSurfaceLease.CommitTextures` 原子上传。它不占用 Chunk
+Streamer 的并发预算，也不等待最粗 LOD；只有对应世界区域连最粗 Chunk 都尚未就绪时，Renderer 才按
+Layer 和世界 `bounds` 裁取 Preview UV。`TileWorldDrawStatistics.FallbackSurfaceQuads` 可单独观察该路径。
+Preview 绑定明确 Layer，因此 `DrawLayer()` 仍能保持 Gameplay 深度穿插边界；扁平全图 Preview 应绑定到
+最底部地表 Layer。
+`CaptureDiagnostics()` 还会报告是否声明、是否就绪以及当前常驻的 Fallback Surface 数量，但不暴露 GPU Handle。
 
 ## 底层组合入口
 
@@ -134,14 +143,15 @@ Lease 的唯一所有权。
 
 ## 当前限制与下一步
 
-- Fallback 当前来自最粗生成 LOD；清单尚不能单独声明 `preview.webp` 全图 Surface。
+- 独立 Preview/Fallback Surface 已支持；未声明时保持最粗生成 LOD 的原有行为。
 - 不同 Session 尚不共享跨 Viewport 的解码结果或 Texture 引用计数。
 - 没有按显存预算降级、LRU、逐 Chunk 热重载或层级淡化。
 - `.mgworld` 仍来自权威 TileMap；历史 `tile_{row}_{column}.webp + preview.webp` 尚未接入
   `preTiledRaster` 导入器。
 - LOD0 碰撞数据已经随 Lease 可用，但视觉 Session 不替 Gameplay 自动建立空间查询索引。
 
-下一切片应先把独立 Preview/Fallback Surface 纳入声明式 TileWorld，再实现既有多切片地图导入；
+下一切片是离线 `preTiledRaster` 导入适配器，把既有多切片地图规范化进相同 `.mgworld` 索引；不要让
+Session 扫描目录或猜测资源语义。实现与测试继续使用小型合成 Fixture，完整历史地图仅留作未来人工验收。
 GPU 预算和跨 View 共享应由真实 12000×12000 样本测量后决定。
 
 ## 验证

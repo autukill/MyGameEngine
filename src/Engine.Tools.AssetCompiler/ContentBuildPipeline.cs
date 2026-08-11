@@ -21,7 +21,7 @@ using GameEngine.Features.TextureAssets.Infrastructure;
 /// </summary>
 public sealed class ContentBuildPipeline
 {
-    public const string CompilerVersion = "8";
+    public const string CompilerVersion = "9";
     public const string MetadataFileName = ".mygame-assets.json";
     private const string OwnerName = "MyGameEngine.AssetCompiler";
     private const int MetadataSchemaVersion = 1;
@@ -391,7 +391,7 @@ public sealed class ContentBuildPipeline
         return node;
     }
 
-    private static void ValidateGraph(IReadOnlyList<GraphNode> graph)
+    private void ValidateGraph(IReadOnlyList<GraphNode> graph)
     {
         var packageDirectories = new HashSet<string>(PathComparer);
         var textureOwners = new Dictionary<string, GraphNode>(StringComparer.Ordinal);
@@ -578,6 +578,27 @@ public sealed class ContentBuildPipeline
                             $"TileWorld '{map.Name}' requires one common Tile size across streamed layers.");
                     commonTileSize = tileSet.TileSize;
                 }
+                foreach (TileWorldFallbackSurfaceAssetDefinition fallback in build.FallbackSurfaces)
+                {
+                    TileLayer? layer = map.Layers.FirstOrDefault(candidate =>
+                        StringComparer.Ordinal.Equals(candidate.Name, fallback.Layer));
+                    if (layer is null)
+                        throw new InvalidDataException(
+                            $"TileWorld '{map.Name}' fallback surface references unknown layer '{fallback.Layer}'.");
+                    if (!layer.Visible)
+                        throw new InvalidDataException(
+                            $"TileWorld '{map.Name}' fallback surface layer '{fallback.Layer}' is hidden.");
+                    string fallbackPath = ResolveUnderRoot(
+                        consumer.PackageDirectory,
+                        fallback.Path,
+                        "TileWorld fallback surface");
+                    using var fallbackStream = File.OpenRead(fallbackPath);
+                    DecodedImage decoded = _imageDecoder.Decode(fallbackStream);
+                    if (decoded.Width is <= 0 or > 16_384 || decoded.Height is <= 0 or > 16_384 ||
+                        (long)decoded.Width * decoded.Height > 67_108_864L)
+                        throw new InvalidDataException(
+                            $"TileWorld '{map.Name}' fallback surface '{fallback.Path}' exceeds the pixel limit.");
+                }
             }
         }
     }
@@ -708,6 +729,21 @@ public sealed class ContentBuildPipeline
                 AppendString(hash, tileWorld.Name);
                 AppendString(hash, relative);
                 AppendFile(hash, source);
+                if (tileWorld.Build is { } build)
+                {
+                    foreach (TileWorldFallbackSurfaceAssetDefinition fallback in
+                             build.FallbackSurfaces.OrderBy(item => item.Layer, StringComparer.Ordinal))
+                    {
+                        string fallbackSource = ResolveUnderRoot(
+                            node.PackageDirectory,
+                            fallback.Path,
+                            "TileWorld fallback surface");
+                        AppendString(hash, fallback.Layer);
+                        AppendString(hash, NormalizeRelativePath(
+                            Path.GetRelativePath(packagesRoot, fallbackSource)));
+                        AppendFile(hash, fallbackSource);
+                    }
+                }
             }
 
             foreach (var dependency in node.Dependencies)
@@ -820,7 +856,56 @@ public sealed class ContentBuildPipeline
                             TileWorldLosslessWebpEncoder.Encode(layer)))));
                 }
             }
-            var archive = new TileWorldArchiveBuild(lod0.Metadata, lod0.Chunks, rasterChunks);
+            var fallbackSurfaces = new List<TileWorldFallbackSurfaceData>(
+                buildDefinition.FallbackSurfaces.Count);
+            foreach (TileWorldFallbackSurfaceAssetDefinition fallback in
+                     buildDefinition.FallbackSurfaces.OrderBy(item => item.Layer, StringComparer.Ordinal))
+            {
+                int layerIndex = -1;
+                for (int index = 0; index < lod0.Metadata.Layers.Count; index++)
+                {
+                    if (!StringComparer.Ordinal.Equals(lod0.Metadata.Layers[index].Name, fallback.Layer))
+                        continue;
+                    layerIndex = index;
+                    break;
+                }
+                if (layerIndex < 0)
+                    throw new InvalidDataException(
+                        $"TileWorld '{definition.Name}' fallback surface references unknown layer '{fallback.Layer}'.");
+                string fallbackPath = ResolveUnderRoot(
+                    node.PackageDirectory,
+                    fallback.Path,
+                    "TileWorld fallback surface");
+                using var fallbackStream = File.OpenRead(fallbackPath);
+                DecodedImage decoded = _imageDecoder.Decode(fallbackStream);
+                fallbackSurfaces.Add(new TileWorldFallbackSurfaceData(
+                    layerIndex,
+                    decoded.Width,
+                    decoded.Height,
+                    TileWorldRasterEncoding.WebpLossless,
+                    fallback.Sampling == TextureSampler.PixelArt
+                        ? TileWorldRasterSampling.PixelArt
+                        : TileWorldRasterSampling.Smooth,
+                    TileWorldLosslessWebpEncoder.Encode(
+                        decoded.Width,
+                        decoded.Height,
+                        decoded.RgbaPixels)));
+            }
+            var metadata = new TileWorldMetadata(
+                lod0.Metadata.Name,
+                lod0.Metadata.ChunkWidth,
+                lod0.Metadata.ChunkHeight,
+                lod0.Metadata.TileSize,
+                lod0.Metadata.Bounds,
+                lod0.Metadata.DeclaredLodCount,
+                lod0.Metadata.RasterSettings,
+                lod0.Metadata.Layers,
+                fallbackSurfaces.Select(surface => surface.Metadata));
+            var archive = new TileWorldArchiveBuild(
+                metadata,
+                lod0.Chunks,
+                rasterChunks,
+                fallbackSurfaces);
             string compiledRelative = ContentAssetCompiler.CompiledTileWorldPath(definition.Path);
             string output = ResolveOutputPath(staging, Path.Combine(relativeDirectory, compiledRelative));
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);

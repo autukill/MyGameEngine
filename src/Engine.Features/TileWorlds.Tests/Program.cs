@@ -82,17 +82,42 @@ internal static class Program
                     layer.Gutter,
                     TileWorldRasterEncoding.WebpLossless,
                     FakeWebp(layer.RgbaPixels))))).ToArray();
-        var build = new TileWorldArchiveBuild(lod0.Metadata, lod0.Chunks, rasterChunks);
+        var fallbackSurface = new TileWorldFallbackSurfaceData(
+            0,
+            2,
+            1,
+            TileWorldRasterEncoding.WebpLossless,
+            TileWorldRasterSampling.Smooth,
+            FakeWebp([1, 2, 3, 4]));
+        var metadata = new TileWorldMetadata(
+            lod0.Metadata.Name,
+            lod0.Metadata.ChunkWidth,
+            lod0.Metadata.ChunkHeight,
+            lod0.Metadata.TileSize,
+            lod0.Metadata.Bounds,
+            lod0.Metadata.DeclaredLodCount,
+            lod0.Metadata.RasterSettings,
+            lod0.Metadata.Layers,
+            [fallbackSurface.Metadata]);
+        var build = new TileWorldArchiveBuild(
+            metadata,
+            lod0.Chunks,
+            rasterChunks,
+            [fallbackSurface]);
         byte[] first = Write(build);
         byte[] second = Write(build);
         using var reader = new TileWorldArchiveReader(new MemoryStream(first, writable: false));
         TileWorldRasterChunkData decoded = reader.ReadRasterChunk(new TileWorldChunkKey(1, 0, 0));
+        TileWorldFallbackSurfaceData decodedFallback = reader.ReadFallbackSurface(0);
         Check(first.SequenceEqual(second) && reader.ChunkCount == lod0.Chunks.Count + rasterChunks.Length &&
+              reader.FallbackSurfaceCount == 1 &&
+              decodedFallback.Metadata == fallbackSurface.Metadata &&
+              decodedFallback.EncodedBytes.SequenceEqual(fallbackSurface.EncodedBytes) &&
               reader.Metadata.TileSize == new Vector2(16, 16) &&
               reader.Metadata.RasterSettings == settings &&
               decoded.Layers.Count == 2 && decoded.Layers[0].EncodedBytes.SequenceEqual(
                   rasterChunks.Single(chunk => chunk.Key == decoded.Key).Layers[0].EncodedBytes),
-            "Raster metadata and encoded per-Layer payloads round-trip deterministically");
+            "Raster metadata, fallback surfaces and per-Layer payloads round-trip deterministically");
         CheckThrows<InvalidOperationException>(
             () => reader.ReadChunk(new TileWorldChunkKey(1, 0, 0)),
             "Raster payloads cannot be decoded through the authoritative Tile API");

@@ -114,8 +114,10 @@ public static class AssetPackageManifestParser
                 int gutter = sourceBuild.Gutter ?? 2;
                 if (gutter is < 0 or > 16)
                     throw new InvalidDataException($"TileWorld '{item.Name}' gutter must be in 0..16.");
+                IReadOnlyList<TileWorldFallbackSurfaceAssetDefinition> fallbackSurfaces =
+                    ParseTileWorldFallbackSurfaces(item.Name, sourceBuild.FallbackSurfaces);
                 build = new TileWorldAssetBuildDefinition(
-                    parsedBounds, lodCount, rasterSize, encoding, sampling, gutter);
+                    parsedBounds, lodCount, rasterSize, encoding, sampling, gutter, fallbackSurfaces);
             }
             else if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetExtension(item.Path), ".mgworld"))
             {
@@ -123,6 +125,35 @@ public static class AssetPackageManifestParser
                     $"Authored TileWorld '{item.Name}' requires build settings; compiled paths must use .mgworld.");
             }
             result[i] = new TileWorldAssetDefinition(item.Name, item.Path, build);
+        }
+        return result;
+    }
+
+    private static IReadOnlyList<TileWorldFallbackSurfaceAssetDefinition> ParseTileWorldFallbackSurfaces(
+        string worldName,
+        List<TileWorldFallbackSurfaceDto?>? source)
+    {
+        if (source is null) return [];
+        var result = new TileWorldFallbackSurfaceAssetDefinition[source.Count];
+        var layers = new HashSet<string>(StringComparer.Ordinal);
+        for (int index = 0; index < source.Count; index++)
+        {
+            TileWorldFallbackSurfaceDto item = source[index]
+                ?? throw new InvalidDataException(
+                    $"TileWorld '{worldName}' fallback surface {index} is null.");
+            if (string.IsNullOrWhiteSpace(item.Layer))
+                throw new InvalidDataException(
+                    $"TileWorld '{worldName}' fallback surface {index} has no layer.");
+            if (!layers.Add(item.Layer))
+                throw new InvalidDataException(
+                    $"TileWorld '{worldName}' repeats fallback surface layer '{item.Layer}'.");
+            if (string.IsNullOrWhiteSpace(item.Path))
+                throw new InvalidDataException(
+                    $"TileWorld '{worldName}' fallback surface for layer '{item.Layer}' has no path.");
+            result[index] = new TileWorldFallbackSurfaceAssetDefinition(
+                item.Layer,
+                item.Path,
+                ParseSampler(item.Sampling));
         }
         return result;
     }
@@ -628,6 +659,14 @@ public static class AssetPackageManifestParser
         public string? Encoding { get; init; }
         public string? Sampling { get; init; }
         public int? Gutter { get; init; }
+        public List<TileWorldFallbackSurfaceDto?>? FallbackSurfaces { get; init; }
+    }
+
+    internal sealed class TileWorldFallbackSurfaceDto
+    {
+        public string? Layer { get; init; }
+        public string? Path { get; init; }
+        public string? Sampling { get; init; }
     }
 
     internal sealed class TileWorldBoundsDto

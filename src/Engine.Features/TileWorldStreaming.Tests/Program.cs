@@ -24,6 +24,10 @@ internal static class Program
         using var fixture = new WorldFixture();
         Run("Zoom thresholds use stable multiplicative hysteresis", () => VerifyLodSelector(fixture));
         await RunAsync("Archive decode and Texture commit keep ownership explicit", () => VerifyLoader(fixture));
+        await RunAsync("Fallback Surface decode and Texture ownership remain explicit", () =>
+            VerifyFallbackSurfaceLoader(fixture));
+        await RunAsync("Fallback Surface covers a visible region while coarse LOD decodes", () =>
+            VerifySessionFallbackSurface(fixture));
         Run("Session retains coarse fallback until detailed coverage is complete", () => VerifySession(fixture));
         Console.WriteLine(_failures == 0
             ? "=== All TileWorldStreaming smoke tests passed ==="
@@ -123,6 +127,83 @@ internal static class Program
         Throws<InvalidOperationException>(() => rollback.CommitTextures(failingTextures));
         Check(failingTextures.Count == 0 && failingBackend.DeleteCount == 1,
             "A later upload failure should roll back textures registered by the same commit.");
+    }
+
+    private static async Task VerifyFallbackSurfaceLoader(WorldFixture fixture)
+    {
+        var decoder = new FakeDecoder();
+        var backend = new FakeTextureBackend();
+        using var textures = new TextureLibrary(backend, decoder);
+        var loader = new TileWorldFallbackSurfaceLoader(
+            fixture.Descriptor,
+            "fallback-loader-test",
+            decoder,
+            TileWorldChunkLoadMode.Inline);
+        using TileWorldFallbackSurfaceLease lease = await loader.LoadAsync(
+            CancellationToken.None);
+        Check(!lease.IsCommitted && lease.Surfaces.Count == 0 && decoder.DecodeCount == 1,
+            "Fallback WebP should decode without touching the GPU.");
+        lease.CommitTextures(textures);
+        Check(lease.IsCommitted && lease.Surfaces.Count == 1 && textures.Count == 1 &&
+              backend.Samplers.Single() == TextureSampler.Smooth,
+            "Main-thread commit should upload the declared per-Layer fallback sampler.");
+        Check(lease.TryGet(0, out _) && !lease.TryGet(1, out _),
+            "Fallback surfaces retain their explicit TileWorld Layer binding.");
+        lease.Dispose();
+        Check(textures.Count == 0 && backend.DeleteCount == 1,
+            "Fallback lease disposal releases its owned Texture exactly once.");
+    }
+
+    private static async Task VerifySessionFallbackSurface(WorldFixture fixture)
+    {
+        var decoder = new BlockingRasterDecoder();
+        var backend = new FakeTextureBackend();
+        using var textures = new TextureLibrary(backend, decoder);
+        var options = new TileWorldStreamingOptions(
+            new TileWorldLodSelectionOptions(1f, 0.1f),
+            new WorldChunkStreamingOptions(
+                preloadMarginChunks: 0,
+                retainMarginChunks: 0,
+                maximumConcurrentLoads: 1,
+                maximumTrackedChunks: 8,
+                retryFailedOnViewportChange: true,
+                maximumLoadsStartedPerUpdate: 1),
+            TileWorldChunkLoadMode.Background);
+        TileWorldStreamingSession? session = null;
+        try
+        {
+            session = new TileWorldStreamingSession(
+                fixture.Descriptor,
+                fixture.TileSets,
+                textures,
+                decoder,
+                options);
+            ViewportSnapshot view = Snapshot(0f, 0f, 4f, 4f, 0.1f, 100);
+            session.Update(view);
+            for (int attempt = 0; attempt < 200 && textures.Count == 0; attempt++)
+            {
+                await Task.Delay(1);
+                session.Update(view);
+            }
+            Check(textures.Count == 1 && decoder.FallbackDecoded,
+                "The small fallback surface should become resident independently of blocked Chunk decode.");
+            TileWorldStreamingDiagnostics diagnostics = session.CaptureDiagnostics();
+            Check(diagnostics.HasFallbackSurfaces && diagnostics.FallbackSurfacesReady &&
+                  diagnostics.ResidentFallbackSurfaces == 1,
+                "Diagnostics expose declared and resident fallback surface state without GPU handles.");
+            var batch = new RecordingBatch();
+            TileWorldDrawStatistics draw = session.Draw(batch);
+            Check(draw.MissingActiveChunks == 1 && draw.FallbackSurfaceQuads == 1 &&
+                  draw.FallbackQuads == 0 && batch.Draws.Count == 1,
+                "A missing coarse Chunk should crop and draw the matching full-world fallback region.");
+            Check(Vector4.Distance(batch.Draws[0].Uv, new Vector4(0f, 0f, 1f, 1f)) < 0.0001f,
+                "A full-world visible region should use the complete fallback UV range.");
+        }
+        finally
+        {
+            decoder.ReleaseRaster();
+            session?.Dispose();
+        }
     }
 
     private static void VerifySession(WorldFixture fixture)
@@ -300,12 +381,29 @@ internal static class Program
                     new TileWorldRasterLayerData(1, 4, 4, 1,
                         TileWorldRasterEncoding.WebpLossless, FakeWebp(29))
                 ]);
+            var fallback = new TileWorldFallbackSurfaceData(
+                0,
+                6,
+                6,
+                TileWorldRasterEncoding.WebpLossless,
+                TileWorldRasterSampling.Smooth,
+                FakeWebp(41));
+            var metadata = new TileWorldMetadata(
+                lod0.Metadata.Name,
+                lod0.Metadata.ChunkWidth,
+                lod0.Metadata.ChunkHeight,
+                lod0.Metadata.TileSize,
+                lod0.Metadata.Bounds,
+                lod0.Metadata.DeclaredLodCount,
+                lod0.Metadata.RasterSettings,
+                lod0.Metadata.Layers,
+                [fallback.Metadata]);
             string archivePath = Path.Combine(_directory, "stream.mgworld");
             using (FileStream stream = File.Create(archivePath))
                 TileWorldArchiveWriter.Write(
                     stream,
-                    new TileWorldArchiveBuild(lod0.Metadata, lod0.Chunks, [raster]));
-            Descriptor = new TileWorldDescriptor(lod0.Metadata.Ref, archivePath, lod0.Metadata);
+                    new TileWorldArchiveBuild(metadata, lod0.Chunks, [raster], [fallback]));
+            Descriptor = new TileWorldDescriptor(metadata.Ref, archivePath, metadata);
         }
 
         public TileSetLibrary TileSets { get; }
@@ -344,6 +442,31 @@ internal static class Program
             }
             return new DecodedImage(6, 6, pixels);
         }
+    }
+
+    private sealed class BlockingRasterDecoder : IImageDecoder
+    {
+        private readonly ManualResetEventSlim _rasterGate = new(false);
+        public bool FallbackDecoded { get; private set; }
+
+        public DecodedImage Decode(Stream stream)
+        {
+            stream.Position = stream.Length - 1;
+            int marker = stream.ReadByte();
+            if (marker == 41)
+                FallbackDecoded = true;
+            else
+                _rasterGate.Wait(TimeSpan.FromSeconds(10));
+            var pixels = new byte[6 * 6 * 4];
+            for (int index = 0; index < pixels.Length; index += 4)
+            {
+                pixels[index] = (byte)marker;
+                pixels[index + 3] = 255;
+            }
+            return new DecodedImage(6, 6, pixels);
+        }
+
+        public void ReleaseRaster() => _rasterGate.Set();
     }
 
     private sealed class FakeTextureBackend : ITextureBackend

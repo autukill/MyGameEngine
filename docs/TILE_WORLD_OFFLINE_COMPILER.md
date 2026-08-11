@@ -30,7 +30,12 @@ LOD1+ 把每个可见 Layer 独立烘焙，保留 Metadata 中的 Depth；不会
       "rasterChunkSize": { "width": 512, "height": 512 },
       "encoding": "webpLossless",
       "sampling": "smooth",
-      "gutter": 2
+      "gutter": 2,
+      "fallbackSurfaces": [{
+        "layer": "ground",
+        "path": "maps/preview.webp",
+        "sampling": "smooth"
+      }]
     }
   }]
 }
@@ -45,6 +50,9 @@ LOD1+ 把每个可见 Layer 独立烘焙，保留 Metadata 中的 Depth；不会
 - `sampling` 为 `smooth` 或 `pixelArt`，决定离线缩放时的双线性或最近邻采样。
 - 当前版本要求同一个 TileWorld 的所有 Layer 使用相同 TileSize。不同 Layer 仍可使用不同 TileSet。
 - Manifest、源地图和输出路径都必须留在对应 Package 根目录内。
+- `fallbackSurfaces` 可选；每项把一张低清全世界图片绑定到一个可见 Layer。同一 Layer 只能声明一次，路径相对所属 Package，`sampling` 独立于 Chunk Raster 设置。
+- Fallback 源图会被重新编码为 exact 无损 WebP 并嵌入 `.mgworld`，运行时目录不保留松散 Preview 文件。
+- Fallback Surface 覆盖声明的完整 `bounds`，只承担加载期视觉连续性，不生成 Tile、碰撞或 Gameplay 数据。扁平的历史 `preview.webp` 通常绑定到最底部地表 Layer；需要透明分层语义时应逐 Layer 提供 Preview。
 
 编译后清单被规范化为：
 
@@ -68,18 +76,22 @@ Magic + Version
 World Metadata
   ├─ 名称、Chunk 尺寸、边界、声明 LOD 数
   └─ Layer 名称、TileSet、Depth、Offset、Visible
+Fallback Surface Index（LayerIndex）
+  └─ LayerIndex、尺寸、Encoding、Sampling、Length、SHA-256
 Chunk Index（Level → Y → X）
   └─ Key、PayloadKind、Offset、Length、SHA-256
+Fallback Surface Payloads
+  └─ 逐 Layer 的 exact 无损 WebP 全图
 Chunk Payloads
-  ├─ 逐 Layer 的 RLE Tile Cell
-  └─ 逐 Layer、逐 Chunk 的合并碰撞矩形
+  ├─ LOD0：逐 Layer 的 RLE Tile Cell 与合并碰撞矩形
+  └─ LOD1+：逐 Layer 的 exact 无损 WebP Raster
 ```
 
 Tile Cell 的低 16 bit 保存 `TileId`，bit 16–19 保存 Flip/90° 旋转标记。RLE 对相邻相同的完整编码值进行确定性压缩，不依赖平台压缩库版本。碰撞沿用 `TileCollisionBaker` 的 Chunk 内贪心合并结果，矩形不会跨 Chunk，方便后续局部驻留和释放。
 
 Reader 在分配 Payload 前检查 Magic、版本、字符串、Layer/Chunk 数量、Offset、Length、顺序和格式上限。读取具体 Chunk 时再次验证 SHA-256；截断或被修改的 Payload 不会进入 Gameplay。
 
-归档格式 v2 自描述 TileSize、Raster 尺寸、Gutter 和采样方式。索引显式区分 `AuthoritativeTiles` 与 `RasterLayers`：Level 0 只能是前者，Level 1+ 只能是后者。每个 Raster Chunk Payload 按 LayerIndex 保存 Encoding、内区尺寸、Gutter 和 WebP 字节；Chunk 外层继续使用 SHA-256 做完整性验证。
+归档格式 v3 自描述 TileSize、Raster 尺寸、Gutter、采样方式和可选逐 Layer Fallback Surface。Fallback 描述符保存 LayerIndex、图片尺寸、编码、采样、长度和 SHA-256，Payload 位于 Chunk Payload 之前并按 LayerIndex 确定性排列。索引继续显式区分 `AuthoritativeTiles` 与 `RasterLayers`：Level 0 只能是前者，Level 1+ 只能是后者。每个 Raster Chunk Payload 按 LayerIndex 保存 Encoding、内区尺寸、Gutter 和 WebP 字节；Chunk 外层继续使用 SHA-256 做完整性验证。
 
 离线栅格器与运行时 `TileMapRenderer` 共用 `TileTransformOperations`，因此 FlipX/FlipY 与 0/90/180/270° 旋转采用相同的 Y 向下、正弧度视觉逆时针约定。Tile Sprite 的固定 SubImage 会从 Single、Grid 或多图片 Frames 声明解析；Atlas 是否启用不改变烘焙像素来源。
 
@@ -127,7 +139,7 @@ Viewport 不知道 `.mgworld`、Tile 或 GPU；归档 Reader 也不知道 Camera
 
 ## 当前限制与下一步
 
-- 当前 Fallback 来自最粗生成 LOD；独立 `preview.webp` 全图 Surface 尚未进入声明式清单。
+- 独立 Fallback Surface 已进入声明式清单和 `.mgworld v3`；没有声明时仍只使用最粗生成 LOD。
 - 当前增量缓存按 Package 指纹复用，修改 TileMap、Sprite、Texture 或传递依赖会重建拥有它的 TileWorld；逐 Chunk 编码缓存尚未实现。
 - 当前源 TileMap 仍整体解析；超大型导入格式和前向解析临时索引后续按真实地图规模补充。
 - 当前 WebP 内嵌归档，不单独输出松散图片；运行时 Loader 从 Chunk Payload 按需解码。
@@ -153,15 +165,16 @@ LOD0 Tile/Collision 或游戏自己的空间数据提供。
    Chunk，保留 Layer Depth、透明边缘和 Gutter；构建阶段验证像素、索引和重复构建字节一致。
 2. **运行时 LOD（已完成）**：实现 `TileWorldChunkLoader`、Zoom 选择、滞回、替换完整性和旧层级保留，
    接到现有 `WorldChunkStreamer<TLease>`；Viewport 仍只提供观察范围和 Zoom。
-3. **Fallback Surface（最粗生成 LOD 已完成，独立 Preview 待实现）**：当前让最粗层级常驻，并按缺失
-   世界区域裁取回退；下一步允许低清全图 Preview 独立声明，不要求它来自 Tile 烘焙。
+3. **Fallback Surface（已完成）**：最粗层级继续按需驻留；可选低清全图 Preview 按 Layer 独立声明并常驻，
+   当最粗 Chunk 尚未解码时按缺失世界区域裁取对应 UV，不要求 Preview 来自 Tile 烘焙。
 4. **既有切片导入**：最后增加离线 `preTiledRaster` 适配，验证行列、尺寸、缺片、路径安全与
    Preview 世界范围，把 `tile_{row}_{column}.webp` 规范化进同一归档索引。运行时不扫描目录，
    也不解析文件名。
 
 这样既能让新项目得到由权威内容确定性生成的标准产物，也能在边界稳定后无损接纳已有大地图。
-ZL 样本将用于验收 Preview 常驻、400 个详细 Chunk 的按需驻留、快速缩放/移动、加载取消、资源
-回收和画面无空洞，而不作为第一阶段 API 的特例。
+ZL 样本未来只用于集成验收 Preview 常驻、400 个详细 Chunk 的按需驻留、快速缩放/移动、加载取消、
+资源回收和画面无空洞，不进入当前功能切片，也不作为公共 API 的特例。当前测试只使用临时目录中
+程序生成的几像素图片与小型 TileMap。
 
 验证命令：
 

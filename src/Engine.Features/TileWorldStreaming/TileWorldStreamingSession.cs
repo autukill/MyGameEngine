@@ -28,7 +28,10 @@ public sealed class TileWorldStreamingSession : IDisposable
     private readonly TileWorldStreamingOptions _options;
     private readonly TileWorldLodSelector _selector;
     private readonly string _scope;
+    private readonly CancellationTokenSource _fallbackSurfaceCancellation = new();
     private readonly TileWorldLevelState _fallback;
+    private Task<TileWorldFallbackSurfaceLease>? _fallbackSurfaceLoad;
+    private TileWorldFallbackSurfaceLease? _fallbackSurface;
     private TileWorldLevelState _active;
     private TileWorldLevelState? _pending;
     private ViewportSnapshot _lastViewport;
@@ -58,6 +61,24 @@ public sealed class TileWorldStreamingSession : IDisposable
         _fallback = CreateLevel(fallbackLevel);
         _active = _fallback;
         _desiredLevel = fallbackLevel;
+        if (descriptor.Metadata.FallbackSurfaces.Count > 0)
+        {
+            try
+            {
+                var loader = new TileWorldFallbackSurfaceLoader(
+                    descriptor,
+                    _scope,
+                    _decoder,
+                    _options.LoadMode);
+                _fallbackSurfaceLoad = loader.LoadAsync(_fallbackSurfaceCancellation.Token).AsTask();
+            }
+            catch
+            {
+                _fallback.Dispose();
+                _fallbackSurfaceCancellation.Dispose();
+                throw;
+            }
+        }
     }
 
     public TileWorldMetadata Metadata => _descriptor.Metadata;
@@ -65,10 +86,14 @@ public sealed class TileWorldStreamingSession : IDisposable
     public int FallbackLevel => _fallback.Level;
     public int DesiredLevel => _desiredLevel;
     public int? PendingLevel => EffectivePendingLevel;
+    public bool HasFallbackSurfaces => Metadata.FallbackSurfaces.Count > 0;
+    public bool FallbackSurfacesReady => _fallbackSurface?.IsCommitted == true;
+    public int ResidentFallbackSurfaceCount => _fallbackSurface?.Surfaces.Count ?? 0;
 
     public TileWorldStreamingUpdateResult Update(in ViewportSnapshot viewport)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        CompleteFallbackSurfaceLoad();
         _desiredLevel = _selector.Select(viewport.Zoom);
         _lastViewport = viewport;
         _hasViewport = true;
@@ -145,6 +170,7 @@ public sealed class TileWorldStreamingSession : IDisposable
         int rasterQuads = 0;
         int tileSprites = 0;
         int fallbackQuads = 0;
+        int fallbackSurfaceQuads = 0;
 
         for (int layerIndex = 0; layerIndex < Metadata.Layers.Count; layerIndex++)
         {
@@ -156,11 +182,12 @@ public sealed class TileWorldStreamingSession : IDisposable
                 tint,
                 ref rasterQuads,
                 ref tileSprites,
-                ref fallbackQuads);
+                ref fallbackQuads,
+                ref fallbackSurfaceQuads);
         }
 
         return new TileWorldDrawStatistics(
-            rasterQuads, tileSprites, missing, fallbackQuads);
+            rasterQuads, tileSprites, missing, fallbackQuads, fallbackSurfaceQuads);
     }
 
     /// <summary>
@@ -183,6 +210,7 @@ public sealed class TileWorldStreamingSession : IDisposable
         int rasterQuads = 0;
         int tileSprites = 0;
         int fallbackQuads = 0;
+        int fallbackSurfaceQuads = 0;
         DrawLayerCore(
             batch,
             activeRange,
@@ -190,12 +218,14 @@ public sealed class TileWorldStreamingSession : IDisposable
             color ?? Vector4.One,
             ref rasterQuads,
             ref tileSprites,
-            ref fallbackQuads);
+            ref fallbackQuads,
+            ref fallbackSurfaceQuads);
         return new TileWorldDrawStatistics(
             rasterQuads,
             tileSprites,
             CountMissingActive(activeRange),
-            fallbackQuads);
+            fallbackQuads,
+            fallbackSurfaceQuads);
     }
 
     public bool TryGetActiveChunk(
@@ -216,16 +246,40 @@ public sealed class TileWorldStreamingSession : IDisposable
             EffectivePendingLevel,
             _fallback.Streamer.CaptureDiagnostics(),
             _active.Streamer.CaptureDiagnostics(),
-            _pending?.Streamer.CaptureDiagnostics());
+            _pending?.Streamer.CaptureDiagnostics(),
+            HasFallbackSurfaces,
+            FallbackSurfacesReady,
+            ResidentFallbackSurfaceCount);
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _fallbackSurfaceCancellation.Cancel();
+        Task<TileWorldFallbackSurfaceLease>? fallbackLoad = _fallbackSurfaceLoad;
+        _fallbackSurfaceLoad = null;
+        if (fallbackLoad is not null)
+        {
+            if (fallbackLoad.IsCompletedSuccessfully)
+                fallbackLoad.Result.Dispose();
+            else
+                _ = fallbackLoad.ContinueWith(
+                    static task =>
+                    {
+                        if (task.Status == TaskStatus.RanToCompletion) task.Result.Dispose();
+                        _ = task.Exception;
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+        }
+        _fallbackSurface?.Dispose();
+        _fallbackSurface = null;
         DisposePending();
         if (!ReferenceEquals(_active, _fallback)) _active.Dispose();
         _fallback.Dispose();
+        _fallbackSurfaceCancellation.Dispose();
     }
 
     private TileWorldLevelState CreateLevel(int level) => new(
@@ -265,7 +319,8 @@ public sealed class TileWorldStreamingSession : IDisposable
         Vector4 tint,
         ref int rasterQuads,
         ref int tileSprites,
-        ref int fallbackQuads)
+        ref int fallbackQuads,
+        ref int fallbackSurfaceQuads)
     {
         for (int y = activeRange.MinY; ; y++)
         {
@@ -279,14 +334,23 @@ public sealed class TileWorldStreamingSession : IDisposable
                     tint,
                     ref rasterQuads,
                     ref tileSprites);
+                bool fallbackCovered = false;
                 if (!covered && !ReferenceEquals(_active, _fallback))
-                    DrawFallbackRegion(
+                    fallbackCovered = DrawFallbackRegion(
                         batch,
                         coordinate,
                         layerIndex,
                         tint,
                         ref rasterQuads,
                         ref fallbackQuads);
+                if (!covered && !fallbackCovered)
+                    DrawFallbackSurfaceRegion(
+                        batch,
+                        coordinate,
+                        layerIndex,
+                        tint,
+                        ref rasterQuads,
+                        ref fallbackSurfaceQuads);
                 if (x == activeRange.MaxX) break;
             }
             if (y == activeRange.MaxY) break;
@@ -374,7 +438,7 @@ public sealed class TileWorldStreamingSession : IDisposable
         return true;
     }
 
-    private void DrawFallbackRegion(
+    private bool DrawFallbackRegion(
         ISpriteBatch batch,
         WorldChunkCoordinate activeCoordinate,
         int layerIndex,
@@ -383,7 +447,7 @@ public sealed class TileWorldStreamingSession : IDisposable
         ref int fallbackQuads)
     {
         int delta = _fallback.Level - _active.Level;
-        if (delta <= 0) return;
+        if (delta <= 0) return false;
         int factor = 1 << delta;
         var fallbackCoordinate = new WorldChunkCoordinate(
             FloorDiv(activeCoordinate.X, factor),
@@ -392,7 +456,7 @@ public sealed class TileWorldStreamingSession : IDisposable
             lease is null || !lease.IsCommitted || !lease.HasPayload ||
             !lease.TryGetRasterLayer(layerIndex, out TileWorldRuntimeRasterLayer layer) ||
             !_textures.TryResolve(layer.Texture, out ResolvedTexture texture))
-            return;
+            return false;
 
         Bounds2D activeBounds = _active.Layout.GetBounds(activeCoordinate);
         Bounds2D fallbackBounds = _fallback.Layout.GetBounds(fallbackCoordinate);
@@ -418,6 +482,69 @@ public sealed class TileWorldStreamingSession : IDisposable
             uv);
         rasterQuads++;
         fallbackQuads++;
+        return true;
+    }
+
+    private void DrawFallbackSurfaceRegion(
+        ISpriteBatch batch,
+        WorldChunkCoordinate activeCoordinate,
+        int layerIndex,
+        Vector4 tint,
+        ref int rasterQuads,
+        ref int fallbackSurfaceQuads)
+    {
+        TileWorldFallbackSurfaceLease? lease = _fallbackSurface;
+        if (lease is null || !lease.IsCommitted ||
+            !lease.TryGet(layerIndex, out TileWorldRuntimeFallbackSurface surface) ||
+            !_textures.TryResolve(surface.Texture, out ResolvedTexture texture))
+            return;
+
+        Bounds2D activeBounds = _active.Layout.GetBounds(activeCoordinate);
+        Vector2 baseSize = Metadata.BaseChunkWorldSize;
+        float worldLeft = Metadata.Bounds.MinX * baseSize.X;
+        float worldTop = Metadata.Bounds.MinY * baseSize.Y;
+        float worldRight = (Metadata.Bounds.MaxX + 1f) * baseSize.X;
+        float worldBottom = (Metadata.Bounds.MaxY + 1f) * baseSize.Y;
+        float left = MathF.Max(activeBounds.Left, worldLeft);
+        float top = MathF.Max(activeBounds.Top, worldTop);
+        float right = MathF.Min(activeBounds.Right, worldRight);
+        float bottom = MathF.Min(activeBounds.Bottom, worldBottom);
+        if (right <= left || bottom <= top) return;
+
+        float inverseWidth = 1f / (worldRight - worldLeft);
+        float inverseHeight = 1f / (worldBottom - worldTop);
+        var uv = new Vector4(
+            (left - worldLeft) * inverseWidth,
+            (top - worldTop) * inverseHeight,
+            (right - worldLeft) * inverseWidth,
+            (bottom - worldTop) * inverseHeight);
+        batch.Draw(
+            texture.Handle,
+            new Vector2(left, top),
+            new Vector2(right - left, bottom - top),
+            tint,
+            uv);
+        rasterQuads++;
+        fallbackSurfaceQuads++;
+    }
+
+    private void CompleteFallbackSurfaceLoad()
+    {
+        Task<TileWorldFallbackSurfaceLease>? task = _fallbackSurfaceLoad;
+        if (task is null || !task.IsCompleted) return;
+        _fallbackSurfaceLoad = null;
+        TileWorldFallbackSurfaceLease? lease = null;
+        try
+        {
+            lease = task.GetAwaiter().GetResult();
+            lease.CommitTextures(_textures);
+            _fallbackSurface = lease;
+        }
+        catch
+        {
+            lease?.Dispose();
+            throw;
+        }
     }
 
     private void DisposePending()

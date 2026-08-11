@@ -58,8 +58,8 @@ src/
 │   ├── Camera/                          # Camera2D
 │   ├── ViewportNavigation/              # 交互式 Camera 插件链与稳定可见范围快照
 │   ├── WorldStreaming/                  # Snapshot 驱动的 Chunk 驻留、加载预算与租约生命周期
-│   ├── TileWorlds/                      # 权威 LOD0、逐层 WebP LOD 与确定性 .mgworld
-│   ├── TileWorldStreaming/              # Zoom/滞回、后台解码、Texture Lease 与最粗层回退
+│   ├── TileWorlds/                      # 权威 LOD0、逐层 WebP LOD、Preview 与确定性 .mgworld v3
+│   ├── TileWorldStreaming/              # Zoom/滞回、后台解码、Texture Lease 与两级视觉回退
 │   ├── Animation/                       # 命名 Clip、循环模式与帧事件
 │   ├── Audio/                           # 逻辑 Clip/Bus/Voice 与 Backend 边界
 │   ├── Audio.Vorbis/                    # OGG Vorbis 元数据与分块 PCM 解码适配器
@@ -183,7 +183,7 @@ dotnet run --project playgrounds/TilemapWorld/TilemapWorld.csproj
 ```
 
 完整 TileSet、地图清单、强类型引用和碰撞边界见 [Tilemap / World Authoring](docs/TILEMAP_WORLD_AUTHORING.md)。
-大型地图的声明式切片、`.mgworld` 格式和 LOD 边界见 [TileWorld 离线切片编译器](docs/TILE_WORLD_OFFLINE_COMPILER.md)，Viewport 驱动的后台加载、滞回和回退绘制见 [TileWorld 运行时 LOD 与流式加载](docs/TILE_WORLD_RUNTIME_STREAMING.md)。
+大型地图的声明式切片、`.mgworld v3`、逐 Layer Preview/Fallback Surface 和 LOD 边界见 [TileWorld 离线切片编译器](docs/TILE_WORLD_OFFLINE_COMPILER.md)，Viewport 驱动的后台加载、滞回和两级回退绘制见 [TileWorld 运行时 LOD 与流式加载](docs/TILE_WORLD_RUNTIME_STREAMING.md)。
 
 完整 Gameplay 小游戏示例使用一个白色 Sprite 组合鸟、管道、背景与七段数字，并接通 Input Action、参数化 Prefab、确定性 Spawn、碰撞计分、GameOver Scene 参数和程序化短音效：
 

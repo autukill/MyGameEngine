@@ -98,7 +98,25 @@ public sealed record TileWorldAssetBuildDefinition(
     PixelSizeI RasterChunkSize,
     AtlasPageEncoding Encoding,
     TextureSampler Sampling,
-    int Gutter);
+    int Gutter,
+    IReadOnlyList<TileWorldFallbackSurfaceAssetDefinition> FallbackSurfaces)
+{
+    public TileWorldAssetBuildDefinition(
+        TileWorldChunkBounds bounds,
+        int lodCount,
+        PixelSizeI rasterChunkSize,
+        AtlasPageEncoding encoding,
+        TextureSampler sampling,
+        int gutter)
+        : this(bounds, lodCount, rasterChunkSize, encoding, sampling, gutter, [])
+    {
+    }
+}
+
+public sealed record TileWorldFallbackSurfaceAssetDefinition(
+    string Layer,
+    string Path,
+    TextureSampler Sampling);
 
 public sealed record TileWorldAssetDefinition(
     string Name,
