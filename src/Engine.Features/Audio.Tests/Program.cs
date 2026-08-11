@@ -15,6 +15,7 @@ internal static class Program
         VerifyVoiceStealing();
         VerifyLifecycle();
         VerifySilentBackend();
+        VerifyStreamingContracts();
 
         Console.WriteLine();
         Console.WriteLine(_failures == 0
@@ -150,6 +151,58 @@ internal static class Program
             "Silent fallback completes one-shot voices without an audio device");
     }
 
+    private static void VerifyStreamingContracts()
+    {
+        Console.WriteLine("7. Streaming clip contracts");
+        var library = new AudioLibrary();
+        var factory = new FakeStreamFactory(frameCount: 6, channels: 2, sampleRate: 48_000);
+        var metadata = new AudioClipMetadata(
+            TimeSpan.FromSeconds(6d / 48_000d),
+            Channels: 2,
+            SampleRate: 48_000,
+            Streaming: true);
+        AudioClipRef clip = library.RegisterStreaming(
+            "music.stream",
+            "memory://music.ogg",
+            in metadata,
+            factory);
+        AudioClipDescriptor descriptor = library.Get(clip);
+        Check(descriptor.StorageKind == AudioClipStorageKind.Streaming &&
+              ReferenceEquals(descriptor.StreamFactory, factory) && descriptor.Decoded is null,
+            "Streaming registration retains a factory without pre-decoded PCM");
+
+        using (IAudioStreamSource source = descriptor.StreamFactory!.Open())
+        {
+            Span<byte> pcm = stackalloc byte[4 * sizeof(short) * 2];
+            int first = source.ReadFrames(pcm);
+            source.Seek(1);
+            int second = source.ReadFrames(pcm[..(2 * source.BytesPerFrame)]);
+            Check(first == 4 && second == 2 && source.PositionFrames == 3,
+                "Per-voice source reads complete frames and supports exact seek");
+        }
+        Check(factory.OpenCount == 1 && factory.DisposeCount == 1,
+            "Each opened streaming source has explicit ownership");
+
+        CheckThrows<ArgumentException>(() => library.Register(
+                "bad.stream",
+                "bad.ogg",
+                metadata),
+            "Metadata-only registration cannot masquerade as a streaming clip");
+        CheckThrows<ArgumentException>(() => library.RegisterStreaming(
+                "bad.static",
+                "bad.wav",
+                metadata with { Streaming = false },
+                factory),
+            "Streaming factory requires streaming metadata");
+
+        using var backend = new FakeAudioBackend();
+        using var runtime = new AudioRuntime(library, backend);
+        AudioPlayOptions options = AudioPlayOptions.Music;
+        runtime.Play(clip, in options);
+        runtime.Update();
+        Check(backend.UpdateCount == 1, "AudioRuntime services backend queues before reclaiming voices");
+    }
+
     private static byte[] CreatePcm16Wave(short channels, int sampleRate, int frames)
     {
         int blockAlign = channels * sizeof(short);
@@ -179,7 +232,7 @@ internal static class Program
     {
         var library = new AudioLibrary();
         shot = library.Register("shot", "shot.ogg", new AudioClipMetadata(TimeSpan.FromMilliseconds(100), 1, 48_000));
-        music = library.Register("music", "music.ogg", new AudioClipMetadata(TimeSpan.FromMinutes(2), 2, 48_000, Streaming: true));
+        music = library.Register("music", "music.wav", new AudioClipMetadata(TimeSpan.FromMinutes(2), 2, 48_000));
         return library;
     }
 
@@ -192,6 +245,7 @@ internal static class Program
         public AudioBackendVoice LastVoice { get; private set; }
         public int StopCount { get; private set; }
         public int DisposeCount { get; private set; }
+        public int UpdateCount { get; private set; }
 
         public AudioBackendVoice Play(in AudioClipDescriptor clip, in AudioVoiceMix mix)
         {
@@ -218,7 +272,64 @@ internal static class Program
 
         public void Complete(AudioBackendVoice voice) => _playing.Remove(voice);
 
+        public void Update() => UpdateCount++;
+
         public void Dispose() => DisposeCount++;
+    }
+
+    private sealed class FakeStreamFactory(int frameCount, int channels, int sampleRate) : IAudioStreamFactory
+    {
+        public int OpenCount { get; private set; }
+        public int DisposeCount { get; private set; }
+
+        public IAudioStreamSource Open()
+        {
+            OpenCount++;
+            return new FakeStreamSource(frameCount, channels, sampleRate, () => DisposeCount++);
+        }
+    }
+
+    private sealed class FakeStreamSource(
+        int frameCount,
+        int channels,
+        int sampleRate,
+        Action disposed) : IAudioStreamSource
+    {
+        private bool _disposed;
+
+        public AudioSampleFormat Format => AudioSampleFormat.Signed16;
+        public int Channels { get; } = channels;
+        public int SampleRate { get; } = sampleRate;
+        public long FrameCount { get; } = frameCount;
+        public long PositionFrames { get; private set; }
+        public int BytesPerFrame => Channels * sizeof(short);
+
+        public int ReadFrames(Span<byte> destination)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (destination.Length % BytesPerFrame != 0)
+                throw new ArgumentException("Destination must contain complete PCM frames.", nameof(destination));
+            int requested = destination.Length / BytesPerFrame;
+            int read = (int)Math.Min(requested, FrameCount - PositionFrames);
+            destination[..(read * BytesPerFrame)].Clear();
+            PositionFrames += read;
+            return read;
+        }
+
+        public void Seek(long frameOffset)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (frameOffset < 0 || frameOffset > FrameCount)
+                throw new ArgumentOutOfRangeException(nameof(frameOffset));
+            PositionFrames = frameOffset;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            disposed();
+        }
     }
 
     private static bool Near(float left, float right) => MathF.Abs(left - right) < 0.0001f;

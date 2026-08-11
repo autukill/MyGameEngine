@@ -193,6 +193,7 @@ public sealed class AudioRuntime : IDisposable
     public void Update()
     {
         ThrowIfDisposed();
+        _backend.Update();
         for (var i = 0; i < _voices.Length; i++)
         {
             if (_voices[i].Active && !_backend.IsPlaying(_voices[i].BackendVoice))

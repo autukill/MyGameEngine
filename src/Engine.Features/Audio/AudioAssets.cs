@@ -76,7 +76,14 @@ public readonly record struct AudioClipDescriptor(
     AudioClipRef Clip,
     AudioSourceRef Source,
     AudioClipMetadata Metadata,
-    DecodedAudioClip? Decoded = null);
+    DecodedAudioClip? Decoded = null,
+    IAudioStreamFactory? StreamFactory = null)
+{
+    public AudioClipStorageKind StorageKind =>
+        Decoded is not null ? AudioClipStorageKind.StaticPcm :
+        StreamFactory is not null ? AudioClipStorageKind.Streaming :
+        AudioClipStorageKind.MetadataOnly;
+}
 
 public sealed class AudioLibrary
 {
@@ -90,12 +97,41 @@ public sealed class AudioLibrary
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
         ValidateMetadata(metadata);
+        if (metadata.Streaming)
+            throw new ArgumentException(
+                "Streaming clips must be registered with an audio stream factory.", nameof(metadata));
 
         var clip = new AudioClipRef(name);
         var descriptor = new AudioClipDescriptor(clip, new AudioSourceRef(source), metadata);
         if (!_clips.TryAdd(clip, descriptor))
             throw new ArgumentException($"Audio clip '{name}' is already registered.", nameof(name));
 
+        return clip;
+    }
+
+    public AudioClipRef RegisterStreaming(
+        string name,
+        string source,
+        in AudioClipMetadata metadata,
+        IAudioStreamFactory streamFactory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(source);
+        ArgumentNullException.ThrowIfNull(streamFactory);
+        ValidateMetadata(metadata);
+        if (!metadata.Streaming)
+            throw new ArgumentException(
+                "Streaming registration requires AudioClipMetadata.Streaming to be true.", nameof(metadata));
+
+        var clip = new AudioClipRef(name);
+        var descriptor = new AudioClipDescriptor(
+            clip,
+            new AudioSourceRef(source),
+            metadata,
+            Decoded: null,
+            streamFactory);
+        if (!_clips.TryAdd(clip, descriptor))
+            throw new ArgumentException($"Audio clip '{name}' is already registered.", nameof(name));
         return clip;
     }
 

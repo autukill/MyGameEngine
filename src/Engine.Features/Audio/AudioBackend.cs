@@ -20,6 +20,9 @@ public interface IAudioBackend : IDisposable
     bool IsPlaying(AudioBackendVoice voice);
 
     void Stop(AudioBackendVoice voice);
+
+    /// <summary>Services backend-owned streaming queues. Static backends may keep the default no-op.</summary>
+    void Update() { }
 }
 
 public readonly record struct AudioVoiceRef(int Slot, uint Generation)
