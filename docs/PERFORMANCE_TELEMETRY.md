@@ -39,12 +39,31 @@ RuntimePerformanceSnapshot snapshot =
     context.CapturePerformanceSnapshot(budget);
 
 Console.WriteLine(snapshot.GpuMemory.TotalBytes);
+Console.WriteLine(snapshot.ProcessMemory.WorkingSetBytes);
+Console.WriteLine(snapshot.ProcessMemory.PrivateBytes);
+Console.WriteLine(snapshot.ProcessMemory.ManagedHeapEstimateBytes);
 Console.WriteLine(snapshot.GameplayQueries.AverageMillisecondsPerStep);
 foreach (PerformanceBudgetViolation violation in snapshot.BudgetViolations)
     Console.WriteLine($"{violation.Metric}: {violation.Actual} > {violation.Limit}");
 ```
 
 预算采用严格“大于”比较，等于上限不算超限。帧统计未启用或尚无完成帧时，只评估显存预算。
+
+`ProcessMemory` 默认不强制 GC，提供当前进程 Working Set、Peak Working Set、Private Bytes、Virtual
+Bytes、Managed Heap 近似值、各代收集次数，以及最近一次 GC 后的 Heap、Committed、Fragmentation 和
+系统内存压力。首次 GC 之前 `GcHeapSizeAfterLastCollectionBytes` 等字段为 `0` 是合法状态。若只需要
+这一组低频值，可以调用 `context.CaptureProcessMemoryDiagnostics()`，不必启用自动性能遥测。
+
+开发工具还可以显式调用 `CaptureProcessMemoryDiagnostics(forceFullCollection: true)`。它会阻塞并触发
+完整 GC，返回值的 `WasFullCollectionForced` 为 `true`，适合手动 checkpoint、测试或泄漏调查；不得放在
+每帧路径或正式游戏逻辑中。比较强制 GC 前后的 `ManagedHeapEstimateBytes`，可以区分“尚未收集的解码
+缓冲”与“仍被引用的 Managed 对象”，但 Working Set/Private Bytes 仍可能因 GC、Runtime 和驱动缓存而
+不立即回落。
+
+`UnattributedPrivateBytes` 从 Private Bytes 中减去 Managed Heap 近似值与最近 GC Committed 的较大值，
+只表示“GC 指标无法解释的 Private Bytes”。其中可能同时包含 CoreCLR、JIT 代码、程序集、线程栈、Skia/OpenAL、窗口系统、OpenGL 驱动
+及其缓存；它不是精确的 Native Heap，也不能与估算 GPU 显存直接相减。判断泄漏应观察多次稳定采样的
+趋势，而不是对单次任务管理器数值做归属推断。
 
 `GameplayQueries` 将 Find、Collision、Area 和 Radius 分开统计调用数、扫描候选、命中及累计耗时。自动遥测每次发布后重置查询区间；`SampledSteps` 和 `AverageMillisecondsPerStep` 可用于判断查询是否进入更新帧预算。显式捕获默认不重置，如需区间采样可调用 `CapturePerformanceSnapshot(resetGameplayQueryStatistics: true)`。
 
@@ -73,7 +92,8 @@ using IDisposable registration = context.RegisterGpuMemoryUsage(
 
 ## Runner 出口
 
-控制台每秒摘要：
+控制台每秒摘要包含 FPS、Gameplay Query、估算 GPU 显存，以及 Working Set、Private Bytes、Managed
+Heap 近似值和最近一次 GC 后的 Committed Heap：
 
 ```powershell
 dotnet run --project src/MyGame.Runner -- --diagnostics

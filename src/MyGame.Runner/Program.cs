@@ -358,6 +358,10 @@ internal static class Program {
                     $"queryMs/step={snapshot.GameplayQueries.AverageMillisecondsPerStep:F4}, " +
                     $"textures={snapshot.GpuMemory.TextureCount}, " +
                     $"gpuMiB={snapshot.GpuMemory.TotalBytes / 1048576d:F2}, " +
+                    $"workingMiB={snapshot.ProcessMemory.WorkingSetBytes / 1048576d:F2}, " +
+                    $"privateMiB={snapshot.ProcessMemory.PrivateBytes / 1048576d:F2}, " +
+                    $"managedMiB={snapshot.ProcessMemory.ManagedHeapEstimateBytes / 1048576d:F2}, " +
+                    $"gcLastCommittedMiB={snapshot.ProcessMemory.GcCommittedAfterLastCollectionBytes / 1048576d:F2}, " +
                     $"violations={snapshot.BudgetViolations.Count}" );
             }
             if ( _jsonWriter is null ) return;

@@ -394,6 +394,15 @@ public sealed class Default2DGameContext
     public GameplayQueryStatisticsSnapshot CaptureGameplayQueryStatistics(bool reset = false) =>
         Scene.CaptureGameplayQueryStatistics(reset);
 
+    /// <summary>
+    /// Low-frequency snapshot of process working/private memory and the managed GC heap.
+    /// It is independent from frame statistics and only forces a full collection when explicitly
+    /// requested for a developer diagnostic checkpoint.
+    /// </summary>
+    public ProcessMemoryDiagnostics CaptureProcessMemoryDiagnostics(
+        bool forceFullCollection = false) =>
+        ProcessMemoryDiagnostics.CaptureCurrentProcess(forceFullCollection);
+
     /// <summary>低频捕获帧计数、Texture/Atlas、根目标、Pool 与自定义资源估算。</summary>
     public RuntimePerformanceSnapshot CapturePerformanceSnapshot(
         PerformanceBudget? budget = null,
@@ -445,6 +454,7 @@ public sealed class Default2DGameContext
         IReadOnlyList<PerformanceBudgetViolation> violations = budget is null
             ? Array.Empty<PerformanceBudgetViolation>()
             : budget.Evaluate(frame, memory);
+        ProcessMemoryDiagnostics processMemory = CaptureProcessMemoryDiagnostics();
         return new RuntimePerformanceSnapshot(
             DateTimeOffset.UtcNow,
             frame,
@@ -452,7 +462,8 @@ public sealed class Default2DGameContext
             textures,
             memory,
             Array.AsReadOnly(custom),
-            violations);
+            violations,
+            processMemory);
     }
 
     /// <summary>为绕过 TextureLibrary/RenderTargetPool 的高级 GPU 资源补充估算。</summary>

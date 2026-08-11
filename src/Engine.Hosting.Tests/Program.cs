@@ -1995,6 +1995,25 @@ internal static class Program
                       RenderTargetDepthStencilFormat.Depth24Stencil8)) == 2400,
             "RenderTarget estimates include declared color and depth/stencil formats");
 
+        ProcessMemoryDiagnostics processMemory =
+            ProcessMemoryDiagnostics.CaptureCurrentProcess();
+        Check(processMemory.WorkingSetBytes > 0 &&
+              processMemory.PrivateBytes > 0 &&
+              processMemory.VirtualBytes > 0 &&
+              processMemory.ManagedHeapEstimateBytes >= 0 &&
+              processMemory.GcCommittedAfterLastCollectionBytes >= 0 &&
+              processMemory.GcFragmentedAfterLastCollectionBytes >= 0 &&
+              !processMemory.WasFullCollectionForced,
+            "Process memory capture reports positive OS counters and non-negative GC counters");
+        var knownMemory = new ProcessMemoryDiagnostics(
+            80, 90, 100, 200,
+            20, 25, 30, 5,
+            1, 2, 3, 4,
+            40, 50, 60,
+            false);
+        Check(knownMemory.UnattributedPrivateBytes == 70,
+            "Unattributed private memory excludes the GC committed heap without claiming ownership");
+
         long timestamp = 0;
         int captures = 0;
         var sampler = new PerformanceTelemetrySampler(
@@ -2009,7 +2028,8 @@ internal static class Program
                     null!,
                     memory,
                     Array.Empty<CustomGpuMemoryDiagnostics>(),
-                    violations);
+                    violations,
+                    processMemory);
             },
             () => timestamp,
             timestampFrequency: 1000);

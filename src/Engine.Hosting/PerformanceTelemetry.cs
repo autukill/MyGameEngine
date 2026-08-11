@@ -107,6 +107,65 @@ public readonly record struct GpuMemoryEstimate(
 
 public sealed record CustomGpuMemoryDiagnostics(string Name, long EstimatedBytes);
 
+/// <summary>
+/// Low-frequency process and managed-heap memory snapshot. Process counters include runtime,
+/// native libraries, thread stacks, graphics drivers and other memory outside the managed heap.
+/// </summary>
+public readonly record struct ProcessMemoryDiagnostics(
+    long WorkingSetBytes,
+    long PeakWorkingSetBytes,
+    long PrivateBytes,
+    long VirtualBytes,
+    long ManagedHeapEstimateBytes,
+    long GcHeapSizeAfterLastCollectionBytes,
+    long GcCommittedAfterLastCollectionBytes,
+    long GcFragmentedAfterLastCollectionBytes,
+    long GcIndex,
+    int Gen0CollectionCount,
+    int Gen1CollectionCount,
+    int Gen2CollectionCount,
+    long GcMemoryLoadBytes,
+    long GcHighMemoryLoadThresholdBytes,
+    long GcTotalAvailableMemoryBytes,
+    bool WasFullCollectionForced)
+{
+    /// <summary>
+    /// Private bytes not explained by the GC committed heap. This is intentionally an unattributed
+    /// estimate: it can include CoreCLR, JIT code, native libraries, stacks and graphics drivers.
+    /// </summary>
+    public long UnattributedPrivateBytes => Math.Max(
+        0L,
+        PrivateBytes - Math.Max(
+            ManagedHeapEstimateBytes,
+            GcCommittedAfterLastCollectionBytes));
+
+    public static ProcessMemoryDiagnostics CaptureCurrentProcess(
+        bool forceFullCollection = false)
+    {
+        long managedHeapEstimate = GC.GetTotalMemory(forceFullCollection);
+        using Process process = Process.GetCurrentProcess();
+        process.Refresh();
+        GCMemoryInfo gc = GC.GetGCMemoryInfo();
+        return new ProcessMemoryDiagnostics(
+            process.WorkingSet64,
+            process.PeakWorkingSet64,
+            process.PrivateMemorySize64,
+            process.VirtualMemorySize64,
+            managedHeapEstimate,
+            gc.HeapSizeBytes,
+            gc.TotalCommittedBytes,
+            gc.FragmentedBytes,
+            gc.Index,
+            GC.CollectionCount(0),
+            GC.CollectionCount(1),
+            GC.CollectionCount(2),
+            gc.MemoryLoadBytes,
+            gc.HighMemoryLoadThresholdBytes,
+            gc.TotalAvailableMemoryBytes,
+            forceFullCollection);
+    }
+}
+
 /// <summary>一次低频性能采样；只包含值快照，不持有 GPU 资源。</summary>
 public sealed record RuntimePerformanceSnapshot(
     DateTimeOffset CapturedAtUtc,
@@ -115,7 +174,8 @@ public sealed record RuntimePerformanceSnapshot(
     TextureLibraryDiagnostics Textures,
     GpuMemoryEstimate GpuMemory,
     IReadOnlyList<CustomGpuMemoryDiagnostics> CustomResources,
-    IReadOnlyList<PerformanceBudgetViolation> BudgetViolations);
+    IReadOnlyList<PerformanceBudgetViolation> BudgetViolations,
+    ProcessMemoryDiagnostics ProcessMemory = default);
 
 public interface IPerformanceTelemetrySink
 {
