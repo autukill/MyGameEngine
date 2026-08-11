@@ -109,6 +109,20 @@ GameAssets.Packages.SharedPrimitives
 
 Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一版强类型组合 Authoring：`context.Transforms`、opt-in Binding、纯挂点、Local/World、`KeepLocal/KeepWorld`、`TransformPrefab<TParts>`、具名类型节点与帧边界同步均已落地；AirplaneShooter 使用 `root → weapon → muzzle` 真实样例。仍保留 Scene 扁平 Step、Layer/Depth、Collider 索引，不让空间父子关系接管生命周期、渲染排序或 UI 布局。下一步先由玩法验证是否需要原子多 GameInstance Composite Prefab。使用见 [Transform Hierarchy 创作指南](TRANSFORM_HIERARCHY_AUTHORING.md)。
 
+## 阶段 7：Interactive Viewport 与大世界观察边界（当前主线）
+
+目标是把成熟的 pixi-viewport 地图浏览体验重建为 MyGameEngine 原生 Camera 能力，并为 Chunk Streaming/LOD 提供稳定但不耦合资源系统的观察边界。
+
+第一阶段已经完成：
+
+- 官方 pixi-viewport 6.0.3 仅下载到 Git 忽略的参考区，用于核对公共功能形状；仓库不纳入或逐行翻译其 TypeScript。
+- `ViewportController`、可替换/暂停/恢复的固定顺序插件管理与 `ViewportSnapshot/Revision` 已落地。
+- Drag、鼠标锚点 Wheel、可选平滑、帧率无关 Decelerate、ClampZoom、Clamp/Underflow 已实现。
+- `UseInteractiveViewport` 为单主 Camera 提供黄金入口；`UseRenderViews` 可让每个 View 独立声明，CameraFollow 所有权冲突在装配期拒绝。
+- Hosting 在 Scene Step 前按最上层 View 路由输入，Resize 后重新约束；核心稳定更新 0 B，真实 OpenGL 隐藏 smoke 通过。
+
+后续顺序固定为：统一多 Pointer 与 Pinch → Bounce/Animate/Snap/SnapZoom/MouseEdges → 独立 `WorldChunkStreamer` → 离线多级 LOD/切片编译器。Chunk、异步 IO、Texture lease 和显存预算不进入 Viewport 项目。完整用法和覆盖表见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)。
+
 ## 候选视觉主线：2D Lighting（已规划，尚未实施）
 
 2D Lighting 已收敛为独立渐进路线，但目前不冒充已完成能力，也不覆盖 Gameplay Authoring 当前优先级。未来切换到该主线时，按以下顺序推进：
@@ -144,6 +158,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | P1 | Tilemap/World Authoring | 关卡生产、Chunk、碰撞和未来静态光照遮挡的共同基础 |
 | 已完成接入 | 原生中文 Text Rendering | 真实 Font、中文/单词多行、对齐、Ellipsis、复用 Buffer、Hosting 与 World/SceneGui 已闭环；Shaping 后续 Spike |
 | 已完成接入 | Audio 短音效与 Streaming Music | 声明式 WAV/OGG、OpenAL 四 Buffer 队列、强类型 Clip、SceneAudio 所有权与诊断已闭环 |
+| 当前主线 | Interactive Viewport | 桌面黄金插件链已完成；下一步统一 Pointer/Pinch 与完整运动插件，再接独立 Chunk Streaming/LOD |
 | 已完成调研 | Yoga/RmlUi/FairyGUI Compatibility Spike | 已建立候选顺序、适配面和 Go/No-Go 门槛 |
 | P2 | RichText、彩色文字、Typewriter、Sprite Emoji | 建立在原生 Text Layout 上 |
 | P2 | Gamepad/Rebinding、Save Game | Logical Input 与显式状态协议已有基础 |
@@ -152,7 +167,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | P3 | 彩色 Font Emoji、AnimatedImage、FairyGUI 高级组件 | 由真实产品需求和资产驱动 |
 | P3 | Lighting 软阴影/高级材质、完整物理/导航 | 由性能数据和真实玩法驱动 |
 
-Transform Scene/Prefab、Text 多行/Layout Buffer、Audio 短音效/流式音乐与 Tilemap/World Authoring 第一阶段已完成。推荐后续按集成风险串行推进：`Lighting 0/1 → Tilemap 导入/二进制 Chunk`。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
+Transform Scene/Prefab、Text 多行/Layout Buffer、Audio 短音效/流式音乐与 Tilemap/World Authoring 第一阶段已完成。当前按大地图开发体验串行推进：`Interactive Viewport 完整交互 → World Chunk Streaming → 多级 LOD/切片编译`；Lighting 0/1 暂列其后。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
 
 ## 设计约束
 

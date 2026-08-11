@@ -21,6 +21,7 @@ using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.TextRendering.Infrastructure;
 using GameEngine.Features.TransformHierarchy.Gameplay;
 using GameEngine.Features.Tilemaps.Infrastructure;
+using GameEngine.Features.ViewportNavigation;
 
 /// <summary>Scene 装配期的强类型上下文；不是全局服务容器。</summary>
 public sealed class Default2DGameContext
@@ -233,6 +234,10 @@ public sealed class Default2DGameContext
     /// <summary>Gets the follow controller declared for a Render View.</summary>
     public CameraFollowController GetCameraFollow(RenderViewRef view) =>
         GetRenderView(view).RequireCameraFollow();
+
+    /// <summary>Gets the interactive Viewport controller declared for a Render View.</summary>
+    public ViewportController GetViewportNavigation(RenderViewRef view) =>
+        GetRenderView(view).RequireNavigation();
 
     /// <summary>显式捕获当前 Pass、Surface、Effect owner 与临时目标租约。</summary>
     public Default2DRenderDiagnostics CaptureRenderDiagnostics()
@@ -482,6 +487,27 @@ public sealed class Default2DGameContext
             Window.Height,
             binding.Viewport.Viewport,
             binding.Viewport.Fit);
+
+    internal void MapScreenToViewportPosition(
+        Vector2D screenPosition,
+        ViewportSlotRef slot,
+        out Vector2D viewPosition)
+    {
+        for (int i = 0; i < _viewportBindings.Length; i++)
+        {
+            ViewportBinding binding = _viewportBindings[i];
+            if (binding.Viewport.Slot != slot) continue;
+            ViewportPlacement placement = ResolvePlacement(binding);
+            Vector2 source = placement.ScreenToSource(
+                (float)screenPosition.X,
+                (float)screenPosition.Y,
+                binding.View.Target.Width,
+                binding.View.Target.Height);
+            viewPosition = new Vector2D(source.X, source.Y);
+            return;
+        }
+        throw new KeyNotFoundException($"Viewport slot '{slot}' is not configured.");
+    }
 
     private sealed record ViewportBinding(
         SingleCameraViewportDefinition Viewport,

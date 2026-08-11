@@ -73,6 +73,7 @@ Desktop.ini
 ehthumbs.db
 $RECYCLE.BIN/
 *.lnk
+.codex-tmp/
 
 # .NET Core / SDK
 global.json.lock

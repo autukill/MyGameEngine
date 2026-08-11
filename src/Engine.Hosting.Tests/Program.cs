@@ -22,6 +22,7 @@ using GameEngine.Features.ToneMapping.Domain;
 using GameEngine.Features.Sprites.Infrastructure;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using GameEngine.Features.ViewportNavigation;
 using SkiaSharp;
 
 internal static class Program
@@ -158,6 +159,47 @@ internal static class Program
         Check(RenderViewLayoutBuilder.ResolveRenderSize(
                   ViewportRect.RightHalf, 0.5f, 801, 601) == (200, 301),
             "Render View size combines shared-edge Viewport rounding and RenderScale deterministically");
+
+        var interactiveViewport = GameApplication.Create()
+            .UseDefault2DRenderer(renderer => renderer.UseRenderViews(views => views
+                .ConfigureMain(
+                    ViewportRect.LeftHalf,
+                    navigation: viewport => viewport
+                        .Drag()
+                        .Wheel(new ViewportWheelOptions(smoothFrames: 4))
+                        .Decelerate()
+                        .ClampZoom(new ViewportClampZoomOptions(
+                            maxWidth: 12_000f,
+                            maxHeight: 12_000f))
+                        .Clamp(new ViewportClampOptions(
+                            new Bounds2D(0f, 0f, 12_000f, 12_000f))))
+                .Add("observer", ViewportRect.RightHalf)))
+            .ConfigureScene("InteractiveMap", _ => { })
+            .BuildPlan();
+        ViewportNavigationConfiguration? navigation =
+            interactiveViewport.Renderer.RenderViews![0].Navigation;
+        Check(navigation is not null &&
+              navigation.Drag == ViewportDragOptions.Default &&
+              navigation.Wheel?.SmoothFrames == 4 &&
+              navigation.Decelerate == ViewportDecelerateOptions.Default &&
+              navigation.ClampZoom?.MaxWidth == 12_000f &&
+              navigation.Clamp?.Underflow == ViewportUnderflow.Center &&
+              interactiveViewport.Renderer.RenderViews[1].Navigation is null,
+            "Render View plans freeze an independent interactive Viewport plugin chain");
+
+        var singleInteractiveViewport = GameApplication.Create()
+            .UseDefault2DRenderer(renderer => renderer.UseInteractiveViewport(viewport => viewport
+                .Drag()
+                .Wheel()
+                .Decelerate()
+                .Clamp(new ViewportClampOptions(
+                    new Bounds2D(0f, 0f, 12_000f, 12_000f)))))
+            .ConfigureScene("SingleInteractiveMap", _ => { })
+            .BuildPlan();
+        Check(singleInteractiveViewport.Renderer.RenderViews is null &&
+              singleInteractiveViewport.Renderer.MainNavigation?.Drag is not null &&
+              singleInteractiveViewport.Renderer.MainNavigation?.Clamp is not null,
+            "One main Camera enables interactive Viewport navigation without fake multi-View setup");
     }
 
     private static void TestSceneAudioScope()
@@ -257,6 +299,19 @@ internal static class Program
             () => new Default2DRendererOptions().UseRenderViews(views => views
                 .Add("small", ViewportRect.RightHalf, renderScale: 0f)),
             "Render View scale must remain in the supported range");
+        CheckThrows<ArgumentException>(
+            () => new Default2DRendererOptions().UseRenderViews(views => views
+                .ConfigureMain(
+                    ViewportRect.LeftHalf,
+                    cameraFollow: CameraFollowSettings.Default,
+                    navigation: viewport => viewport.Drag())
+                .Add("second", ViewportRect.RightHalf)),
+            "Camera follow and direct interactive Viewport ownership cannot conflict");
+        CheckThrows<InvalidOperationException>(
+            () => new Default2DRendererOptions()
+                .UseInteractiveViewport(viewport => viewport.Drag())
+                .UseInteractiveViewport(viewport => viewport.Wheel()),
+            "Main interactive Viewport configuration cannot be registered twice");
         CheckThrows<ArgumentException>(
             () => SceneLayerFilter.Include("Actors", "Actors"),
             "Duplicate Scene layer selections are rejected during configuration");

@@ -29,6 +29,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - 声明式 Content Assets：单一版本化 `assets.json`、包依赖、Texture/Sprite/Animation/Audio、事务回滚与引用计数卸载。
 - 离线 Texture Atlas：确定性多页打包、padding/extrude、采样分组、大帧旁路与标准运行时包输出。
 - 正交 `Camera2D`：平移、缩放、旋转、震屏和 Viewport resize。
+- Interactive Viewport：每 RenderView 可声明 Drag、鼠标锚点 Wheel、Decelerate、ClampZoom 与 Clamp；Resize 自动收敛，稳定更新 0 B。
 - RenderPass DAG：场景渲染、Stencil 遮罩、后处理和 Viewport 合成。
 - 动态效果装配：实例领域事件、共享 owner 集合、`ScenePipelineBuilder` 与 `RenderTargetPool`。
 - 逻辑 RenderSurface：纯值输入输出、根表面注册、稳定拓扑排序与失败原子重建。
@@ -54,6 +55,7 @@ src/
 ├── Engine.Hosting.Tests/                # 配置、默认 owner 和资源所有权验证
 ├── Engine.Features/
 │   ├── Camera/                          # Camera2D
+│   ├── ViewportNavigation/              # 交互式 Camera 插件链与稳定可见范围快照
 │   ├── Animation/                       # 命名 Clip、循环模式与帧事件
 │   ├── Audio/                           # 逻辑 Clip/Bus/Voice 与 Backend 边界
 │   ├── Audio.Vorbis/                    # OGG Vorbis 元数据与分块 PCM 解码适配器
@@ -73,8 +75,8 @@ src/
 │   ├── TextRendering/                   # 真实字体、多行 Layout、复用 Buffer、Glyph Atlas 与 DrawText
 │   ├── TransformHierarchy/              # Local/World、GameInstance Binding、纯挂点与父子层级
 │   ├── Tilemaps/                        # TileSet、稀疏 Chunk、可见区域渲染与静态碰撞烘焙
-│   ├── *.Tests/                         # 18 个 Feature 无窗口控制台冒烟项目
-│   └── *.VisualTests/                   # 5 个图形验证项目
+│   ├── *.Tests/                         # 19 个 Feature 无窗口控制台冒烟项目
+│   └── *.VisualTests/                   # 6 个图形验证项目
 ├── Engine.Tools.AssetCompiler/          # 离线 assets.json → Atlas 运行时包编译器
 ├── Engine.Tools.AssetCompiler.Tests/    # 编译产物与运行时兼容验证
 ├── Engine.Tools.Cli/                    # gameengine doctor 可分发 .NET Tool
@@ -126,6 +128,7 @@ Engine.Core
   ├─ TextureAtlas
   ├─ Replay
 └─ Camera
+       ├─ ViewportNavigation
        └─ RenderPipeline
             ├─ Bloom
             ├─ Presentation
@@ -133,10 +136,10 @@ Engine.Core
             ├─ StencilMasking
             └─ ToneMapping
 
-Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
+Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/ViewportNavigation/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 75 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 78 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -201,6 +204,7 @@ dotnet run --project src/Engine.DddTests/Engine.DddTests.csproj
 dotnet run --project src/Engine.Hosting.Tests/Engine.Hosting.Tests.csproj
 dotnet run --project src/Engine.Features/Bloom.Tests/Bloom.Tests.csproj
 dotnet run --project src/Engine.Features/Camera.Tests/Camera.Tests.csproj
+dotnet run --project src/Engine.Features/ViewportNavigation.Tests/ViewportNavigation.Tests.csproj
 dotnet run --project src/Engine.Features/Presentation.Tests/Presentation.Tests.csproj
 dotnet run --project src/Engine.Features/RenderPipeline.Tests/RenderPipeline.Tests.csproj
 dotnet run --project src/Engine.Features/SceneSystem.Tests/SceneSystem.Tests.csproj

@@ -26,7 +26,8 @@ internal static class Program
         "TextureAssets.dll",
         "TextureAtlas.dll",
         "Tilemaps.dll",
-        "ToneMapping.dll"
+        "ToneMapping.dll",
+        "ViewportNavigation.dll"
     ];
 
     private static int _failures;

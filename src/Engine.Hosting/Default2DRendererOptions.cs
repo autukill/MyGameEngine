@@ -5,6 +5,7 @@ using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.ShaderAssets.Domain;
 using GameEngine.Features.ShaderAssets.Infrastructure;
 using GameEngine.Features.ToneMapping.Domain;
+using GameEngine.Features.ViewportNavigation;
 
 /// <summary>默认 2D 渲染预设；只有显式启用的可选 Feature 才创建 GPU 资源。</summary>
 public sealed class Default2DRendererOptions
@@ -27,6 +28,7 @@ public sealed class Default2DRendererOptions
     private ShaderHotReloadOptions? _shaderHotReload;
     private IReadOnlyList<SingleCameraViewportDefinition>? _viewports;
     private IReadOnlyList<RenderViewDefinition>? _renderViews;
+    private ViewportNavigationConfiguration? _mainNavigation;
 
     public Default2DRendererOptions UseContent(
         string packagesRoot,
@@ -130,6 +132,22 @@ public sealed class Default2DRendererOptions
         return this;
     }
 
+    /// <summary>
+    /// Enables pixi-viewport-style interaction for the main Camera without requiring a second
+    /// Render View. The configuration is also applied to main when UseRenderViews is enabled.
+    /// </summary>
+    public Default2DRendererOptions UseInteractiveViewport(
+        Action<ViewportNavigationBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        if (_mainNavigation is not null)
+            throw new InvalidOperationException("The main interactive Viewport is already configured.");
+        var builder = new ViewportNavigationBuilder();
+        configure(builder);
+        _mainNavigation = builder.Build();
+        return this;
+    }
+
     public Default2DRendererOptions EnablePerformanceTelemetry(
         PerformanceTelemetryOptions options)
     {
@@ -223,7 +241,8 @@ public sealed class Default2DRendererOptions
         _shaderAssetManifestPath,
         _shaderMaterials.ToArray(),
         _viewports ?? SingleCameraViewportLayoutBuilder.Default,
-        FreezeRenderViews());
+        FreezeRenderViews(),
+        _mainNavigation);
 
     private IReadOnlyList<RenderViewDefinition>? FreezeRenderViews()
     {
@@ -234,6 +253,14 @@ public sealed class Default2DRendererOptions
             _hdrEnabled
                 ? RenderViewEffects.Hdr(_toneMapping, _bloom)
                 : RenderViewEffects.Direct);
+        if (_mainNavigation is not null)
+        {
+            if (result[0].Navigation is not null)
+                throw new InvalidOperationException(
+                    "Configure main Viewport navigation either with UseInteractiveViewport or " +
+                    "UseRenderViews.ConfigureMain, not both.");
+            result[0] = RenderViewLayoutBuilder.WithNavigation(result[0], _mainNavigation);
+        }
         return Array.AsReadOnly(result);
     }
 }
@@ -256,7 +283,8 @@ internal sealed record Default2DRendererPlan(
     string? ShaderAssetManifestPath = null,
     IReadOnlyList<MaterialAssetDefinition>? ShaderMaterials = null,
     IReadOnlyList<SingleCameraViewportDefinition>? Viewports = null,
-    IReadOnlyList<RenderViewDefinition>? RenderViews = null)
+    IReadOnlyList<RenderViewDefinition>? RenderViews = null,
+    ViewportNavigationConfiguration? MainNavigation = null)
 {
     public IReadOnlyList<SingleCameraViewportDefinition> ResolvedViewports =>
         Viewports ?? SingleCameraViewportLayoutBuilder.Default;

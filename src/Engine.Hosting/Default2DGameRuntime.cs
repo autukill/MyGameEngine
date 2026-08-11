@@ -71,6 +71,9 @@ internal sealed class Default2DGameRuntime : IDisposable
     private LogicalInputPlayback? _inputPlayback;
     private GameplayStateRecorder? _stateRecorder;
     private GameplayStateVerifier? _stateVerifier;
+    private bool _viewportPrimaryDown;
+    private RenderViewRef? _viewportCapturedView;
+    private ViewportSlotRef? _viewportCapturedSlot;
     private bool _disposed;
 
     public Default2DGameContext Context { get; private set; } = null!;
@@ -117,6 +120,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             _inputPlayback.BeginStep(nextStepIndex);
         else
             _scene.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
+        UpdateViewportNavigation(deltaTime);
         _scene.PerformStep(deltaTime);
         _audio?.Update();
         _sceneAudio.PruneCompleted();
@@ -128,6 +132,55 @@ internal sealed class Default2DGameRuntime : IDisposable
         CaptureOrVerifyGameplayState();
         _contentHotReload?.Tick();
         _shaderHotReload?.Tick();
+    }
+
+    private void UpdateViewportNavigation(double deltaTime)
+    {
+        bool anyNavigation = false;
+        for (int i = 0; i < _renderViews.Count; i++)
+        {
+            if (_renderViews[i].Navigation is not null)
+            {
+                anyNavigation = true;
+                break;
+            }
+        }
+        if (!anyNavigation) return;
+
+        var mouse = _window.Input.MousePosition;
+        bool hasTopmost = Context.TryScreenToView(mouse, out ViewportHit topmost);
+        bool primaryDown = _window.Input.IsMouseButtonDown(
+            GameEngine.Core.Domain.Input.MouseButton.Left);
+        bool pressed = primaryDown && !_viewportPrimaryDown;
+        if (pressed && hasTopmost)
+        {
+            _viewportCapturedView = topmost.View;
+            _viewportCapturedSlot = topmost.Slot;
+        }
+        float scroll = _window.Input.MouseScrollDelta;
+        for (int i = 0; i < _renderViews.Count; i++)
+        {
+            RenderView view = _renderViews[i];
+            if (view.Navigation is not { } navigation) continue;
+            bool inside = hasTopmost && topmost.View == view.Ref;
+            var viewPosition = inside
+                ? topmost.ViewPosition
+                : default;
+            if (_viewportCapturedView == view.Ref && _viewportCapturedSlot is { } capturedSlot)
+                Context.MapScreenToViewportPosition(mouse, capturedSlot, out viewPosition);
+            var input = new GameEngine.Features.ViewportNavigation.ViewportInputFrame(
+                new System.Numerics.Vector2((float)viewPosition.X, (float)viewPosition.Y),
+                inside,
+                primaryDown,
+                inside ? scroll : 0f);
+            navigation.Update(in input, deltaTime);
+        }
+        if (!primaryDown)
+        {
+            _viewportCapturedView = null;
+            _viewportCapturedSlot = null;
+        }
+        _viewportPrimaryDown = primaryDown;
     }
 
     public void Draw() => _pipeline.Execute(new RenderPassContext(
@@ -154,6 +207,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                 width,
                 height);
             view.Camera.ResizeViewport(renderWidth, renderHeight);
+            view.Navigation?.Resize();
             view.Target.Resize(renderWidth, renderHeight);
         }
         _guiTarget?.Resize(width, height);
@@ -351,6 +405,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                     SceneLayerFilter.All,
                     renderer.MainEffects,
                     null,
+                    renderer.MainNavigation,
                     0)
             });
         for (int i = 0; i < viewDefinitions.Count; i++)

@@ -136,6 +136,20 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 
 这组成本也可从 `AdditionalPassCount/AdditionalRenderTargetCount` 直接读取，并随 Viewport 诊断返回。Stencil 目前仍由 `EnableStencilMasking` 配置且只属于主 View；自定义主 View Stencil 输出使用 `PresentViewSurface(RenderViewRef.Main, ...)`。`UseRenderViews` 与 `UseSingleCameraViewports` 互斥，前者表示重绘，后者表示复用同一次渲染。
 
+地图或编辑器主视图可直接声明交互式 Camera，不需要为了配置导航创建假的第二个 View：
+
+```csharp
+.UseDefault2DRenderer(renderer => renderer
+    .UseInteractiveViewport(viewport => viewport
+        .Drag()
+        .Wheel()
+        .Decelerate()
+        .ClampZoom(new ViewportClampZoomOptions(maxWidth: 12_000, maxHeight: 12_000))
+        .Clamp(new ViewportClampOptions(new Bounds2D(0, 0, 12_000, 12_000)))))
+```
+
+多 Render View 也可在 `ConfigureMain/Add` 的 `navigation` 参数中分别声明。Scene 装配通过 `context.GetViewportNavigation(RenderViewRef.Main)` 获取控制器；同一 View 不能同时声明 CameraFollow。完整插件语义与 Chunk Streaming 边界见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)。
+
 ## Default2DGameContext
 
 Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后执行。Context 提供：

@@ -5,6 +5,7 @@ using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Features.ToneMapping.Domain;
+using GameEngine.Features.ViewportNavigation;
 
 public readonly record struct RenderViewRef
 {
@@ -34,6 +35,7 @@ public sealed record RenderViewDefinition
     public SceneLayerFilter SceneLayers { get; }
     public RenderViewEffects Effects { get; }
     public CameraFollowSettings? CameraFollow { get; }
+    public ViewportNavigationConfiguration? Navigation { get; }
     internal int DeclarationOrder { get; }
 
     internal RenderViewDefinition(
@@ -45,6 +47,7 @@ public sealed record RenderViewDefinition
         SceneLayerFilter sceneLayers,
         RenderViewEffects effects,
         CameraFollowSettings? cameraFollow,
+        ViewportNavigationConfiguration? navigation,
         int declarationOrder)
     {
         Ref = reference;
@@ -56,6 +59,7 @@ public sealed record RenderViewDefinition
         SceneLayers = sceneLayers;
         Effects = effects;
         CameraFollow = cameraFollow;
+        Navigation = navigation;
         DeclarationOrder = declarationOrder;
     }
 }
@@ -74,6 +78,7 @@ public sealed class RenderViewLayoutBuilder
         SceneLayerFilter.All,
         RenderViewEffects.Direct,
         null,
+        null,
         0);
     private bool _mainConfigured;
 
@@ -83,7 +88,8 @@ public sealed class RenderViewLayoutBuilder
         ViewportFitMode fit = ViewportFitMode.Stretch,
         int layer = 0,
         SceneLayerFilter? sceneLayers = null,
-        CameraFollowSettings? cameraFollow = null)
+        CameraFollowSettings? cameraFollow = null,
+        Action<ViewportNavigationBuilder>? navigation = null)
     {
         if (_mainConfigured)
             throw new InvalidOperationException("The main Render View is already configured.");
@@ -96,6 +102,7 @@ public sealed class RenderViewLayoutBuilder
             sceneLayers ?? SceneLayerFilter.All,
             RenderViewEffects.Direct,
             cameraFollow,
+            BuildNavigation(navigation),
             0);
         _mainConfigured = true;
         return this;
@@ -109,7 +116,8 @@ public sealed class RenderViewLayoutBuilder
         int? layer = null,
         SceneLayerFilter? sceneLayers = null,
         RenderViewEffects? effects = null,
-        CameraFollowSettings? cameraFollow = null)
+        CameraFollowSettings? cameraFollow = null,
+        Action<ViewportNavigationBuilder>? navigation = null)
     {
         var reference = new RenderViewRef(name);
         if (!_names.Add(reference.Name))
@@ -124,6 +132,7 @@ public sealed class RenderViewLayoutBuilder
             sceneLayers ?? SceneLayerFilter.All,
             effects ?? RenderViewEffects.Direct,
             cameraFollow,
+            BuildNavigation(navigation),
             order));
         return this;
     }
@@ -164,6 +173,7 @@ public sealed class RenderViewLayoutBuilder
         SceneLayerFilter sceneLayers,
         RenderViewEffects effects,
         CameraFollowSettings? cameraFollow,
+        ViewportNavigationConfiguration? navigation,
         int order)
     {
         SingleCameraViewportLayoutBuilder.ValidateViewport(viewport);
@@ -171,6 +181,9 @@ public sealed class RenderViewLayoutBuilder
         if (!float.IsFinite(renderScale) || renderScale <= 0f || renderScale > 1f)
             throw new ArgumentOutOfRangeException(
                 nameof(renderScale), "Render scale must be in (0, 1].");
+        if (cameraFollow is not null && navigation is not null)
+            throw new ArgumentException(
+                "A Render View cannot combine CameraFollow and interactive Viewport navigation.");
         return new RenderViewDefinition(
             reference,
             viewport,
@@ -180,7 +193,17 @@ public sealed class RenderViewLayoutBuilder
             sceneLayers,
             effects,
             cameraFollow,
+            navigation,
             order);
+    }
+
+    private static ViewportNavigationConfiguration? BuildNavigation(
+        Action<ViewportNavigationBuilder>? configure)
+    {
+        if (configure is null) return null;
+        var builder = new ViewportNavigationBuilder();
+        configure(builder);
+        return builder.Build();
     }
 
     internal static RenderViewDefinition WithEffects(
@@ -194,7 +217,29 @@ public sealed class RenderViewLayoutBuilder
             definition.SceneLayers,
             effects,
             definition.CameraFollow,
+            definition.Navigation,
             definition.DeclarationOrder);
+
+    internal static RenderViewDefinition WithNavigation(
+        RenderViewDefinition definition,
+        ViewportNavigationConfiguration navigation)
+    {
+        ArgumentNullException.ThrowIfNull(navigation);
+        if (definition.CameraFollow is not null)
+            throw new ArgumentException(
+                "A Render View cannot combine CameraFollow and interactive Viewport navigation.");
+        return new RenderViewDefinition(
+            definition.Ref,
+            definition.Viewport,
+            definition.Fit,
+            definition.RenderScale,
+            definition.Layer,
+            definition.SceneLayers,
+            definition.Effects,
+            null,
+            navigation,
+            definition.DeclarationOrder);
+    }
 }
 
 /// <summary>A logical View exposed to gameplay without exposing its RenderTarget.</summary>
@@ -207,6 +252,7 @@ public sealed class RenderView
     public ViewportSlotRef Slot { get; }
     public Camera2D Camera { get; }
     public CameraFollowController? CameraFollow { get; }
+    public ViewportController? Navigation { get; }
     public ViewportRect Viewport { get; }
     public ViewportFitMode Fit { get; }
     public float RenderScale { get; }
@@ -231,6 +277,7 @@ public sealed class RenderView
         CameraFollow = definition.CameraFollow is { } settings
             ? new CameraFollowController(camera, settings)
             : null;
+        Navigation = definition.Navigation?.CreateController(camera);
         Viewport = definition.Viewport;
         Fit = definition.Fit;
         RenderScale = definition.RenderScale;
@@ -252,6 +299,11 @@ public sealed class RenderView
     public CameraFollowController RequireCameraFollow() => CameraFollow ??
         throw new InvalidOperationException(
             $"Render View '{Ref}' does not declare a Camera follow policy.");
+
+    /// <summary>Returns the declaratively configured interactive Viewport controller.</summary>
+    public ViewportController RequireNavigation() => Navigation ??
+        throw new InvalidOperationException(
+            $"Render View '{Ref}' does not declare interactive Viewport navigation.");
 
     internal void AttachScenePass(SceneRenderPass scenePass)
     {

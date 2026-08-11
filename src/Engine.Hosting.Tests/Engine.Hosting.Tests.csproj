@@ -21,6 +21,7 @@
     <ProjectReference Include="..\Engine.Features\Sprites\Sprites.csproj" />
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\ToneMapping\ToneMapping.csproj" />
+    <ProjectReference Include="..\Engine.Features\ViewportNavigation\ViewportNavigation.csproj" />
     <ProjectReference Include="..\Engine.Hosting\Engine.Hosting.csproj" />
   </ItemGroup>
 </Project>

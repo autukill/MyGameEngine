@@ -102,6 +102,12 @@ second.Camera.Zoom = 0.75f;
 
 ## 后续阶段
 
+### Interactive Viewport 第一阶段（已完成）
+
+`Engine.Features.ViewportNavigation` 已把地图浏览行为从游戏手写 Camera 逻辑中拆出。主 Camera 可通过 `UseInteractiveViewport` 声明 Drag、鼠标锚点 Wheel、帧率无关 Decelerate、ClampZoom 和带 Underflow 的世界 Clamp；多 Render View 可分别声明自己的插件链。Hosting 在 Scene Step 前按最上层命中 View 路由鼠标与滚轮，Resize 后重新执行缩放和边界约束。
+
+`ViewportSnapshot` 固定可见世界 AABB、中心、Zoom、Render Size 与 Revision，作为未来 Chunk Streaming/LOD 的只读消费边界。Viewport 本身不加载 Chunk、不拥有 Texture。完整用法和功能覆盖见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)。
+
 ### 阶段 3：显式效果策略（已完成）
 
 每 View Layer 过滤与显式效果策略已经完成。`Direct`、HDR + Tone Mapping、HDR + Bloom + Tone Mapping 三档配置直接暴露额外 Pass/RT 成本，次级 View 不会隐式继承主链。每个 View 的诊断现在还报告 Scene 候选访问、剔除、选择/绘制实例和可选 CPU 分项耗时。Layer/Depth 有序索引已修正 `Layer × Scene` 放大并消除 Draw 阶段重复排序；10,000 实例双 View 调度约从最初 `1.536 ms` 降至 `0.470 ms`，保持 0 B/frame。
@@ -115,4 +121,6 @@ second.Camera.Zoom = 0.75f;
 - 次级 View 的 Stencil；HDR、Bloom 和 Tone Mapping 已可独立声明。
 - 跨 View 可见性缓存或通用空间索引；当前 Layer 候选已索引并逐 View 粗剔除，但各 View 仍独立检查、排序并绘制可见实例。
 - 多窗口与多个默认 framebuffer 终端。
-- Viewport 动画、鼠标捕获策略和编辑器 Dock。
+- Pinch 所需的统一多 Pointer 输入、Bounce/Animate/Snap/SnapZoom/MouseEdges；当前没有假实现。
+- 跨窗口鼠标捕获与编辑器 Dock。
+- Chunk Streaming、异步 IO、LOD 和显存预算；它们将作为 ViewportSnapshot 的独立消费者。

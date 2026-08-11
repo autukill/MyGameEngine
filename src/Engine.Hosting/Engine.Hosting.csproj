@@ -28,6 +28,7 @@
     <ProjectReference Include="..\Engine.Features\TextureAssets\TextureAssets.csproj" />
     <ProjectReference Include="..\Engine.Features\ToneMapping\ToneMapping.csproj" />
     <ProjectReference Include="..\Engine.Features\TransformHierarchy\TransformHierarchy.csproj" />
+    <ProjectReference Include="..\Engine.Features\ViewportNavigation\ViewportNavigation.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="HostingTests" />

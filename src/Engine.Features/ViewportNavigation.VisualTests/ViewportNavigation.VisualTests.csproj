@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ViewportNavigation.VisualTests</RootNamespace>
+    <AssemblyName>ViewportNavigationVisualTests</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.OpenGL" />
+    <PackageReference Include="Silk.NET.Windowing" />
+    <PackageReference Include="Silk.NET.Input" />
+    <PackageReference Include="Silk.NET.Maths" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
+    <ProjectReference Include="..\Camera\Camera.csproj" />
+    <ProjectReference Include="..\RenderPipeline\RenderPipeline.csproj" />
+    <ProjectReference Include="..\ViewportNavigation\ViewportNavigation.csproj" />
+  </ItemGroup>
+</Project>
