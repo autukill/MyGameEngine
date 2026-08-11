@@ -44,10 +44,10 @@ public static class AssetPackageManifestParser
         var tileSets = ParseTileSets(document.TileSets);
         var tileMaps = ParseTileMaps(document.TileMaps);
         var atlas = ParseAtlas(document.Atlas, textures);
-        if (textures.Count == 0 && sprites.Count == 0 && animations.Count == 0 &&
+        if (dependencies.Count == 0 && textures.Count == 0 && sprites.Count == 0 && animations.Count == 0 &&
             audioClips.Count == 0 && tileSets.Count == 0 && tileMaps.Count == 0)
             throw new InvalidDataException(
-                "An asset package must contain at least one Texture, Sprite, Animation, Audio clip, TileSet or TileMap.");
+                "An asset package must contain at least one dependency, Texture, Sprite, Animation, Audio clip, TileSet or TileMap.");
 
         return new AssetPackageManifest(
             document.SchemaVersion,
@@ -233,6 +233,13 @@ public static class AssetPackageManifestParser
         int extrude = source.Extrude ?? 1;
         if (padding < 0 || extrude < 0)
             throw new InvalidDataException("Atlas padding and extrude must be non-negative.");
+        AtlasPageEncoding pageEncoding = source.PageEncoding?.Trim().ToLowerInvariant() switch
+        {
+            null or "" or "png" => AtlasPageEncoding.Png,
+            "webplossless" => AtlasPageEncoding.WebpLossless,
+            _ => throw new InvalidDataException(
+                $"Atlas pageEncoding '{source.PageEncoding}' is unsupported.")
+        };
 
         var localTextures = textures.Select(item => item.Name).ToHashSet(StringComparer.Ordinal);
         var selected = new string[source.Textures.Count];
@@ -249,7 +256,12 @@ public static class AssetPackageManifestParser
             selected[i] = name;
         }
 
-        return new AtlasAssetBuildDefinition(maxPageSize, padding, extrude, selected);
+        return new AtlasAssetBuildDefinition(
+            maxPageSize,
+            padding,
+            extrude,
+            pageEncoding,
+            selected);
     }
 
     private static IReadOnlyList<AssetPackageDependency> ParseDependencies(
@@ -566,6 +578,7 @@ public static class AssetPackageManifestParser
         public SizeIntDto? MaxPageSize { get; init; }
         public int? Padding { get; init; }
         public int? Extrude { get; init; }
+        public string? PageEncoding { get; init; }
         public List<string?>? Textures { get; init; }
     }
 }

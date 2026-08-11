@@ -14,7 +14,7 @@ using GameEngine.Features.Tilemaps.Infrastructure;
 /// </summary>
 public sealed class ContentBuildPipeline
 {
-    public const string CompilerVersion = "4";
+    public const string CompilerVersion = "5";
     public const string MetadataFileName = ".mygame-assets.json";
     private const string OwnerName = "MyGameEngine.AssetCompiler";
     private const int MetadataSchemaVersion = 1;

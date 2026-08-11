@@ -153,7 +153,7 @@ Fingerprint 使用确定性 SHA-256 输入流；字符串字段带长度前缀�
 3. 按 `pixelArt/smooth` 采样状态分组，避免一个 Atlas 页混用互斥 Sampler。
 4. 交给 `TextureAtlasBuilder` 生成多页 RGBA8，应用 padding/extrude。
 5. 已放置帧重映射到内部 Atlas 页；放不下的帧保留原 Texture 旁路。
-6. 输出 PNG 页并把 Sprite 统一重写为显式 `frames`，保留逻辑尺寸、原点、FPS、Animation、Audio、TileSet 和 TileMap。
+6. 按包配置输出默认 PNG 或 exact 无损 WebP 页面，并把 Sprite 统一重写为显式 `frames`，保留逻辑尺寸、原点、FPS、Animation、Audio、TileSet 和 TileMap。
 
 输出仍是 Runtime 可以直接解析的标准 Package，而不是只能由 Compiler 理解的数据库。这个边界让一个动画可以跨 Atlas 页，过大帧也可以继续引用独立 Texture，而 `SpriteRef` 和 Gameplay API 不变。
 
@@ -204,14 +204,14 @@ Runner 与 Sprites.VisualTests 继续使用：
 
 ## ContentPipeline NuGet 如何自包含
 
-`MyGameEngine.ContentPipeline` 设置 `IncludeBuildOutput=false` 和 `SuppressDependenciesWhenPacking=true`：游戏不会在运行时引用一个“构建工具程序集”。打包阶段反而把 AssetCompiler 的完整框架依赖输出、托管依赖和 SkiaSharp native assets 收集到包内 `tools/net10.0/any`。
+`MyGameEngine.ContentPipeline` 设置 `IncludeBuildOutput=false` 和 `SuppressDependenciesWhenPacking=true`：游戏不会在运行时引用一个“构建工具程序集”。打包阶段反而把 AssetCompiler 的完整框架依赖输出、托管依赖、SkiaSharp native assets 和 exact WebP 编码所需的 MIT libwebp 多平台 runtime 收集到包内 `tools/net10.0/any`。
 
 `buildTransitive/*.props` 只计算当前 NuGet 包根目录；`*.targets` 再从该根目录定位私有 `GameEngineAssetCompiler.dll`。因此外部项目无需安装全局 Tool，也不会依赖源码仓库绝对路径。源码仓库模式用 `ProjectReference ReferenceOutputAssembly=false` 保证 Compiler 先构建，然后导入同一份 targets；两种模式最终执行的是同一个 DLL 和同一条命令行协议。
 
 ## 包边界
 
 - 两个包当前要求 .NET 10。
-- ContentPipeline 包携带完整框架依赖编译器、托管依赖以及 SkiaSharp 多平台 native assets，不要求外部游戏项目引用这些程序集。
+- ContentPipeline 包携带完整框架依赖编译器、托管依赖、SkiaSharp 与 libwebp 多平台 native assets，不要求外部游戏项目引用这些程序集。
 - 包不包含源资产、编译缓存或任何仓库绝对路径。
 - 当前未实现包签名、远程 Feed 发布、跨仓库共享缓存或远程缓存。
 - 内容格式、Atlas 与 Shader 生成边界仍以 [Content Assets](CONTENT_ASSETS.md)、[Texture Atlas](TEXTURE_ATLAS.md)、[强类型 Content 引用](STRONGLY_TYPED_CONTENT.md)和[声明式 Shader 与 Material Assets](SHADER_ASSETS.md)文档为准。

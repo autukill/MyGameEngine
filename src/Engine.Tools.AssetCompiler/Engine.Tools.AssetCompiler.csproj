@@ -13,11 +13,13 @@
     <Version>$(GameEnginePackageVersion)</Version>
     <Authors>MyGameEngine</Authors>
     <Description>Offline compiler and strongly typed reference generator for MyGameEngine content and Shader assets.</Description>
-    <PackageTags>game-engine;content-pipeline;texture-atlas;sprite;shader;material</PackageTags>
+    <PackageTags>game-engine;content-pipeline;texture-atlas;webp;sprite;shader;material</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Imazen.WebP" />
+    <PackageReference Include="Imazen.WebP.NativeRuntime.All" />
     <PackageReference Include="SkiaSharp" />
   </ItemGroup>
   <ItemGroup>

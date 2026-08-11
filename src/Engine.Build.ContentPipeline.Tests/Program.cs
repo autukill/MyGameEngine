@@ -163,8 +163,12 @@ internal static class Program
         Check(toolEntries.Contains("tools/net10.0/any/DotnetToolSettings.xml", StringComparer.Ordinal) &&
               toolEntries.Contains("tools/net10.0/any/GameEngineAssetCompiler.dll", StringComparer.Ordinal) &&
               toolEntries.Contains("tools/net10.0/any/ShaderAssets.dll", StringComparer.Ordinal) &&
+              toolEntries.Contains("tools/net10.0/any/Imazen.WebP.dll", StringComparer.Ordinal) &&
+              toolEntries.Contains(
+                  "tools/net10.0/any/runtimes/win-x64/native/libwebp.dll",
+                  StringComparer.Ordinal) &&
               toolEntries.Contains("README.md", StringComparer.Ordinal),
-            "Tool package contains command metadata, compiler, and Shader assets support");
+            "Tool package contains compiler, Shader support, and exact WebP runtime");
         Check(!toolEntries.Any(entry => entry.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)),
             "Tool package excludes compiler and dependency symbols");
 
@@ -178,8 +182,13 @@ internal static class Program
                   "tools/net10.0/any/GameEngineAssetCompiler.dll", StringComparer.Ordinal) &&
               buildEntries.Contains(
                   "tools/net10.0/any/ShaderAssets.dll", StringComparer.Ordinal) &&
+              buildEntries.Contains(
+                  "tools/net10.0/any/Imazen.WebP.dll", StringComparer.Ordinal) &&
+              buildEntries.Contains(
+                  "tools/net10.0/any/runtimes/linux-x64/native/libwebp.so",
+                  StringComparer.Ordinal) &&
               buildEntries.Contains("README.md", StringComparer.Ordinal),
-            "ContentPipeline package contains convention-named imports and a private compiler payload");
+            "ContentPipeline package contains imports and a cross-platform private compiler payload");
         Check(!buildEntries.Any(entry =>
                   entry.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) ||
                   entry.Contains("/publish/", StringComparison.OrdinalIgnoreCase) ||

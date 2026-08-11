@@ -11,6 +11,7 @@ using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
 using GameEngine.Features.TextureAtlas.Domain;
 using GameEngine.Features.TextureAtlas.Infrastructure;
+using Imazen.WebP;
 using SkiaSharp;
 
 public sealed record ContentAssetCompileResult(
@@ -168,7 +169,8 @@ public sealed class ContentAssetCompiler
                 string textureName = GeneratedTextureName(package.Manifest.Id, samplingGroup.Key, localPageIndex);
                 if (textures.ContainsKey(textureName) || generatedTextures.Any(item => item.Name == textureName))
                     throw new InvalidDataException($"Generated Atlas Texture name '{textureName}' conflicts with an asset.");
-                string relativePath = $"atlas/{samplingGroup.Key}-{localPageIndex}.png";
+                string extension = AtlasPageExtension(atlas.PageEncoding);
+                string relativePath = $"atlas/{samplingGroup.Key}-{localPageIndex}{extension}";
                 generatedTextures.Add(new TextureAssetDefinition(textureName, relativePath, sampler));
                 generatedPages.Add((relativePath, result.Pages[localPageIndex]));
             }
@@ -214,7 +216,7 @@ public sealed class ContentAssetCompiler
             {
                 string pagePath = ResolveOutputPath(temporary, generated.RelativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(pagePath)!);
-                WritePng(pagePath, generated.Page);
+                WriteAtlasPage(pagePath, generated.Page, atlas.PageEncoding);
             }
 
             string outputManifest = Path.Combine(temporary, outputManifestFileName);
@@ -696,17 +698,62 @@ public sealed class ContentAssetCompiler
         writer.WriteEndObject();
     }
 
-    private static void WritePng(string path, AtlasPage page)
+    private static void WriteAtlasPage(
+        string path,
+        AtlasPage page,
+        AtlasPageEncoding encoding)
     {
-        var info = new SKImageInfo(page.Width, page.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+        using var stream = File.Create(path);
+        switch (encoding)
+        {
+            case AtlasPageEncoding.Png:
+                WritePng(stream, page, path);
+                break;
+            case AtlasPageEncoding.WebpLossless:
+                var config = new WebPEncoderConfig()
+                    .SetLosslessPreset(9)
+                    .SetExact();
+                WebPEncoder.Encode(
+                    page.RgbaPixels,
+                    page.Width,
+                    page.Height,
+                    checked(page.Width * 4),
+                    WebPPixelFormat.Rgba,
+                    config,
+                    stream);
+                break;
+            default:
+                throw new InvalidOperationException(
+                    $"Unsupported Atlas page encoding '{encoding}'.");
+        }
+    }
+
+    private static void WritePng(Stream stream, AtlasPage page, string path)
+    {
+        var info = new SKImageInfo(
+            page.Width,
+            page.Height,
+            SKColorType.Rgba8888,
+            SKAlphaType.Unpremul);
         using var bitmap = new SKBitmap(info);
         Marshal.Copy(page.RgbaPixels, 0, bitmap.GetPixels(), page.RgbaPixels.Length);
-        using var image = SKImage.FromBitmap(bitmap);
-        using var data = image.Encode(SKEncodedImageFormat.Png, 100)
-            ?? throw new InvalidOperationException($"Could not encode Atlas page '{path}'.");
-        using var stream = File.Create(path);
-        data.SaveTo(stream);
+        using SKPixmap pixmap = bitmap.PeekPixels();
+        if (!pixmap.Encode(
+                stream,
+                new SKPngEncoderOptions(
+                    SKPngEncoderFilterFlags.AllFilters,
+                    6)))
+        {
+            throw new InvalidOperationException($"Could not encode Atlas page '{path}'.");
+        }
     }
+
+    private static string AtlasPageExtension(AtlasPageEncoding encoding) => encoding switch
+    {
+        AtlasPageEncoding.Png => ".png",
+        AtlasPageEncoding.WebpLossless => ".webp",
+        _ => throw new InvalidOperationException($"Unsupported Atlas page encoding '{encoding}'.")
+    };
 
     private static string FrameKey(string textureName, PixelRectI rect) =>
         $"{textureName.Length}:{textureName}|{rect.X},{rect.Y},{rect.Width},{rect.Height}";

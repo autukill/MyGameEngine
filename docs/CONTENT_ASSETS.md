@@ -25,7 +25,7 @@ Gameplay 与 Renderer
 - `GameAssets` 只包含 `TextureRef`、`SpriteRef` 等逻辑名称，不包含像素、PCM、UV 或 GPU Handle。
 - 运行时也可以直接读取源包，便于测试和工具；正式 Build 默认让 Runtime 只消费 `AssetsCompiled`，避免游戏进程执行离线 Atlas 或修改源目录。
 
-编译器不会发明另一套私有二进制 Manifest。启用 Atlas 时，它把 `single/grid/frames` 统一规范化为显式逐帧来源，生成 Atlas PNG，并重写为仍可由 `AssetPackageManifestParser` 读取的 `layout: "frames"`。因此运行时加载、热重载和测试共用相同 Schema 与验证模型。
+编译器不会发明另一套私有二进制 Manifest。启用 Atlas 时，它把 `single/grid/frames` 统一规范化为显式逐帧来源，按包配置生成 PNG 或无损 WebP 页面，并重写为仍可由 `AssetPackageManifestParser` 读取的 `layout: "frames"`。因此运行时加载、热重载和测试共用相同 Schema 与验证模型。
 
 ## 快速开始
 
@@ -321,6 +321,8 @@ Animation 不直接保存 Texture 或 UV。多图片 Sprite、Atlas 跨页和大
 ```
 
 Sprite 只能引用本包或传递依赖包中的 Texture；Animation 同样只能引用依赖闭包中的 Sprite。仅仅在全局 Library 中存在同名资源不会自动赋予包访问权限。
+
+只声明 `dependencies`、不包含本地资源的聚合包是合法的，适合把顶层 `assets.json` 保持为简短、显式的包目录。完全没有依赖和本地资源的空包仍会被拒绝。聚合根的租约会持有完整依赖闭包；这是一种组织边界，不等同于按 Scene 延迟加载。
 
 Manager 在修改 GPU 状态之前解析完整依赖图，并拒绝：
 

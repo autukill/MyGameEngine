@@ -18,6 +18,7 @@ internal static class Program
     {
         Console.WriteLine("=== Asset Compiler Smoke Test ===\n");
         VerifyCompileAndRuntimeLoad();
+        VerifyLosslessWebpAggregatePackage();
         VerifyShaderReferenceGeneration();
 
         Console.WriteLine();
@@ -25,6 +26,88 @@ internal static class Program
             ? "=== All Asset Compiler smoke tests passed ==="
             : $"=== {_failures} Asset Compiler test(s) FAILED ===");
         Environment.ExitCode = _failures == 0 ? 0 : 1;
+    }
+
+    private static void VerifyLosslessWebpAggregatePackage()
+    {
+        Console.WriteLine("4. Lossless WebP Atlas and dependency-only aggregate package");
+        string workspace = Directory.CreateTempSubdirectory("mygame-webp-atlas-").FullName;
+        string source = Path.Combine(workspace, "source");
+        string home = Path.Combine(source, "Home");
+        string firstOutput = Path.Combine(workspace, "compiled-a");
+        string secondOutput = Path.Combine(workspace, "compiled-b");
+        Directory.CreateDirectory(home);
+        try
+        {
+            string sourceImage = Path.Combine(home, "sheet.png");
+            WriteExactAlphaFixture(sourceImage);
+            File.WriteAllText(Path.Combine(source, "assets.json"), AggregateManifest);
+            File.WriteAllText(Path.Combine(home, "assets.json"), WebpHomeManifest);
+
+            var pipeline = new ContentBuildPipeline();
+            ContentBuildResult first = pipeline.Build(new ContentBuildRequest(
+                source,
+                "assets.json",
+                firstOutput));
+            ContentBuildResult second = pipeline.Build(new ContentBuildRequest(
+                source,
+                "assets.json",
+                secondOutput));
+
+            string webpPage = Path.Combine(
+                firstOutput,
+                "Home",
+                "atlas",
+                "pixel-art-0.webp");
+            byte[] encoded = File.ReadAllBytes(webpPage);
+            Check(first.PackageCount == 2 && first.AtlasPageCount == 1 &&
+                  first.PackedFrameCount == 1 && first.PassthroughFrameCount == 0,
+                "Dependency-only root compiles its Home package Atlas");
+            Check(encoded.AsSpan(0, 4).SequenceEqual("RIFF"u8) &&
+                  encoded.AsSpan(8, 4).SequenceEqual("WEBP"u8),
+                "WebP Atlas page has the RIFF/WEBP signature and extension");
+            Check(DirectoriesEqual(firstOutput, secondOutput),
+                "Repeated lossless WebP graph builds are byte-identical");
+
+            var decoder = new SkiaImageDecoder();
+            using var sourceStream = File.OpenRead(sourceImage);
+            using var pageStream = File.OpenRead(webpPage);
+            DecodedImage sourcePixels = decoder.Decode(sourceStream);
+            DecodedImage pagePixels = decoder.Decode(pageStream);
+            Check(sourcePixels.RgbaPixels.AsSpan(0, 4).SequenceEqual(
+                    new byte[] { 17, 34, 51, 0 }),
+                "WebP fixture contains non-zero hidden RGB under transparent alpha");
+            Check(sourcePixels.Width == pagePixels.Width &&
+                  sourcePixels.Height == pagePixels.Height &&
+                  sourcePixels.RgbaPixels.SequenceEqual(pagePixels.RgbaPixels),
+                "Lossless WebP Atlas preserves unpremultiplied RGBA pixels");
+
+            string generated = Path.Combine(workspace, "generated", "GameEngine.Content.g.cs");
+            ContentReferenceGenerationResult references = new ContentReferenceCodeGenerator().Generate(
+                new ContentReferenceGenerationRequest(
+                    firstOutput,
+                    "assets.json",
+                    generated,
+                    "Compiler.Webp.Content"));
+            Check(references.PackageCount == 2 && references.SpriteCount == 1 &&
+                  File.ReadAllText(generated).Contains(
+                      "ContentPackageRef WebpHome",
+                      StringComparison.Ordinal),
+                "Strong references include assets from the aggregate dependency graph");
+
+            var backend = new FakeTextureBackend();
+            using var textures = new TextureLibrary(backend);
+            var sprites = new SpriteLibrary(textures);
+            using var manager = new ContentPackageManager(textures, sprites, firstOutput);
+            using var package = manager.Load("assets.json");
+            Check(package.GetSprite("webp.home.sheet").Name == "webp.home.sheet" &&
+                  textures.Count == 1 && sprites.Count == 1,
+                "Root package lease exposes and owns the Home dependency Sprite");
+        }
+        finally
+        {
+            Directory.Delete(workspace, recursive: true);
+        }
     }
 
     private static void VerifyCompileAndRuntimeLoad()
@@ -244,7 +327,7 @@ internal static class Program
 
     private static void VerifyShaderReferenceGeneration()
     {
-        Console.WriteLine("4. Strongly typed Shader, Material, and parameter references");
+        Console.WriteLine("5. Strongly typed Shader, Material, and parameter references");
         string workspace = Directory.CreateTempSubdirectory("mygame-shader-refs-").FullName;
         string projectRoot = Path.Combine(workspace, "game");
         string shadersRoot = Path.Combine(projectRoot, "Shaders");
@@ -354,6 +437,29 @@ internal static class Program
         using var bitmap = new SKBitmap(
             new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
         bitmap.Erase(color);
+        WritePng(path, bitmap);
+    }
+
+    private static void WriteExactAlphaFixture(string path)
+    {
+        var info = new SKImageInfo(4, 2, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+        using var bitmap = new SKBitmap(info);
+        byte[] pixels =
+        [
+            17, 34, 51, 0,
+            255, 0, 0, 255,
+            0, 255, 0, 128,
+            0, 0, 255, 255,
+            255, 255, 0, 255,
+            0, 255, 255, 255,
+            255, 0, 255, 255,
+            255, 255, 255, 255
+        ];
+        System.Runtime.InteropServices.Marshal.Copy(
+            pixels,
+            0,
+            bitmap.GetPixels(),
+            pixels.Length);
         WritePng(path, bitmap);
     }
 
@@ -493,6 +599,48 @@ internal static class Program
             { "name": "compiler.white", "path": "white.png", "sampling": "smooth" }
           ],
           "sprites": []
+        }
+        """;
+
+    private const string AggregateManifest = """
+        {
+          "schemaVersion": 1,
+          "id": "webp.root",
+          "dependencies": [
+            { "id": "webp.home", "manifest": "Home/assets.json" }
+          ],
+          "textures": [],
+          "sprites": []
+        }
+        """;
+
+    private const string WebpHomeManifest = """
+        {
+          "schemaVersion": 1,
+          "id": "webp.home",
+          "dependencies": [],
+          "atlas": {
+            "pageEncoding": "webpLossless",
+            "maxPageSize": { "width": 8, "height": 8 },
+            "padding": 0,
+            "extrude": 0,
+            "textures": ["webp.home.sheet.source"]
+          },
+          "textures": [
+            {
+              "name": "webp.home.sheet.source",
+              "path": "sheet.png",
+              "sampling": "pixelArt"
+            }
+          ],
+          "sprites": [
+            {
+              "name": "webp.home.sheet",
+              "layout": "single",
+              "texture": "webp.home.sheet.source",
+              "origin": { "x": 0, "y": 0 }
+            }
+          ]
         }
         """;
 

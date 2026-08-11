@@ -20,11 +20,28 @@ public enum SpriteAssetLayout
 
 public readonly record struct PixelSizeI(int Width, int Height);
 
+public enum AtlasPageEncoding
+{
+    Png,
+    WebpLossless
+}
+
 public sealed record AtlasAssetBuildDefinition(
     PixelSizeI MaxPageSize,
     int Padding,
     int Extrude,
-    IReadOnlyList<string> Textures);
+    AtlasPageEncoding PageEncoding,
+    IReadOnlyList<string> Textures)
+{
+    public AtlasAssetBuildDefinition(
+        PixelSizeI maxPageSize,
+        int padding,
+        int extrude,
+        IReadOnlyList<string> textures)
+        : this(maxPageSize, padding, extrude, AtlasPageEncoding.Png, textures)
+    {
+    }
+}
 
 public sealed record SpriteAssetFrameDefinition(
     string? TextureName,

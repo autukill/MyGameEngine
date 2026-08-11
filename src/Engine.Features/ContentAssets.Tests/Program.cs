@@ -47,6 +47,7 @@ internal static class Program
                 "maxPageSize": { "width": 1024, "height": 512 },
                 "padding": 2,
                 "extrude": 1,
+                "pageEncoding": "webpLossless",
                 "textures": ["atlas", "frame.1"]
               },
               "textures": [
@@ -90,7 +91,9 @@ internal static class Program
               manifest.Dependencies.Count == 1 && manifest.Textures.Count == 2,
             "Package identity, dependencies, and textures parse");
         Check(manifest.Atlas?.MaxPageSize == new PixelSizeI(1024, 512) &&
-              manifest.Atlas.Padding == 2 && manifest.Atlas.Textures.Count == 2,
+              manifest.Atlas.Padding == 2 &&
+              manifest.Atlas.PageEncoding == AtlasPageEncoding.WebpLossless &&
+              manifest.Atlas.Textures.Count == 2,
             "Atlas build policy parses without affecting runtime assets");
         Check(manifest.Sprites[0].SourceRect?.X == 2 &&
               manifest.Sprites[1].Layout == SpriteAssetLayout.Grid,
@@ -120,6 +123,36 @@ internal static class Program
             """);
         Check(caseInsensitive.Id == "case.assets" && caseInsensitive.Textures.Count == 1,
             "Manifest property names remain case-insensitive");
+        var defaultAtlasEncoding = Parse(json.Replace(
+            "\"pageEncoding\": \"webpLossless\",", string.Empty));
+        Check(defaultAtlasEncoding.Atlas?.PageEncoding == AtlasPageEncoding.Png,
+            "Atlas page encoding defaults to PNG for existing manifests");
+        CheckThrows<InvalidDataException>(() => Parse(json.Replace(
+            "webpLossless", "jpeg")),
+            "Unknown Atlas page encodings are rejected");
+        var aggregate = Parse("""
+            {
+              "schemaVersion": 1,
+              "id": "aggregate.assets",
+              "dependencies": [
+                { "id": "scene.assets", "manifest": "Scene/assets.json" }
+              ],
+              "textures": [],
+              "sprites": []
+            }
+            """);
+        Check(aggregate.Dependencies.Count == 1 && aggregate.Textures.Count == 0,
+            "Dependency-only aggregate packages are valid");
+        CheckThrows<InvalidDataException>(() => Parse("""
+            {
+              "schemaVersion": 1,
+              "id": "empty.assets",
+              "dependencies": [],
+              "textures": [],
+              "sprites": []
+            }
+            """),
+            "Packages without dependencies or local assets remain invalid");
         CheckThrows<InvalidDataException>(() => Parse(string.Empty),
             "Empty manifests retain the InvalidDataException contract");
         CheckThrows<InvalidDataException>(() => Parse("""

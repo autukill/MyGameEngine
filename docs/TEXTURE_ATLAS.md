@@ -1,6 +1,6 @@
 # 离线 Texture Atlas 使用指南
 
-`Engine.Features.TextureAtlas` 提供不依赖 OpenGL 的确定性 CPU 打包器；`Engine.Tools.AssetCompiler` 读取声明式 `assets.json`，生成 Atlas PNG 页面和仍可由 `ContentPackageManager` 直接加载的运行时包。
+`Engine.Features.TextureAtlas` 提供不依赖 OpenGL 的确定性 CPU 打包器；`Engine.Tools.AssetCompiler` 读取声明式 `assets.json`，生成 PNG 或无损 WebP Atlas 页面和仍可由 `ContentPackageManager` 直接加载的运行时包。
 
 Atlas 是离线构建步骤，不在游戏启动时重新打包。
 
@@ -22,6 +22,7 @@ Atlas 是离线构建步骤，不在游戏启动时重新打包。
   "id": "characters.player",
   "dependencies": [],
   "atlas": {
+    "pageEncoding": "webpLossless",
     "maxPageSize": { "width": 2048, "height": 2048 },
     "padding": 1,
     "extrude": 1,
@@ -39,7 +40,10 @@ Atlas 是离线构建步骤，不在游戏启动时重新打包。
 - `maxPageSize` 默认 `2048 × 2048`。
 - `padding` 默认 `1`，表示 extrude 外侧保留的透明间隔。
 - `extrude` 默认 `1`，表示向外复制多少像素的边缘，用于避免线性采样渗色。
+- `pageEncoding` 可为 `png` 或 `webpLossless`，省略时为 `png`，因此旧清单和产物格式保持兼容。
 - `textures` 必须列出当前包内的 Texture 名称，名称不能重复。
+
+`webpLossless` 使用 libwebp 的最高 lossless preset，并启用 exact 模式；完整 RGBA 会被保留，包括完全透明像素下的隐藏 RGB。WebP 只减少磁盘和分发体积，解码上传后的 RGBA8 显存与 PNG 相同。
 
 未列入 `atlas.textures` 的 Texture 会原样复制到编译包。
 
@@ -90,8 +94,8 @@ artifacts/player/
 ├── .mygame-assets.json
 ├── assets.json
 ├── atlas/
-│   ├── pixel-art-0.png
-│   ├── pixel-art-1.png
+│   ├── pixel-art-0.webp
+│   ├── pixel-art-1.webp
 │   └── smooth-0.png
 ├── boss-large.webp
 └── shared/
@@ -144,7 +148,7 @@ frame size + 2 × (padding + extrude)
 4. 依次尝试已有页面与 Shelf，否则建立新页面。
 5. 页面输出裁切到实际使用区域。
 
-输入顺序不会改变布局或 PNG 内容，便于缓存、版本控制和回归测试。
+输入顺序不会改变布局或编码后的页面内容，便于缓存、版本控制和回归测试。
 
 ## 增量缓存与安全替换
 
@@ -187,12 +191,12 @@ Target 的属性、执行顺序、输出搬运、Publish 接入和排障说明�
 - 不支持旋转打包。
 - 不支持 trim、逐帧逻辑偏移或透明边界裁切。
 - 不进行相同像素内容的哈希去重；相同 Texture/矩形引用会复用，同内容但不同 Texture 名称仍视为不同来源。
-- 产物页面使用无损 PNG；暂无自定义原始 RGBA 容器。
+- 产物页面支持默认 PNG 和显式 `webpLossless`；暂无自定义原始 RGBA 容器。
 - 编译器版本目前是显式常量；改变输出算法时必须同步提升版本以使旧缓存失效。
 - 尚未发布为独立 dotnet tool/NuGet 构建包，当前 MSBuild Target 使用仓库内项目引用。
 
 ## 可运行验证
 
 - `Engine.Features.TextureAtlas.Tests`：排布、像素复制、padding、extrude、多页、大帧旁路和确定性。
-- `Engine.Tools.AssetCompiler.Tests`：真实 PNG、包级增量、check 模式、失败保护、依赖失效、跨页 Sprite 与运行时加载。
+- `Engine.Tools.AssetCompiler.Tests`：真实 PNG、exact WebP、包级增量、check 模式、失败保护、依赖聚合根、跨页 Sprite 与运行时加载。
 - `Sprites.VisualTests`：Build 自动把 WebP Grid 与两张独立 WebP 帧编译到 `obj`，图形测试加载生成的一页 Atlas。
