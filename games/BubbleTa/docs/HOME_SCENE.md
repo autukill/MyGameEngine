@@ -9,7 +9,7 @@
 - 背景、12 片 Logo、泡泡、云、三名角色、三颗大星、五个闪点和五条流星均由 Scene 实例装配。
 - 世界按钮使用 Sprite 逻辑边界和屏幕到世界坐标转换；只有同一指针在按钮内按下并在按钮内释放才切换场景。
 - WorldMap 当前只是纯色占位场景，用来验证 `Home → WorldMap → Home` 生命周期，不代表 `rm_world` 已经迁移。
-- 设置图标只展示。首页 BGM、点击音效、存档初始化和旧全局控制对象均未进入本切片。
+- 设置图标只展示。首页 BGM、点击音效、存档初始化和旧全局控制对象均未进入本切片。MyGameEngine 已具备声明式 OGG Streaming 与 SceneAudio 生命周期，但不会自动使用或转换旧 MP3；待提供许可清晰的音乐后，只需在 Home 包声明 `streaming: true` 并在配置期调用 `context.SceneAudio.PlayMusic(...)`。
 
 ## 内容管线
 

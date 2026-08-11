@@ -10,7 +10,7 @@
 
 这与常驻的 `UseContent(GameAssets.Packages.Root)` 是两种显式模式。前者在安全 Scene 切换边界加载目标包并释放旧包；聚合根仍参与离线编译和强类型代码生成，但不会自动常驻。所有权、失败顺序和限制见 [Scene 级 Content 生命周期](SCENE_CONTENT_LIFECYCLE.md)。
 
-`Engine.Features.ContentAssets` 使用单一、版本化的 `assets.json` 声明 Texture、Sprite、Animation、Audio Clip 和包依赖。它负责把图片同步加载到 GPU，把 Texture 装配为逻辑 Sprite，把 Sprite 装配为命名 Animation Clip，并把短 WAV 解码为逻辑 Audio Clip。
+`Engine.Features.ContentAssets` 使用单一、版本化的 `assets.json` 声明 Texture、Sprite、Animation、Audio Clip 和包依赖。它负责把图片同步加载到 GPU，把 Texture 装配为逻辑 Sprite，把 Sprite 装配为命名 Animation Clip，并把短 WAV 解码或把长 OGG 注册为流式逻辑 Audio Clip。
 
 当前清单版本为 `schemaVersion: 1`。
 
@@ -23,7 +23,7 @@ Authoring Assets/
   assets.json + PNG/WebP/WAV/TileMap
         ↓ Engine.Tools.AssetCompiler（Build/Publish）
 CompiledAssets/
-  标准 assets.json + Atlas 页/旁路图片/WAV/TileMap + 修订元数据
+  标准 assets.json + Atlas 页/旁路图片/WAV/OGG/TileMap + 修订元数据
         ↓ ContentPackageManager（游戏启动/加载包）
 Texture/Sprite/Animation/Audio/TileSet/TileMap Library
         ↓ 逻辑 Ref
@@ -152,9 +152,10 @@ var player = scene.Add(new PlayerInstance
 ```
 
 - `name`、`path` 必填，名称与其他包中的 Audio Clip 全局区分大小写且不能冲突。
-- 当前只支持预加载的 PCM8/PCM16、Mono/Stereo WAV；`streaming: true` 会被明确拒绝。
+- `streaming: false` 只接受预加载的 PCM8/PCM16、Mono/Stereo WAV。
+- `streaming: true` 只接受 Mono/Stereo OGG Vorbis；构建期验证完整 Header 与元数据，运行时包装配不预解码整首 PCM。
 - Audio 路径与图片一样相对所属包目录解析，不能逃逸安全根。
-- `LoadedContentPackage.GetAudioClip` 返回不含设备句柄的 `AudioClipRef`；播放由 Hosting 的 `AudioRuntime` 完成。
+- `LoadedContentPackage.GetAudioClip` 返回不含设备句柄或解码器的 `AudioClipRef`；播放由 Hosting 的 `AudioRuntime`/`SceneAudio` 完成。
 - 构建管线会复制音频文件、纳入增量指纹并生成 `GameAssets.AudioClips` 强类型引用。
 - 当前 Content Hot Reload 不替换 Audio Clip；修改音频文件后需要重启应用。
 
@@ -363,7 +364,7 @@ Resolve manifest under packagesRoot
   → Sprite 注册逐帧 TextureRef + PixelRect
   → Animation 注册 Sprite sub-image 序列
   → TileSet / TileMap 注册
-  → WAV 同步解码并注册 Audio Clip
+  → WAV 同步解码，或为 OGG 注册流式 Factory
   → 写入 PackageState 并返回 LoadedContentPackage 租约
 ```
 
@@ -411,7 +412,7 @@ shader.Dispose();
 
 ## 失败与回滚
 
-图片解码、GPU 上传、Sprite 帧范围、Animation sub-image、WAV 解码、Tile 资源或注册中的任一步失败，Manager 都会逆序移除本次新增的 TileMap、TileSet、Audio、Animation、Sprite 和 Texture，再释放本次取得的依赖持有。预先存在且不属于该包的资源不会被删除；已经缓存的依赖只恢复引用计数，不会被误卸载。
+图片解码、GPU 上传、Sprite 帧范围、Animation sub-image、WAV/OGG 验证、Tile 资源或注册中的任一步失败，Manager 都会逆序移除本次新增的 TileMap、TileSet、Audio、Animation、Sprite 和 Texture，再释放本次取得的依赖持有。预先存在且不属于该包的资源不会被删除；已经缓存的依赖只恢复引用计数，不会被误卸载。
 
 显存不足、图片超过解码器/GPU 尺寸上限或 WebP/PNG 数据损坏都会使整个包加载失败；v1 不提供部分成功状态。
 

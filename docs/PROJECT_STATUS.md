@@ -81,7 +81,7 @@
 - `SpawnSequenceBuilder/SpawnSequencePlayer` 提供 Delay、有限 Wave、Once/Loop、并发门控、状态快照和大步长确定性推进；Asteroids 生成器已迁移并保持随机 Prefab 参数由游戏掌握。
 - Animation 已贯通 `assets.json`、依赖闭包验证、强类型 Clip/Event 引用、Hosting Catalog、GameInstance Behavior、状态快照和原子 Content Hot Reload；Once/Loop/PingPong、正反向播放和帧事件热身后 Update 为 0 B。
 - TextRendering 已贯通真实 Skia TTF/OTF、逻辑 Font/Fallback、Unicode Rune + Grapheme 单行 Layout、TextureLibrary 局部 RGBA 上传、确定性动态 Glyph Atlas、Hosting `TextRuntime` 与 World/SceneGui DrawText；真实字体、Fake GPU 与隐藏 OpenGL smoke 均有覆盖。
-- Audio 短音效黄金路径提供声明式 PCM WAV、OpenAL Soft/Silent 后端、Hosting、逻辑 Clip/Bus、代际 Voice、确定性 Priority 抢占、Buffer 共享释放和运行时诊断。
+- Audio 黄金路径提供声明式 PCM WAV 与流式 OGG Vorbis、OpenAL Soft/Silent、逻辑 Clip/Bus、代际 Voice、确定性 Priority 抢占、静态 Buffer 共享、四 Buffer 流式队列、SceneAudio 所有权和运行时诊断。
 - 独立 TransformHierarchy 阶段 0 提供 generation Handle、Local/World 矩阵、KeepLocal/KeepWorld、循环/Shear/不可逆拒绝、2048 深树迭代传播和 0 B 稳态。
 - HTML/CSS/Yoga GUI Compatibility Spike 已比较 Yoga、RmlUi、FairyGUI 与浏览器内核，并固定 NativeAOT、中文、输入、渲染和维护成本的 Go/No-Go 条件。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
@@ -110,7 +110,7 @@
 - 2D Lighting 当前只有规划，没有运行时代码。路线明确先解决颜色空间，再渐进实现每 View Point Light、几何硬阴影、投射阴影和 Normal/Emission 材质；当前不能把 Spotlight Stencil 或现有 ShaderMaterial 描述成完整光照系统。
 - Text 已支持中文/单词多行、对齐、Ellipsis 与动态 Layout Buffer；仍无 HarfBuzz shaping、Font Content/Hot Reload、RichText、IME 或控件树。FairyGUI MonoGame Runtime 仍不能直接视为 Silk.NET/OpenGL 后端；Yoga/RmlUi/FairyGUI 只完成第一轮兼容性决策。
 - TransformHierarchy 已接入 Scene/GameInstance、纯挂点与强类型 Transform Prefab；仍不接管扁平实例生命周期、Layer/Depth、Collider 索引或 UI 布局。
-- Audio 已能真实播放预加载 PCM WAV；尚无 Streaming Music、OGG/Opus、异步解码、Audio Hot Reload、设备切换或 DSP。
+- Audio 已能真实播放预加载 PCM WAV 和流式 OGG Vorbis；尚无 Opus/MP3/FLAC、后台解码、Audio Hot Reload、Fade/Crossfade、设备切换或 DSP。
 - Animation 尚无过渡状态图、交叉淡化、Blend Tree、骨骼动画、Root Motion 或 Timeline Editor；当前一个 Clip 绑定一个可跨多纹理/Atlas 页的 Sprite。
 
 ## Tilemap / World Authoring 第一阶段（已完成）
@@ -126,17 +126,18 @@
 2. 使用 Gameplay Command Journal 与结构化 Playtest Report 保存可复现命令、理解度与卡点记录，验证信仰证据、等待选择、神兽学习和至少两种可完成历史；固定脚本 Replay Bundle 继续单独承担引擎回归。
 3. 未达到 4/5、3/5、4/5 三项理解阈值时优先调整反馈、时间窗与地图，不扩张新系统。
 
-## 后续引擎候选里程碑：Streaming Music
+## 已完成引擎里程碑：Streaming Music
 
-1. 在现有短音效 Voice/Bus/Backend 边界之外增加独立 Music Stream，不把长音频完整解码进内存。
-2. 优先完成 OGG/Vorbis、后台解码、环形 PCM Buffer、暂停/恢复/循环与确定性资源释放。
-3. 完成后进入 Lighting 0/1，并复用 Tilemap Chunk Revision 和静态碰撞几何作为未来遮挡数据边界。
+1. `AudioClipRef` 同时覆盖静态 WAV 与流式 OGG；流式 Voice 独占解码器，长音频不完整解码进内存。
+2. OpenAL 使用四块 4096 Frame PCM16 Buffer 做同步队列补充，支持循环、抢占、停止和确定性释放。
+3. Hosting 的 `SceneAudio` 在内容包卸载前停止 Voice；跨 Scene 声音仍可显式使用全局 `Audio`。
+4. 下一里程碑进入 Lighting 0/1，并复用 Tilemap Chunk Revision 和静态碰撞几何作为未来遮挡数据边界。
 
 ## 已知限制
 
 - RenderTarget 当前支持 RGBA8/RGBA16F 与可选 Depth24Stencil8，但不支持 MSAA、多 Attachment、sRGB framebuffer 或自动曝光。
 - ContentAssets 仍是同步全量解码上传，没有流式驻留、显存预算或 LRU。
-- 暂无物理/Spatial Hash、真实音频 Backend、完整编辑器和 AI Bridge 运行时代码。
+- 暂无完整物理/Spatial Hash、完整编辑器和 AI Bridge 运行时代码。
 - Replay v1 全程保留输入帧与状态 contributor，不包含压缩、Checkpoint、状态恢复或跨版本迁移；长会话需由游戏限制录制时长。
 - NuGet 漏洞数据源不可访问时可能出现 `NU1900`，不影响使用本地缓存包构建。
 

@@ -101,11 +101,11 @@ GameAssets.Packages.SharedPrimitives
 - Animation 黄金路径已接通：声明式 Content、强类型 Clip/Event、Hosting Catalog、GameInstance Behavior、Sprite/ImageIndex 驱动、状态快照和原子 Hot Reload；Asteroids 提供真实消费样例。
 - 独立 TransformHierarchy 阶段 0 已提供 generation Handle、Local/World、KeepLocal/KeepWorld、循环/Shear/不可逆拒绝、深树迭代传播和 0 B 稳态；尚未接入 Scene/GameInstance/Prefab。
 - TextRendering 黄金路径已接通：真实 Skia TTF/OTF、Font Fallback、Rune + Grapheme 单行 Layout、TextureLibrary 局部上传、动态 Glyph Atlas、Hosting TextRuntime 与 World/SceneGui DrawText；隐藏 OpenGL smoke 已验证释放链。
-- Audio 短音效黄金路径已接通：声明式 PCM WAV、强类型 Clip、OpenAL Soft/Silent 后端、Hosting、确定性 Voice 抢占、Buffer 共享释放和诊断；Streaming Music 与 OGG/Opus 后续推进。
+- Audio 黄金路径已接通：声明式 PCM WAV 与流式 OGG Vorbis、强类型 Clip、OpenAL Soft/Silent、四 Buffer 队列、确定性 Voice 抢占，以及随 Scene 自动停止的 `SceneAudio` 所有权。
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：Animation、TransformHierarchy、Text 多行 Layout、Audio 短音效和 Tilemap/World Authoring 第一条黄金路径已经闭环。下一条主线进入 Streaming Music；随后推进 Lighting 0/1，并直接复用 Tilemap 的 Chunk Revision 与静态碰撞几何边界。暂不展开完整 Skill/Buff、GUI 控件、协程或物理系统；逐帧异形碰撞继续保持需求记录。
+下一步优先级：Animation、TransformHierarchy、Text 多行 Layout、Audio（短音效 + Streaming Music）和 Tilemap/World Authoring 第一条黄金路径已经闭环。下一条主线进入 Lighting 0/1，并直接复用 Tilemap 的 Chunk Revision 与静态碰撞几何边界。暂不展开完整 Skill/Buff、GUI 控件、协程或物理系统；逐帧异形碰撞继续保持需求记录。
 
 Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一版强类型组合 Authoring：`context.Transforms`、opt-in Binding、纯挂点、Local/World、`KeepLocal/KeepWorld`、`TransformPrefab<TParts>`、具名类型节点与帧边界同步均已落地；AirplaneShooter 使用 `root → weapon → muzzle` 真实样例。仍保留 Scene 扁平 Step、Layer/Depth、Collider 索引，不让空间父子关系接管生命周期、渲染排序或 UI 布局。下一步先由玩法验证是否需要原子多 GameInstance Composite Prefab。使用见 [Transform Hierarchy 创作指南](TRANSFORM_HIERARCHY_AUTHORING.md)。
 
@@ -143,7 +143,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | 已完成接入 | Scene Graph / Transform Hierarchy | Scene、GameInstance、纯挂点与强类型 Transform Prefab 已接入；多实例 Composite Prefab 等真实需求验证 |
 | P1 | Tilemap/World Authoring | 关卡生产、Chunk、碰撞和未来静态光照遮挡的共同基础 |
 | 已完成接入 | 原生中文 Text Rendering | 真实 Font、中文/单词多行、对齐、Ellipsis、复用 Buffer、Hosting 与 World/SceneGui 已闭环；Shaping 后续 Spike |
-| 已完成接入 | Audio 短音效 | 声明式 PCM WAV、OpenAL/Silent、Hosting、强类型 Clip 与诊断已闭环；下一步 Streaming Music |
+| 已完成接入 | Audio 短音效与 Streaming Music | 声明式 WAV/OGG、OpenAL 四 Buffer 队列、强类型 Clip、SceneAudio 所有权与诊断已闭环 |
 | 已完成调研 | Yoga/RmlUi/FairyGUI Compatibility Spike | 已建立候选顺序、适配面和 Go/No-Go 门槛 |
 | P2 | RichText、彩色文字、Typewriter、Sprite Emoji | 建立在原生 Text Layout 上 |
 | P2 | Gamepad/Rebinding、Save Game | Logical Input 与显式状态协议已有基础 |
@@ -152,7 +152,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | P3 | 彩色 Font Emoji、AnimatedImage、FairyGUI 高级组件 | 由真实产品需求和资产驱动 |
 | P3 | Lighting 软阴影/高级材质、完整物理/导航 | 由性能数据和真实玩法驱动 |
 
-Transform Scene/Prefab、Text 多行/Layout Buffer、Audio 短音效与 Tilemap/World Authoring 第一阶段已完成。推荐后续按集成风险串行推进：`Streaming Music → Lighting 0/1 → Tilemap 导入/二进制 Chunk`。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
+Transform Scene/Prefab、Text 多行/Layout Buffer、Audio 短音效/流式音乐与 Tilemap/World Authoring 第一阶段已完成。推荐后续按集成风险串行推进：`Lighting 0/1 → Tilemap 导入/二进制 Chunk`。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
 
 ## 设计约束
 

@@ -1,18 +1,19 @@
-# Audio 短音效黄金路径
+# Audio 短音效与流式音乐黄金路径
 
-Audio 已从纯逻辑运行时推进到可真实播放的短音效闭环：
+Audio 已从纯逻辑运行时推进到短音效与长音乐都可真实播放的闭环：
 
-- `Engine.Features.Audio`：逻辑 Clip、Bus、代际 Voice、WAV 解码、抢占与诊断。
-- `Engine.Features.Audio.OpenAL`：Silk.NET OpenAL/OpenAL Soft 设备后端。
-- `ContentAssets`：声明式 WAV 加载、包依赖、引用计数与回滚。
-- `Engine.Hosting`：可选设备装配、每步回收和关闭顺序。
+- `Engine.Features.Audio`：逻辑 Clip、Bus、代际 Voice、静态/流式契约、WAV 解码、抢占与诊断。
+- `Engine.Features.Audio.Vorbis`：NVorbis 后的 OGG Vorbis 元数据、分块解码与精确 Seek 适配器。
+- `Engine.Features.Audio.OpenAL`：Silk.NET OpenAL/OpenAL Soft 静态 Buffer 与四 Buffer 流式队列后端。
+- `ContentAssets`：声明式 WAV/OGG 加载、包依赖、引用计数与回滚。
+- `Engine.Hosting`：可选设备装配、`SceneAudio` 所有权、每步队列补充和关闭顺序。
 
 ## 先理解 Audio 术语
 
 可以先记住一条最小链路：
 
 ```text
-WAV 文件 / 程序生成波形 → PCM → AudioLibrary 中的 Clip → Play 创建 Voice → Bus 混音 → Backend 输出
+WAV / OGG / 程序生成波形 → AudioLibrary 中的 Clip → Play 创建 Voice → PCM Buffer/流式队列 → Bus → Backend 输出
 ```
 
 | 术语 | 在本引擎中的含义 | 直觉类比 |
@@ -26,7 +27,9 @@ WAV 文件 / 程序生成波形 → PCM → AudioLibrary 中的 Clip → Play �
 | Voice | 一次实际播放实例；同一个 Clip 可以同时产生多个 Voice | 同一个 Sprite 的多个 GameInstance |
 | `AudioVoiceRef` | 正在播放的 Voice 句柄，用于停止或调整这一次播放 | 可失效的实例引用 |
 | Bus | 一组声音的混音通道；内置 `Master`、`Music`、`Sfx` | 音量分组或调音台轨道 |
-| Buffer | Backend 缓存的 PCM 数据；同一 Clip 的并发 Voice 可以共享 | GPU 纹理资源 |
+| Buffer | Backend 交给设备的一块 PCM；静态 Clip 共享一块，流式 Voice 循环使用四块 | GPU 上传缓冲 |
+| Stream Source | 一次流式 Voice 独占的顺序解码器，可读取 PCM Frame 并 Seek | 正在翻页的播放器 |
+| Queue / Refill | OpenAL 播放一块的同时，Runtime 回收已播放 Buffer 并填充后续数据 | 双缓冲的扩展形式 |
 | Backend | 真正对接设备的实现；当前为 OpenAL 或不发声的 Silent Backend | 渲染后端 |
 
 `Volume` 是单次 Voice 音量，`Pan` 控制左右声道位置，`Pitch` 同时改变播放速度与音高，`Loop` 控制是否循环，`Priority` 在 Voice 容量不足时参与抢占决策。
@@ -50,8 +53,11 @@ using var game = GameApplication
     .UseDefault2DRenderer(renderer => renderer.UseContent(GameAssets.Packages.Root))
     .ConfigureScene("main", context =>
     {
-        AudioClipRef shot = context.GetAudioClip("player.shot");
-        context.Audio.Play(shot, AudioPlayOptions.Sfx);
+        context.SceneAudio.Play(
+            GameAssets.AudioClips.PlayerShot,
+            AudioPlayOptions.Sfx);
+        context.SceneAudio.PlayMusic(
+            GameAssets.AudioClips.HomeMusic);
     })
     .Build();
 ```
@@ -67,6 +73,8 @@ using var game = GameApplication
 ```
 
 无窗口 smoke 应显式使用 `ForceSilentBackend: true`，不探测物理设备。
+
+`context.SceneAudio` 是普通 Scene 的默认入口：它追踪本 Scene 创建的 Voice，并在 Scene 结束时自动停止。`context.Audio` 是高级、全局入口，适合明确需要跨 Scene 延续的声音；使用者必须自行停止它。
 
 ## 声明式短音效
 
@@ -87,7 +95,7 @@ using var game = GameApplication
 }
 ```
 
-构建管线会复制 WAV 并生成 `GameAssets.AudioClips.PlayerShot`。运行时在包装配阶段同步解码；路径不能逃逸包目录，重名、缺失文件、非 WAV、非法 PCM 和 `streaming: true` 都会在包可见前失败并回滚。
+构建管线会验证并复制 WAV，再生成 `GameAssets.AudioClips.PlayerShot`。运行时在包装配阶段同步解码；路径不能逃逸包目录，重名、缺失文件、非 WAV 和非法 PCM 都会在包可见前失败并回滚。
 
 当前 WAV 解码器支持：
 
@@ -100,9 +108,25 @@ using var game = GameApplication
 
 游戏音效优先使用 Mono，既便于 Pan，也减少解码内存。
 
+## 声明式流式音乐
+
+长音乐使用压缩 OGG Vorbis，并把 `streaming` 设为 `true`：
+
+```json
+{
+  "name": "home.music",
+  "path": "audio/home-music.ogg",
+  "streaming": true
+}
+```
+
+AssetCompiler 会真实读取 OGG Header、声道、采样率、时长与可解码 Frame，但不会生成整首 PCM。运行时加载包时只注册 `AudioClipMetadata` 和 `IAudioStreamFactory`；每次 Play 才创建一个独立 NVorbis 解码器。OpenAL 为该 Voice 分配四块、每块 4096 Frame 的 PCM16 Buffer，由 `AudioRuntime.Update()` 回收和补充，因此长音乐内存不会随时长线性增长。
+
+v1 流式音乐只接受 Mono/Stereo OGG Vorbis。循环播放在 PCM 流到达末尾后精确 Seek 到 Frame 0；OpenAL 自带的单 Buffer Loop 只用于静态 WAV。
+
 ## Clip 的两种注册入口
 
-`assets.json` 只是 Clip 的一种来源，并不要求所有声音都必须来自文件。当前有两条入口，注册完成后得到的都是 `AudioClipRef`，播放 API 完全相同。
+`assets.json` 只是 Clip 的一种来源，并不要求所有声音都必须来自文件。静态 WAV、流式 OGG 和运行时 PCM 注册完成后得到的都是 `AudioClipRef`，播放 API 完全相同。
 
 ### 入口一：声明式 WAV
 
@@ -183,27 +207,42 @@ context.Audio.Stop(voice);
 
 `CaptureDiagnostics()` 返回值快照：活动数、容量、请求、启动、拒绝、抢占和后端 Stop 总数。Audio 不进入确定性 Gameplay State；需要影响玩法时，由游戏保存自己的命令或 Signal。
 
+## Scene 与全局 Voice
+
+```csharp
+// 推荐：随当前 Scene 自动结束。
+context.SceneAudio.PlayMusic(GameAssets.AudioClips.HomeMusic);
+
+// 显式全局：Scene 切换不会替你停止。
+AudioVoiceRef persistent = context.Audio.Play(
+    GameAssets.AudioClips.GlobalMusic,
+    AudioPlayOptions.Music);
+```
+
+Scene 切换会先准备目标 Content Package。准备成功后，旧实例完成销毁，Hosting 调用 `SceneAudio.StopAll()`，解码器和 OpenAL 流式 Buffer 随 Voice 释放，然后才释放旧 Scene 的 Content Package。这样不会出现“包已经卸载，音乐仍在读取包文件”的隐藏所有权。完成的一次性 Voice 会在每步回收后从作用域移除。
+
 ## 资源与关闭顺序
 
-OpenAL 为首次播放的已解码 Clip 创建并缓存 Buffer，同一短音效的并发 Voice 共享 Buffer。`AudioLibrary.Remove` 会通知后端：没有活动 Voice 时立即删除 Buffer；仍在播放时延迟到最后一个 Voice 结束。
+OpenAL 为首次播放的已解码 Clip 创建并缓存 Buffer，同一短音效的并发 Voice 共享 Buffer。流式 Clip 不缓存整首 PCM，每个并发 Voice 拥有自己的解码器、文件流与四块队列 Buffer。`AudioLibrary.Remove` 会通知后端：静态 Buffer 没有活动 Voice 时立即删除；流式资源由 Voice 自身释放。
 
 Hosting 的顺序是：
 
-1. Content Package 删除逻辑 Clip；
-2. `AudioRuntime` 停止活动 Voice；
-3. OpenAL 删除 Source/Buffer、释放 Context 和 Device。
+1. Scene 结束并停止 `SceneAudio` Voice；
+2. 流式 Voice 关闭解码器，OpenAL 删除 Source/队列 Buffer；
+3. Content Package 删除逻辑 Clip；
+4. Runtime 关闭时停止剩余全局 Voice，再释放 Context 和 Device。
 
 `LoadedContentPackage.Dispose()`、Runtime 和 Backend Dispose 都是幂等的。
 
 ## 测试边界
 
-`Audio.Tests` 负责 Clip/Bus/Voice、抢占、WAV 解码和 Silent Backend 的纯逻辑行为；`Audio.OpenAL.Tests` 负责 Backend 生命周期以及声明式内容到设备边界的集成路径。
+`Audio.Tests` 负责 Clip/Bus/Voice、流式契约、抢占、WAV 解码和 Silent Backend；`ContentAssets.Tests` 使用真实生成的 OGG 验证元数据、分块解码与 Seek；`Audio.OpenAL.Tests` 验证四 Buffer 队列以及声明式 OGG 到设备边界的完整路径。
 
 ```powershell
 dotnet run --project src/Engine.Features/Audio.OpenAL.Tests/Audio.OpenAL.Tests.csproj -c Release
 ```
 
-声明式集成测试会在安全的临时目录创建真实 PCM16 Mono WAV 与 `assets.json`，再经过 `ContentPackageManager → AudioLibrary → OpenAlAudioBackend/CreateOrSilent` 完成加载和播放。它同时验证包释放先移除逻辑 Clip，已有 Voice 停止后才释放 Backend Buffer。测试音量为零且允许回退到 Silent Backend，因此适合没有物理音频设备的开发机和 CI；实际听感仍需人工设备测试。
+声明式集成测试会在安全临时目录生成真实 PCM16 WAV、真实 OGG 与 `assets.json`，再经过 `ContentPackageManager → AudioLibrary → NVorbis → OpenAlAudioBackend/CreateOrSilent` 完成加载和播放。测试音量为零且允许回退到 Silent Backend，因此适合没有物理设备的开发机和 CI；实际听感仍需人工设备测试。
 
 ## 实战经验
 
@@ -215,13 +254,17 @@ dotnet run --project src/Engine.Features/Audio.OpenAL.Tests/Audio.OpenAL.Tests.c
 - `--smoke` 使用 `ForceSilentBackend: true` 时，`Play`、Voice 生命周期和资源释放仍会执行，只是不访问扬声器；它用于验证逻辑，不用于验证实际听感。
 - 音量听感不是线性的。资源制作阶段避免削波，运行时为多个同时播放的音效留出余量，不要默认把所有 Clip 都推到最大响度。
 - 当前程序生成 PCM 的 `byte[]` 由 `AudioLibrary` 中的 `DecodedAudioClip` 持有；适合短音效，不适合长音乐。
+- 背景音乐优先使用 `SceneAudio.PlayMusic`；只有跨 Loading/Scene 连续播放确有产品需要时才使用全局 `Audio`。
+- OGG 解码发生在 Runtime Update 的同一线程。当前 4096 Frame × 4 队列通常能平滑覆盖普通桌面播放，但极慢存储或复杂后台加载仍需后续异步解码策略。
+
+## 第三方与格式边界
+
+运行时使用稳定版 `NVorbis 0.10.5`，它是 MIT License、纯托管的 OGG Vorbis 解码器；封装只存在于 `Engine.Features.Audio.Vorbis`，不会泄漏到游戏 API。测试使用 MIT License 的 `OggVorbisEncoder 1.2.2` 动态生成夹具，不进入正式 Runtime 调用路径。Vorbis 格式规范与参考实现由 Xiph.Org 维护。
 
 ## 当前边界
 
-- 本阶段只做预加载短音效，不做 Streaming Music。
-- 不支持 OGG/Opus/MP3/FLAC、异步解码或 Ring Buffer。
+- 静态音效仅支持 PCM8/PCM16 WAV；流式音乐仅支持 OGG Vorbis。
+- 不支持 Opus、MP3、FLAC、后台解码线程或可配置 Ring Buffer。
 - Audio Clip 暂不参与 Content Hot Reload；修改音频后需重启应用。
 - 不支持 Fade、Crossfade、Ducking、3D/HRTF、DSP Graph、录音或设备切换。
 - `SilentAudioBackend` 是确定的运行时回退，不把“没有声音”伪装成设备成功。
-
-下一切片应实现流式音乐数据源与 OGG/Opus 解码，同时保留现有 `AudioClipRef`、Bus 和 Gameplay 调用方式。

@@ -17,7 +17,7 @@ MyGameEngine 是一个基于 .NET 10、Silk.NET 与 OpenGL 3.3 构建的 2D 游�
 - Spawn/Wave Authoring：确定性 Delay/Wave/Loop 时间线、并发门控和状态快照；Asteroids 已移除手写生成 Alarm。
 - Animation Authoring：`assets.json` 命名 Clip、强类型引用、GameInstance 播放/帧事件、状态快照与原子 Content Hot Reload。
 - Text Rendering：真实 TTF/OTF、中文 Font Fallback、Grapheme-safe 多行换行、对齐/Ellipsis、可复用 Buffer、动态 Glyph Atlas，以及共用 SpriteBatch 的 World/SceneGui DrawText。
-- Audio 短音效：声明式 PCM WAV、OpenAL Soft/Silent 后端、Hosting、逻辑 Clip/Bus/Voice、确定性抢占、Buffer 共享释放和运行时诊断。
+- Audio：声明式 PCM WAV 与流式 OGG Vorbis、OpenAL Soft/Silent、Hosting SceneAudio、逻辑 Clip/Bus/Voice、确定性抢占、静态 Buffer 共享和四 Buffer 流式队列。
 - `SceneAggregate`：实例、Layer、Background、Viewport、领域事件和场景生命周期。
 - 统一输入系统：键盘/鼠标轮询以及每帧按下、释放沿事件；不可变逻辑 Action/Axis 把玩法意图与物理绑定分离，并支持固定 Tick 内存录制与无设备回放。
 - 零额外依赖的 SpriteBatch：纹理、Blend、Depth、Shader 状态变化自动 Flush。
@@ -56,7 +56,8 @@ src/
 │   ├── Camera/                          # Camera2D
 │   ├── Animation/                       # 命名 Clip、循环模式与帧事件
 │   ├── Audio/                           # 逻辑 Clip/Bus/Voice 与 Backend 边界
-│   ├── Audio.OpenAL/                    # OpenAL Soft 真实短音效设备后端
+│   ├── Audio.Vorbis/                    # OGG Vorbis 元数据与分块 PCM 解码适配器
+│   ├── Audio.OpenAL/                    # OpenAL Soft 静态与流式队列设备后端
 │   ├── Bloom/                           # 独立阈值提取与水平/垂直 ping-pong 效果链
 │   ├── ContentAssets/                   # 声明式包、Texture/Sprite/Animation/Audio 装配与租约
 │   ├── Presentation/                    # 显式 RGBA8/Display 屏幕终端与稳定合成层级
@@ -114,6 +115,7 @@ Feature 依赖保持单向：
 Engine.Core
   ├─ Animation
   ├─ Audio
+  │    ├─ Audio.Vorbis
   │    └─ Audio.OpenAL
   ├─ Sprites
   ├─ ShaderAssets
@@ -134,7 +136,7 @@ Engine.Core
 Engine.Hosting -> Core + Audio/OpenAL + Replay + Camera/Content/ShaderAssets/RenderPipeline/Presentation/Bloom/Stencil/Tone
 ```
 
-解决方案当前共 68 个项目，入口文件为 `MyGameEngine.slnx`。
+解决方案当前共 75 个项目，入口文件为 `MyGameEngine.slnx`。
 
 ## 环境要求
 
@@ -344,7 +346,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
 2. Animation 与 Text Rendering 黄金路径已经闭环，多行中文/单词换行、对齐、Ellipsis 和动态 Layout Buffer 已落地；复杂脚本 Shaping 先做 HarfBuzz 兼容性验证，不提前夹带完整 GUI。
-3. Transform、Text 多行、Audio 短音效与 Tilemap/World Authoring 第一阶段已闭环；下一条跨层主线优先 Streaming Music，其后推进 Lighting 0/1。
+3. Transform、Text 多行、Audio 短音效/流式音乐与 Tilemap/World Authoring 第一阶段已闭环；下一条跨层主线推进 Lighting 0/1。
 4. GUI Compatibility Spike 已完成第一轮决策：Yoga 只作为布局内核继续 NativeAOT 实验，RmlUi 是开发者优先完整 Runtime 候选，FairyGUI 保留设计器优先可选路线。详见[调研记录](docs/HTML_CSS_YOGA_GUI_ROADMAP.md)。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。

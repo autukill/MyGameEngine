@@ -58,4 +58,4 @@ dotnet run -c Release --project games/BubbleTa/tests/BubbleTa.Game.Tests/BubbleT
 dotnet run -c Release --project games/BubbleTa/src/BubbleTa.Game/BubbleTa.Game.csproj -- --smoke
 ```
 
-Home 使用鼠标点击世界按钮进入明显不同的 WorldMap 占位场景；Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。设置按钮第一版只展示，不响应点击；第一版保持静音。
+Home 使用鼠标点击世界按钮进入明显不同的 WorldMap 占位场景；Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。设置按钮第一版只展示，不响应点击。引擎已经支持声明式 OGG 与 `SceneAudio.PlayMusic`，但 BubbleTa 仍保持静音，直到提供来源和再分发权限明确的 Home BGM。
