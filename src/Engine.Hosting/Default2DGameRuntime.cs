@@ -60,6 +60,9 @@ internal sealed class Default2DGameRuntime : IDisposable
     private ScenePipelineBuilder _builder = null!;
     private PerformanceTelemetrySampler? _performanceTelemetry;
     private ContentHotReloadCoordinator? _contentHotReload;
+    private ContentPackageManager? _contentManager;
+    private LoadedContentPackage? _globalContent;
+    private LoadedContentPackage? _sceneContent;
     private ShaderHotReloadCoordinator? _shaderHotReload;
     private SceneNavigator _scenes = null!;
     private readonly List<RenderView> _renderViews = [];
@@ -166,7 +169,14 @@ internal sealed class Default2DGameRuntime : IDisposable
         }
         finally
         {
-            _resources.Dispose();
+            try
+            {
+                Interlocked.Exchange(ref _sceneContent, null)?.Dispose();
+            }
+            finally
+            {
+                _resources.Dispose();
+            }
         }
     }
 
@@ -258,14 +268,13 @@ internal sealed class Default2DGameRuntime : IDisposable
                 TextureSampler.PixelArt);
         }
 
-        ContentPackageManager? contentManager = null;
         LoadedContentPackage? content = null;
         if (renderer.ContentPackagesRoot is { } configuredRoot)
         {
             string packagesRoot = Path.GetFullPath(Path.IsPathRooted(configuredRoot)
                 ? configuredRoot
                 : Path.Combine(AppContext.BaseDirectory, configuredRoot));
-            contentManager = _resources.Add(new ContentPackageManager(
+            _contentManager = _resources.Add(new ContentPackageManager(
                 _textures,
                 _sprites,
                 _animations,
@@ -273,9 +282,22 @@ internal sealed class Default2DGameRuntime : IDisposable
                 _tileSets,
                 _tileMaps,
                 packagesRoot));
-            content = _resources.Add(renderer.ContentPackage is { } package
-                ? contentManager.Load(package)
-                : contentManager.Load(renderer.ContentManifest!));
+            if (renderer.ContentCatalogOnly)
+            {
+                ContentPackageRef? initialPackage =
+                    _plan.Scenes[_plan.InitialScene.Name].ContentPackage;
+                _sceneContent = initialPackage is { } scenePackage
+                    ? _contentManager.Load(scenePackage)
+                    : null;
+                content = _sceneContent;
+            }
+            else
+            {
+                _globalContent = _resources.Add(renderer.ContentPackage is { } package
+                    ? _contentManager.Load(package)
+                    : _contentManager.Load(renderer.ContentManifest!));
+                content = _globalContent;
+            }
         }
 
         _scene = new SceneAggregate(_plan.InitialScene.Name)
@@ -462,7 +484,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                 content!.Id,
                 renderer.ContentManifest!);
             _contentHotReload = _resources.Add(new ContentHotReloadCoordinator(
-                contentManager!,
+                _contentManager!,
                 package,
                 hotReload));
         }
@@ -481,12 +503,35 @@ internal sealed class Default2DGameRuntime : IDisposable
     {
         if (!_scenes.TryTakePending(out ISceneActivation next)) return;
 
-        _scene!.TransitionTo(next.Scene.Name);
-        _builder.ApplyEvents(_scene.DrainUncommittedEvents());
-        _scenes.Commit(next.Scene);
-        ConfigureScene(next);
-        _scene.Start();
-        _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+        ISceneDefinition definition = _scenes.GetDefinition(next.Scene);
+        LoadedContentPackage? nextContent = null;
+        if (_plan.Renderer.ContentCatalogOnly && definition.ContentPackage is { } package)
+            nextContent = _contentManager!.Load(package);
+
+        bool contentAccepted = false;
+        try
+        {
+            _scene!.TransitionTo(next.Scene.Name);
+            _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+
+            if (_plan.Renderer.ContentCatalogOnly)
+            {
+                LoadedContentPackage? previousContent = _sceneContent;
+                _sceneContent = nextContent;
+                Context.SetContent(nextContent);
+                contentAccepted = true;
+                previousContent?.Dispose();
+            }
+
+            _scenes.Commit(next.Scene);
+            ConfigureScene(next);
+            _scene.Start();
+            _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+        }
+        finally
+        {
+            if (!contentAccepted) nextContent?.Dispose();
+        }
     }
 
     private void CaptureOrVerifyGameplayState()

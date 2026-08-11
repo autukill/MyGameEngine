@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Features.ContentAssets.Domain;
 using GameEngine.Features.Replay.Application;
 
 public sealed class GameApplicationBuilder
@@ -51,11 +52,24 @@ public sealed class GameApplicationBuilder
     public GameApplicationBuilder ConfigureScene(
         string sceneName,
         Action<Default2DGameContext> configure)
+        => ConfigureScene(sceneName, null, configure);
+
+    public GameApplicationBuilder ConfigureScene(
+        string sceneName,
+        ContentPackageRef contentPackage,
+        Action<Default2DGameContext> configure)
+        => ConfigureScene(sceneName, (ContentPackageRef?)contentPackage, configure);
+
+    private GameApplicationBuilder ConfigureScene(
+        string sceneName,
+        ContentPackageRef? contentPackage,
+        Action<Default2DGameContext> configure)
     {
         if (_initialScene is not null || _scenes.Count > 0)
             throw new InvalidOperationException("The initial Scene is already configured.");
+        ValidateSceneContentPackage(contentPackage);
         SceneRef scene = new(sceneName);
-        AddScene(scene, configure);
+        AddSceneCore(scene, contentPackage, configure);
         _initialScene = new UntypedSceneActivation(scene);
         return this;
     }
@@ -63,11 +77,26 @@ public sealed class GameApplicationBuilder
     public GameApplicationBuilder AddScene(
         SceneRef scene,
         Action<Default2DGameContext> configure)
+        => AddSceneCore(scene, null, configure);
+
+    public GameApplicationBuilder AddScene(
+        SceneRef scene,
+        ContentPackageRef contentPackage,
+        Action<Default2DGameContext> configure)
+        => AddSceneCore(scene, contentPackage, configure);
+
+    private GameApplicationBuilder AddSceneCore(
+        SceneRef scene,
+        ContentPackageRef? contentPackage,
+        Action<Default2DGameContext> configure)
     {
         if (scene.IsEmpty)
             throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
+        ValidateSceneContentPackage(contentPackage);
         ArgumentNullException.ThrowIfNull(configure);
-        if (!_scenes.TryAdd(scene.Name, new UntypedSceneDefinition(scene, configure)))
+        if (!_scenes.TryAdd(
+                scene.Name,
+                new UntypedSceneDefinition(scene, contentPackage, configure)))
             throw new ArgumentException($"Scene '{scene.Name}' is already registered.", nameof(scene));
         _initialScene ??= new UntypedSceneActivation(scene);
         return this;
@@ -76,14 +105,38 @@ public sealed class GameApplicationBuilder
     public GameApplicationBuilder AddScene<TArgs>(
         SceneRef<TArgs> scene,
         Action<Default2DGameContext, TArgs> configure) where TArgs : struct
+        => AddSceneCore(scene, null, configure);
+
+    public GameApplicationBuilder AddScene<TArgs>(
+        SceneRef<TArgs> scene,
+        ContentPackageRef contentPackage,
+        Action<Default2DGameContext, TArgs> configure) where TArgs : struct
+        => AddSceneCore(scene, contentPackage, configure);
+
+    private GameApplicationBuilder AddSceneCore<TArgs>(
+        SceneRef<TArgs> scene,
+        ContentPackageRef? contentPackage,
+        Action<Default2DGameContext, TArgs> configure) where TArgs : struct
     {
         if (scene.IsEmpty)
             throw new ArgumentException("Scene reference cannot be empty.", nameof(scene));
+        ValidateSceneContentPackage(contentPackage);
         ArgumentNullException.ThrowIfNull(configure);
-        if (!_scenes.TryAdd(scene.Name, new TypedSceneDefinition<TArgs>(scene, configure)))
+        if (!_scenes.TryAdd(
+                scene.Name,
+                new TypedSceneDefinition<TArgs>(scene, contentPackage, configure)))
             throw new ArgumentException($"Scene '{scene.Name}' is already registered.", nameof(scene));
         _initialScene ??= new UntypedSceneActivation(scene.Untyped);
         return this;
+    }
+
+    private static void ValidateSceneContentPackage(ContentPackageRef? contentPackage)
+    {
+        if (contentPackage is not { } package) return;
+        if (string.IsNullOrWhiteSpace(package.Id) || string.IsNullOrWhiteSpace(package.Manifest))
+            throw new ArgumentException(
+                "Scene content package reference cannot be empty.",
+                nameof(contentPackage));
     }
 
     public GameApplicationBuilder StartScene(SceneRef scene)
@@ -219,6 +272,10 @@ public sealed class GameApplicationBuilder
         }
         var renderer = _renderer.ToPlan();
         renderer.Validate();
+        bool hasSceneContent = _scenes.Values.Any(scene => scene.ContentPackage.HasValue);
+        if (hasSceneContent && !renderer.ContentCatalogOnly)
+            throw new InvalidOperationException(
+                "Scene-scoped content requires UseContentCatalog on Default2DRendererOptions.");
         EngineWindowOptions windowOptions = renderer.PerformanceTelemetry is not null &&
                                             _windowOptions.FrameStatistics is null
             ? _windowOptions.WithFrameStatistics()

@@ -12,6 +12,7 @@ public sealed class Default2DRendererOptions
     private string? _contentPackagesRoot;
     private string? _contentManifest;
     private ContentPackageRef? _contentPackage;
+    private bool _contentCatalogOnly;
     private bool _hdrEnabled;
     private ToneMappingSettings _toneMapping = ToneMappingSettings.Default;
     private BloomSettings? _bloom;
@@ -38,6 +39,7 @@ public sealed class Default2DRendererOptions
         _contentPackagesRoot = packagesRoot;
         _contentManifest = manifestPath;
         _contentPackage = null;
+        _contentCatalogOnly = false;
         return this;
     }
 
@@ -52,6 +54,22 @@ public sealed class Default2DRendererOptions
         _contentPackagesRoot = packagesRoot;
         _contentManifest = package.Manifest;
         _contentPackage = package;
+        _contentCatalogOnly = false;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures a package directory without eagerly loading a root package. Scenes declare their
+    /// own package through the matching AddScene overload and hold it only while active.
+    /// </summary>
+    public Default2DRendererOptions UseContentCatalog(string packagesRoot = "AssetsCompiled")
+    {
+        if (string.IsNullOrWhiteSpace(packagesRoot))
+            throw new ArgumentException("Content packages root cannot be empty.", nameof(packagesRoot));
+        _contentPackagesRoot = packagesRoot;
+        _contentManifest = null;
+        _contentPackage = null;
+        _contentCatalogOnly = true;
         return this;
     }
 
@@ -198,6 +216,7 @@ public sealed class Default2DRendererOptions
         _contentPackage,
         _performanceTelemetry,
         _contentHotReload,
+        _contentCatalogOnly,
         _shaderRoot,
         _shaderFiles.ToArray(),
         _shaderHotReload,
@@ -230,6 +249,7 @@ internal sealed record Default2DRendererPlan(
     ContentPackageRef? ContentPackage = null,
     PerformanceTelemetryOptions? PerformanceTelemetry = null,
     ContentHotReloadOptions? ContentHotReload = null,
+    bool ContentCatalogOnly = false,
     string? ShaderRoot = null,
     IReadOnlyList<ShaderFileDefinition>? ShaderFiles = null,
     ShaderHotReloadOptions? ShaderHotReload = null,
@@ -251,7 +271,13 @@ internal sealed record Default2DRendererPlan(
 
     public void Validate()
     {
-        if ((ContentPackagesRoot is null) != (ContentManifest is null))
+        if (ContentCatalogOnly)
+        {
+            if (ContentPackagesRoot is null || ContentManifest is not null || ContentPackage is not null)
+                throw new InvalidOperationException(
+                    "A content catalog requires only a package root; do not combine it with UseContent.");
+        }
+        else if ((ContentPackagesRoot is null) != (ContentManifest is null))
             throw new InvalidOperationException(
                 "Content packages root and manifest must be configured together.");
         if (ContentPackage is { } package &&
@@ -268,8 +294,9 @@ internal sealed record Default2DRendererPlan(
             throw new InvalidOperationException(
                 "The main Render View effect profile must match UseHdr configuration.");
         }
-        if (ContentHotReload is not null && ContentPackagesRoot is null)
-            throw new InvalidOperationException("Content hot reload requires UseContent.");
+        if (ContentHotReload is not null && (ContentPackagesRoot is null || ContentCatalogOnly))
+            throw new InvalidOperationException(
+                "Content hot reload currently requires one eager package configured with UseContent.");
         if ((ShaderRoot is null) != (ShaderFiles is null or { Count: 0 }))
             throw new InvalidOperationException("Shader root and file definitions must be configured together.");
         if (ShaderHotReload is not null && ShaderFiles is not { Count: > 0 })

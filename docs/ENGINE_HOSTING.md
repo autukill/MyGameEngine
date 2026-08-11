@@ -42,6 +42,39 @@ game.Run();
 
 `UseContent(ContentPackageRef)` 默认从 `AssetsCompiled` 加载，并校验生成引用中的包 ID。需要动态路径时仍可使用 `UseContent(packagesRoot, manifestPath)`；强类型生成规则见[强类型 Content 引用](STRONGLY_TYPED_CONTENT.md)。
 
+## `UseContentCatalog` 与 Scene 级内容
+
+当游戏按首页、世界地图、关卡等边界拆包时，使用 `UseContentCatalog` 只配置编译包目录，再在 Scene 声明上绑定需要的包：
+
+```csharp
+using var game = GameApplication
+    .Create(options)
+    .UseDefault2DRenderer(renderer => renderer
+        .UseContentCatalog())
+    .AddScene(
+        GameScenes.Home,
+        GameAssets.Packages.GameHome,
+        context => HomeScene.Configure(context))
+    .AddScene(
+        GameScenes.World,
+        GameAssets.Packages.GameWorld,
+        context => WorldScene.Configure(context))
+    .AddScene(
+        GameScenes.EmptyDebug,
+        context => DebugScene.Configure(context))
+    .StartScene(GameScenes.Home)
+    .Build();
+```
+
+`UseContentCatalog(packagesRoot = "AssetsCompiled")` 只建立 `ContentPackageManager` 的安全根目录。它不会扫描目录、不会加载聚合根，也不会预先上传 Texture。Hosting 在初始 Scene 启动或 Scene 切换时读取其 `ContentPackageRef`，加载目标包及传递依赖，并把本次租约放入 `context.Content`。无包 Scene 的 `context.Content` 为 `null`。
+
+| 模式 | 何时加载 | 持有时间 | 适用场景 |
+| --- | --- | --- | --- |
+| `UseContent(package)` | Runtime 初始化 | 直到应用关闭 | 小型游戏、共享资产占主体、VisualTests |
+| `UseContentCatalog()` + `AddScene(scene, package, ...)` | Scene 初次进入或切换前 | 当前 Scene 使用期间 | 多 Scene 游戏、较大的独立场景资产 |
+
+两种模式互斥；声明了 Scene 包却没有调用 `UseContentCatalog` 会在构建 Hosting Plan 时直接失败。当前 Content Hot Reload 只支持 `UseContent` 常驻模式。完整术语、切换顺序与失败边界见 [Scene 级 Content Package 生命周期](SCENE_CONTENT_LIFECYCLE.md)。
+
 开发期可以继续调用 `EnableContentHotReload(options)`。Host 轮询编译指纹、在后台解码新修订，并固定在 Step 与 Draw 之间提交；失败时保留旧资源。完整协议见 [Content 包开发期热重载](CONTENT_HOT_RELOAD.md)。
 
 游戏自定义 Sprite Shader 可通过 `UseShaders(root, definitions)` 注册，随后由 `ShaderRef` 选择。`EnableShaderHotReload(options)` 会在后台读取稳定源码快照，并在相同 Step/Draw 边界整批编译替换；失败保留旧 Program。Context 暴露 `Shaders` 供高级 uniform 设置。详见 [自定义 Sprite Shader 与开发期热重载](SHADER_HOT_RELOAD.md)。
@@ -135,13 +168,14 @@ Render Graph 捕获只用于低频调试和测试，不在 Host 每帧自动执�
 ```text
 Window.Load
   -> 创建默认 Runtime
-  -> 加载 Content
+  -> 加载全局 Content，或按初始 Scene 加载其 Content Package
   -> ConfigureScene(context)
   -> 添加默认 World/GUI Presentation owner
 
 Window.Step
   -> Scene.PerformInput
   -> Scene.PerformStep
+  -> 准备并提交待切换 Scene 的 Content Package（仅有切换请求时）
   -> ScenePipelineBuilder.ApplyEvents
   -> ContentHotReload.Commit（仅有已准备修订时）
   -> ShaderHotReload.Commit（仅有稳定源码修订时）

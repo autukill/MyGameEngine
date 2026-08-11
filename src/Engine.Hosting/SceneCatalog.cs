@@ -1,6 +1,7 @@
 namespace GameEngine.Hosting;
 
 using GameEngine.Core.Domain.Gameplay;
+using GameEngine.Features.ContentAssets.Domain;
 
 internal interface ISceneActivation
 {
@@ -35,15 +36,18 @@ internal interface ISceneDefinition
 {
     SceneRef Scene { get; }
     Type? ArgumentsType { get; }
+    ContentPackageRef? ContentPackage { get; }
     void Configure(Default2DGameContext context, ISceneActivation activation);
 }
 
 internal sealed class UntypedSceneDefinition(
     SceneRef scene,
+    ContentPackageRef? contentPackage,
     Action<Default2DGameContext> configure) : ISceneDefinition
 {
     public SceneRef Scene { get; } = scene;
     public Type? ArgumentsType => null;
+    public ContentPackageRef? ContentPackage { get; } = contentPackage;
 
     public void Configure(Default2DGameContext context, ISceneActivation activation)
     {
@@ -56,10 +60,12 @@ internal sealed class UntypedSceneDefinition(
 
 internal sealed class TypedSceneDefinition<TArgs>(
     SceneRef<TArgs> scene,
+    ContentPackageRef? contentPackage,
     Action<Default2DGameContext, TArgs> configure) : ISceneDefinition where TArgs : struct
 {
     public SceneRef Scene { get; } = scene.Untyped;
     public Type? ArgumentsType => typeof(TArgs);
+    public ContentPackageRef? ContentPackage { get; } = contentPackage;
 
     public void Configure(Default2DGameContext context, ISceneActivation activation)
     {

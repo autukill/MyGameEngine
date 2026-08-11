@@ -1,5 +1,15 @@
 # Content Assets 使用指南
 
+对于内容较大的多 Scene 游戏，可以只配置包目录，并把租约声明在 Scene 上：
+
+```csharp
+.UseDefault2DRenderer(renderer => renderer.UseContentCatalog())
+.AddScene(GameScenes.Home, GameAssets.Packages.GameHome, ConfigureHome)
+.AddScene(GameScenes.World, GameAssets.Packages.GameWorld, ConfigureWorld)
+```
+
+这与常驻的 `UseContent(GameAssets.Packages.Root)` 是两种显式模式。前者在安全 Scene 切换边界加载目标包并释放旧包；聚合根仍参与离线编译和强类型代码生成，但不会自动常驻。所有权、失败顺序和限制见 [Scene 级 Content 生命周期](SCENE_CONTENT_LIFECYCLE.md)。
+
 `Engine.Features.ContentAssets` 使用单一、版本化的 `assets.json` 声明 Texture、Sprite、Animation、Audio Clip 和包依赖。它负责把图片同步加载到 GPU，把 Texture 装配为逻辑 Sprite，把 Sprite 装配为命名 Animation Clip，并把短 WAV 解码为逻辑 Audio Clip。
 
 当前清单版本为 `schemaVersion: 1`。
@@ -322,7 +332,14 @@ Animation 不直接保存 Texture 或 UV。多图片 Sprite、Atlas 跨页和大
 
 Sprite 只能引用本包或传递依赖包中的 Texture；Animation 同样只能引用依赖闭包中的 Sprite。仅仅在全局 Library 中存在同名资源不会自动赋予包访问权限。
 
-只声明 `dependencies`、不包含本地资源的聚合包是合法的，适合把顶层 `assets.json` 保持为简短、显式的包目录。完全没有依赖和本地资源的空包仍会被拒绝。聚合根的租约会持有完整依赖闭包；这是一种组织边界，不等同于按 Scene 延迟加载。
+只声明 `dependencies`、不包含本地资源的聚合包是合法的，适合把顶层 `assets.json` 保持为简短、显式的构建目录。完全没有依赖和本地资源的空包仍会被拒绝。
+
+聚合根本身只定义包依赖图，不决定运行时驻留策略：
+
+- `UseContent(GameAssets.Packages.Root)` 会取得聚合根租约，因此其完整依赖闭包常驻到应用关闭。
+- `UseContentCatalog()` 不加载聚合根；只有绑定在当前 Scene 上的 `ContentPackageRef` 会取得运行时租约。
+
+因此，把清单拆成子包只是建立可独立加载的边界；是否真正按 Scene 加载，取决于 Hosting 的装配方式。相关术语和所有权协议见 [Scene 级 Content Package 生命周期](SCENE_CONTENT_LIFECYCLE.md)。
 
 Manager 在修改 GPU 状态之前解析完整依赖图，并拒绝：
 

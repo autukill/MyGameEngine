@@ -95,6 +95,18 @@ internal static class Program
               !ldr.Renderer.SceneGuiEnabled,
             "Default renderer remains LDR and optional features are lazy");
 
+        var homePackage = new ContentPackageRef("game.home", "Home/assets.json");
+        SceneRef homeScene = new("Home");
+        var sceneContent = GameApplication.Create()
+            .UseDefault2DRenderer(renderer => renderer.UseContentCatalog())
+            .AddScene(homeScene, homePackage, _ => { })
+            .BuildPlan();
+        Check(sceneContent.Renderer.ContentCatalogOnly &&
+              sceneContent.Renderer.ContentPackagesRoot == "AssetsCompiled" &&
+              sceneContent.Renderer.ContentManifest is null &&
+              sceneContent.Scenes[homeScene.Name].ContentPackage == homePackage,
+            "Scene content catalogs retain package declarations without eager root loading");
+
         var multiViewport = GameApplication.Create()
             .UseDefault2DRenderer(renderer => renderer.UseSingleCameraViewports(views => views
                 .Add("left", ViewportRect.LeftHalf, ViewportFitMode.Cover)
@@ -167,6 +179,23 @@ internal static class Program
         CheckThrows<ArgumentException>(
             () => new Default2DRendererOptions().UseContent(" "),
             "Empty content root is rejected");
+        CheckThrows<ArgumentException>(
+            () => new Default2DRendererOptions().UseContentCatalog(" "),
+            "Empty content catalog root is rejected");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create()
+                .UseDefault2DRenderer()
+                .AddScene(
+                    new SceneRef("Scoped"),
+                    new ContentPackageRef("scoped.assets", "Scoped/assets.json"),
+                    _ => { })
+                .BuildPlan(),
+            "Scene package declarations require an explicit content catalog");
+        CheckThrows<ArgumentException>(
+            () => GameApplication.Create()
+                .UseDefault2DRenderer(renderer => renderer.UseContentCatalog())
+                .AddScene(new SceneRef("Scoped"), default(ContentPackageRef), _ => { }),
+            "Default Scene content package references are rejected during registration");
         CheckThrows<ArgumentException>(
             () => GameApplication.Create()
                 .UseDefault2DRenderer()
@@ -1609,6 +1638,16 @@ internal static class Program
             .AddScene(results, (_, args) => configuredResults = args)
             .StartScene(gameOver)
             .BuildPlan();
+
+        var mainPackage = new ContentPackageRef("scene.main", "Main/assets.json");
+        var catalogPlan = GameApplication.Create()
+            .UseDefault2DRenderer(renderer => renderer.UseContentCatalog("Compiled"))
+            .AddScene(main, mainPackage, _ => { })
+            .AddScene(gameOver, _ => { })
+            .BuildPlan();
+        Check(catalogPlan.Scenes[main.Name].ContentPackage == mainPackage &&
+              catalogPlan.Scenes[gameOver.Name].ContentPackage is null,
+            "Scene catalog supports mixed packaged and package-free Scene definitions");
 
         HostingPrefabProbe created = plan.Instances.Create(
             probePrefab,

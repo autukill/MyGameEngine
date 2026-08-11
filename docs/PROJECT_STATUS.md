@@ -10,6 +10,7 @@
 - SceneAggregate、Layer、Background、Camera2D、SpriteBatch 状态机和 RenderPass DAG。
 - SpriteRef/SpriteLibrary、多帧动画、原点、缩放旋转和 DrawSprite 便利 API。
 - TextureRef/TextureLibrary、PNG/静态 WebP、声明式 Content Assets、包依赖和引用计数卸载。
+- Hosting 支持 `UseContentCatalog` 与 Scene 声明包：目标包先加载，成功后才结束旧 Scene，并在切换边界释放旧租约；原有全局 `UseContent` 保持兼容。
 - 确定性离线 TextureAtlas、默认 PNG/exact 无损 WebP 页面、跨页动画、大帧旁路和增量 AssetCompiler。
 - Build/Run/Publish MSBuild 资产集成、内容指纹、check/rebuild、所有权和原子替换。
 - 类型化 `RenderEffectRequestedEvent`/`RenderEffectReleasedEvent`，描述符不携带 GPU 对象或绘制回调。

@@ -45,7 +45,8 @@ public sealed class Default2DGameContext
     public SceneTransformRuntime Transforms { get; }
     public TextRuntime Text { get; }
     public ShaderLibrary Shaders { get; }
-    public LoadedContentPackage? Content { get; }
+    /// <summary>The global package, or the lease owned by the currently active Scene.</summary>
+    public LoadedContentPackage? Content { get; private set; }
     public Camera2D Camera { get; }
     public RenderPipeline Pipeline { get; }
     public ScenePipelineBuilder Effects { get; }
@@ -432,6 +433,8 @@ public sealed class Default2DGameContext
 
     /// <summary>请求在当前 Step/Draw 回调完成后的安全帧边界关闭窗口。</summary>
     public void Close() => _close();
+
+    internal void SetContent(LoadedContentPackage? content) => Content = content;
 
     private LoadedContentPackage RequireContent() => Content ??
         throw new InvalidOperationException(
