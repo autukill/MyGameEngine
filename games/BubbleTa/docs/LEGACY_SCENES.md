@@ -46,7 +46,7 @@ Room 预放置 34 个实例，包括：
 
 `BubbleTa.HomeScene` 已完成第一版行为重建：保留 960×1280 Room 坐标，以位于 `(120, 0)` 的 720×1280 相机做中央裁切；旧 46 FPS Alarm 换算为秒，由 60 Hz 固定更新推进。12 片 Logo 入场、云/泡泡/星光周期 Tween、三名角色入场与浮动、五个确定性闪点和五条确定性流星均已落地。
 
-世界按钮已接到最小 `WorldMapScene` 占位场景，设置按钮仍只展示。Home 已接入流式 OGG BGM 和 WAV 点击音；Home 固定 Camera 与 WorldMap 纵向导航分别由各自 Scene View 拥有。旧 `obj_ini`/`obj_drawer` 全局逻辑仍不复制。实现与验证细节见 [HomeScene 实现说明](HOME_SCENE.md)。
+世界按钮已接到 `WorldMapScene` 底部第一岛屿只读景观，设置按钮仍只展示。Home 已接入流式 OGG BGM 和 WAV 点击音；Home 固定 Camera 与 WorldMap 纵向导航分别由各自 Scene View 拥有。旧 `obj_ini`/`obj_drawer` 全局逻辑仍不复制。实现与验证细节见 [HomeScene 实现说明](HOME_SCENE.md)。
 
 ## `rm_world`：纵向世界地图
 
@@ -113,11 +113,11 @@ rm_world
 |---|---|---|
 | `BubbleTa.BootScene` | `rm_scale` + `rm_loding` | Presentation 初始化和必要内容加载 |
 | `BubbleTa.HomeScene` | `rm_ini` | 已完成首个可运行重建；首页与进入游戏的产品入口 |
-| `BubbleTa.WorldMapScene` | `rm_world` | 当前仅有验证 Scene 切换的纯色占位；正式关卡地图未实现 |
+| `BubbleTa.WorldMapScene` | `rm_world` | 已重建底部第一岛屿的主体、云层、景观装饰与只读节点；进度和关卡进入未实现 |
 | `BubbleTa.LevelScene` | `rm_game` | 参数化的实际泡泡玩法场景 |
 | 可选 `BubbleTa.SplashScene` | `rm_logo_2` | 仅在确认产品需要后加入 |
 
-设置、暂停、关卡开始、胜负和复活应采用 Scene 内强类型状态或覆盖层，而不是为每个面板创建 Scene。Home 已成为第一个真实场景；下一阶段仍应转向最小 `LevelScene` 核心射击循环，而不是先复原 World Map 的运营入口。
+设置、暂停、关卡开始、胜负和复活应采用 Scene 内强类型状态或覆盖层，而不是为每个面板创建 Scene。Home 与 WorldMap 第一岛屿已经成为真实场景切片；是否进入最小 `LevelScene` 核心射击循环，应由产品验证节奏决定，不要求先复原 World Map 的运营入口。
 
 ## 迁移约束
 

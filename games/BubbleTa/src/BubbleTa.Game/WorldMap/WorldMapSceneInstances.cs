@@ -79,6 +79,13 @@ internal sealed class WorldMapSmokeProbe( Action close ) : GameInstance {
         RequireCount<WorldMapCloudInstance>(
             WorldMapSceneLayout.UnderClouds.Length + WorldMapSceneLayout.AboveClouds.Length );
         RequireCount<WorldMapLevelNodeInstance>( 20 );
+        RequireCount<WorldMapSmokeInstance>( 1 );
+        RequireCount<WorldMapStaticDecorationInstance>( 1 );
+        RequireCount<WorldMapMushroomInstance>( 1 );
+        RequireCount<WorldMapPersonInstance>( 3 );
+        RequireCount<WorldMapBirdInstance>( 1 );
+        RequireCount<WorldMapLuteaInstance>( 1 );
+        RequireCount<WorldMapAppleInstance>( 3 );
         close();
     }
 

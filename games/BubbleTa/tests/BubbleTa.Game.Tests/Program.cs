@@ -22,6 +22,9 @@ internal static class Program
         Run("WorldMap horizontal rubber band", WorldMapHorizontalRubberBand);
         Run("WorldMap node presentation", WorldMapNodePresentation);
         Run("WorldMap cloud motion", WorldMapCloudMotion);
+        Run("WorldMap decoration layout", WorldMapDecorationLayout);
+        Run("WorldMap decoration timing", WorldMapDecorationTiming);
+        Run("WorldMap decoration determinism", WorldMapDecorationDeterminism);
         Run("Logo reveal timing", LogoRevealTiming);
         Run("Periodic decorations", PeriodicDecorations);
         Run("Character entrance and idle", CharacterEntranceAndIdle);
@@ -52,6 +55,13 @@ internal static class Program
               GameAssets.Sprites.BubbletaWorldMapIslandLower.Name ==
               "bubbleta.world-map.island-lower",
             "Both WorldMap island halves must have generated Sprite references.");
+        Check(GameAssets.Sprites.BubbletaWorldMapDecorationSmoke.Name ==
+              "bubbleta.world-map.decoration.smoke" &&
+              GameAssets.Sprites.BubbletaWorldMapDecorationBird.Name ==
+              "bubbleta.world-map.decoration.bird" &&
+              GameAssets.Sprites.BubbletaWorldMapDecorationLuteaFish.Name ==
+              "bubbleta.world-map.decoration.lutea-fish",
+            "WorldMap scenery must have strongly typed generated Sprite references.");
     }
 
     private static void WorldMapFirstIslandLayout()
@@ -151,6 +161,86 @@ internal static class Program
         Check(WorldMapSceneLayout.UnderClouds.Length == 8 &&
               WorldMapSceneLayout.AboveClouds.Length == 6,
             "First island must have deterministic rear and foreground cloud layers.");
+    }
+
+    private static void WorldMapDecorationLayout()
+    {
+        Check(WorldMapSceneLayout.People.Length == 3 &&
+              WorldMapSceneLayout.Apples.Length == 3,
+            "First island must retain three people and three apple effects.");
+        Check(WorldMapSceneLayout.SmokePosition == new Vector2D(220f, 15_360f) &&
+              WorldMapSceneLayout.StonePosition == new Vector2D(558f, 14_936f) &&
+              WorldMapSceneLayout.MushroomPosition == new Vector2D(560f, 15_625f) &&
+              WorldMapSceneLayout.LuteaPosition == new Vector2D(466f, 14_485f),
+            "First-island scenery must retain the legacy world coordinates.");
+        Near(WorldMapSceneLayout.People[0].RotationRadians, MathF.PI / 6f, .001f,
+            "The first jumping person must retain its authored rotation.");
+        Near(WorldMapSceneLayout.People[1].RotationRadians, 0f, .001f,
+            "The vertical jumping person must remain upright.");
+
+        var bird = new WorldMapBirdInstance(
+            new SpriteRef("test.bird.depth"), WorldMapSceneLayout.BirdPosition, 1UL);
+        var node = new WorldMapLevelNodeInstance(
+            new SpriteRef("test.node.depth"), WorldMapSceneLayout.FirstIslandNodes[0], false);
+        Check(bird.Depth < node.Depth,
+            "Birds must render above level nodes; smaller Depth values are drawn later.");
+    }
+
+    private static void WorldMapDecorationTiming()
+    {
+        var smoke = new WorldMapSmokeInstance(
+            new SpriteRef("test.smoke"), WorldMapSceneLayout.SmokePosition);
+        smoke.OnStep(2.99d);
+        Check(smoke.Scale == Vector2D.Zero,
+            "Smoke must remain hidden before its initial delay.");
+        smoke.OnStep(.51d);
+        Check(smoke.Scale.X > 0f && smoke.Position.Y < WorldMapSceneLayout.SmokePosition.Y &&
+              smoke.Color.W < 1f,
+            "Active smoke must grow, rise, and fade together.");
+
+        WorldMapPersonPlacement personPlacement = WorldMapSceneLayout.People[0];
+        var person = new WorldMapPersonInstance(new SpriteRef("test.person"), personPlacement);
+        person.OnStep(personPlacement.InitialDelaySeconds + .5d);
+        Check(person.Position == personPlacement.Position + personPlacement.JumpOffset,
+            "A person must reach the authored jump offset after its entrance tween.");
+        person.OnStep(2d);
+        Check(person.Position == personPlacement.Position,
+            "A person must return to its authored resting point.");
+
+        var lutea = new WorldMapLuteaInstance(
+            new SpriteRef("test.lutea"),
+            new SpriteRef("test.lutea.effect"),
+            WorldMapSceneLayout.LuteaPosition,
+            42UL);
+        lutea.OnStep(25d / 13.8d + .01d);
+        Check(!lutea.IsPlaying && lutea.ImageIndex == 24f,
+            "The water-side effect must pause on its final frame between loops.");
+    }
+
+    private static void WorldMapDecorationDeterminism()
+    {
+        var firstBird = new WorldMapBirdInstance(
+            new SpriteRef("test.bird"), WorldMapSceneLayout.BirdPosition, 77UL);
+        var secondBird = new WorldMapBirdInstance(
+            new SpriteRef("test.bird"), WorldMapSceneLayout.BirdPosition, 77UL);
+        StepBoth(firstBird.OnStep, secondBird.OnStep, 12d);
+        Check(firstBird.Position == secondBird.Position &&
+              firstBird.Scale == secondBird.Scale &&
+              firstBird.Color == secondBird.Color,
+            "Equal bird seeds and elapsed time must produce equal flights.");
+        Check(firstBird.Position.Y >= WorldMapSceneLayout.BirdPosition.Y - 400f &&
+              firstBird.Position.Y <= WorldMapSceneLayout.BirdPosition.Y + 400f,
+            "Bird flights must stay inside the authored random Y band.");
+
+        WorldMapApplePlacement placement = WorldMapSceneLayout.Apples[0];
+        var firstApple = new WorldMapAppleInstance(new SpriteRef("test.apple"), placement);
+        var secondApple = new WorldMapAppleInstance(new SpriteRef("test.apple"), placement);
+        StepBoth(firstApple.OnStep, secondApple.OnStep, 12d);
+        Check(firstApple.Phase == secondApple.Phase &&
+              firstApple.Position == secondApple.Position &&
+              firstApple.Scale == secondApple.Scale &&
+              firstApple.Color == secondApple.Color,
+            "Equal apple seeds and elapsed time must produce equal effect states.");
     }
 
     private static void LegacyLayoutIsCentralized()

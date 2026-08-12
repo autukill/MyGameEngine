@@ -28,6 +28,7 @@ internal static class WorldMapSceneDefinition {
             GameAssets.Sprites.BubbletaWorldMapIslandLower,
             WorldMapSceneLayout.IslandLowerPosition ) );
 
+        AddDecorations( context );
         AddLevelNodes( context );
         AddClouds( context, GameAssets.Sprites.BubbletaWorldMapCloudAbove,
             WorldMapSceneLayout.AboveClouds );
@@ -35,6 +36,42 @@ internal static class WorldMapSceneDefinition {
         context.Scene.Add( new WorldMapController(
             () => context.Scenes.SwitchTo( GameScenes.Home ) ) );
         if ( smoke ) context.Scene.Add( new WorldMapSmokeProbe( context.Close ) );
+    }
+
+    private static void AddDecorations( Default2DGameContext context ) {
+        context.Scene.Add( new WorldMapSmokeInstance(
+            GameAssets.Sprites.BubbletaWorldMapDecorationSmoke,
+            WorldMapSceneLayout.SmokePosition ) );
+        context.Scene.Add( new WorldMapStaticDecorationInstance(
+            GameAssets.Sprites.BubbletaWorldMapDecorationStone,
+            WorldMapSceneLayout.StonePosition,
+            19 ) );
+        context.Scene.Add( new WorldMapMushroomInstance(
+            GameAssets.Sprites.BubbletaWorldMapDecorationMushroom,
+            WorldMapSceneLayout.MushroomPosition ) );
+        context.Scene.Add( new WorldMapBirdInstance(
+            GameAssets.Sprites.BubbletaWorldMapDecorationBird,
+            WorldMapSceneLayout.BirdPosition,
+            0xB17D_0001UL ) );
+        context.Scene.Add( new WorldMapLuteaInstance(
+            GameAssets.Sprites.BubbletaWorldMapDecorationLutea,
+            GameAssets.Sprites.BubbletaWorldMapDecorationLuteaFish,
+            WorldMapSceneLayout.LuteaPosition,
+            0xF157_0001UL ) );
+
+        SpriteRef[] people = [
+            GameAssets.Sprites.BubbletaWorldMapDecorationPerson0,
+            GameAssets.Sprites.BubbletaWorldMapDecorationPerson1,
+            GameAssets.Sprites.BubbletaWorldMapDecorationPerson2
+        ];
+        ReadOnlySpan<WorldMapPersonPlacement> placements = WorldMapSceneLayout.People;
+        for (int i = 0; i < placements.Length; i++)
+            context.Scene.Add( new WorldMapPersonInstance( people[i], placements[i] ) );
+
+        foreach ( WorldMapApplePlacement placement in WorldMapSceneLayout.Apples )
+            context.Scene.Add( new WorldMapAppleInstance(
+                GameAssets.Sprites.BubbletaWorldMapDecorationApple,
+                placement ) );
     }
 
     private static void AddClouds(

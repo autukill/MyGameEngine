@@ -23,11 +23,24 @@ internal readonly record struct WorldMapCloudPlacement(
     float Phase,
     int Depth );
 
+internal readonly record struct WorldMapPersonPlacement(
+    Vector2D Position,
+    Vector2D JumpOffset,
+    double InitialDelaySeconds,
+    float RotationRadians );
+
+internal readonly record struct WorldMapApplePlacement(
+    Vector2D Position,
+    float EndY,
+    double InitialDelaySeconds,
+    ulong Seed );
+
 internal static class WorldMapSceneLayout {
     public const float FirstIslandY = 13_300f;
     public const float FirstIslandSeamY = 14_636f;
     public const float FirstIslandBottomY = 15_972f;
     public const float ViewWidth = 720f;
+    public const int BirdDepth = -5;
 
     public static Bounds2D RoomBounds { get; } = new( 0f, 0f, 1_048f, 16_100f );
     public static Vector2 InitialCameraPosition { get; } = new( 164f, 14_820f );
@@ -46,6 +59,23 @@ internal static class WorldMapSceneLayout {
         new( NavigationBounds, ViewportAxis.All );
     public static Vector2D IslandUpperPosition { get; } = new( 538f, FirstIslandY );
     public static Vector2D IslandLowerPosition { get; } = new( 538f, FirstIslandBottomY );
+    public static Vector2D SmokePosition { get; } = new( 220f, 15_360f );
+    public static Vector2D StonePosition { get; } = new( 558f, 14_936f );
+    public static Vector2D MushroomPosition { get; } = new( 560f, 15_625f );
+    public static Vector2D BirdPosition { get; } = new( 0f, 14_729f );
+    public static Vector2D LuteaPosition { get; } = new( 466f, 14_485f );
+
+    private static readonly WorldMapPersonPlacement[] PersonData = [
+        new( new Vector2D( 508f, 14_936f ), new Vector2D( -60f, -22f ), 1d / 46d, MathF.PI / 6f ),
+        new( new Vector2D( 582f, 14_956f ), new Vector2D( 0f, -90f ), 4d, 0f ),
+        new( new Vector2D( 558f, 14_906f ), new Vector2D( -60f, -30f ), 2d, MathF.PI / 6f )
+    ];
+
+    private static readonly WorldMapApplePlacement[] AppleData = [
+        new( new Vector2D( 620f, 13_450f ), 13_690f, 2d, 0xA11E_0001UL ),
+        new( new Vector2D( 719f, 13_460f ), 13_690f, 5d, 0xA11E_0002UL ),
+        new( new Vector2D( 790f, 13_407f ), 13_670f, 7d, 0xA11E_0003UL )
+    ];
 
     private static readonly WorldMapNodePlacement[] FirstIslandNodeData = [
         new( 1, new Vector2D( 511f, 15_545f ), WorldMapNodeKind.Normal ),
@@ -93,4 +123,6 @@ internal static class WorldMapSceneLayout {
     public static ReadOnlySpan<WorldMapNodePlacement> FirstIslandNodes => FirstIslandNodeData;
     public static ReadOnlySpan<WorldMapCloudPlacement> UnderClouds => UnderCloudData;
     public static ReadOnlySpan<WorldMapCloudPlacement> AboveClouds => AboveCloudData;
+    public static ReadOnlySpan<WorldMapPersonPlacement> People => PersonData;
+    public static ReadOnlySpan<WorldMapApplePlacement> Apples => AppleData;
 }

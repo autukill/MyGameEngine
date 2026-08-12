@@ -58,6 +58,6 @@ dotnet run -c Release --project games/BubbleTa/tests/BubbleTa.Game.Tests/BubbleT
 dotnet run -c Release --project games/BubbleTa/src/BubbleTa.Game/BubbleTa.Game.csproj -- --smoke
 ```
 
-Home 进入时循环播放自己的流式 OGG BGM。鼠标在世界按钮内完成按下与释放后播放一次 WAV 点击音，并进入 WorldMap 底部第一岛屿；取消点击不会发声。WorldMap 展示两张无缝拼接的岛屿主体、前后云层和 20 个只读关卡节点，并播放独立的流式 OGG BGM。Home 拥有固定 Camera；WorldMap 每次拖动会锁定主方向，纵向手势浏览完整地图，明确的横向手势可以暂时拉离中央 View 并在松开后橡皮筋回弹。两个 Scene 不共享 Navigation 状态。Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。
+Home 进入时循环播放自己的流式 OGG BGM。鼠标在世界按钮内完成按下与释放后播放一次 WAV 点击音，并进入 WorldMap 底部第一岛屿；取消点击不会发声。WorldMap 展示两张无缝拼接的岛屿主体、前后云层、20 个只读关卡节点，以及烟雾、石像、蘑菇、人物、飞鸟、水边鱼群和苹果等确定性景观动画，并播放独立的流式 OGG BGM。Home 拥有固定 Camera；WorldMap 每次拖动会锁定主方向，纵向手势浏览完整地图，明确的横向手势可以暂时拉离中央 View 并在松开后橡皮筋回弹。两个 Scene 不共享 Navigation 状态。Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。
 
 两首音乐均由各自 Scene 的 `SceneAudio.PlayMusic` 持有，离开时自动停止；点击音使用显式跨 Scene 的一次性 Voice，确保切换发生后仍能自然播放完。图片和声音均来自旧工程的内部原型迁移，不代表已获得公开分发许可，详见 [资产来源说明](src/BubbleTa.Game/Assets/ASSET_PROVENANCE.md)。
