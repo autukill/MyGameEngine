@@ -36,6 +36,8 @@ internal static class Program
             VerifyZoomOutDoesNotExpandDetailedResidency(fixture));
         Run("Single-LOD panorama uses Preview when Chunk budget is exceeded", () =>
             VerifySingleLodBudgetFallback(fixture));
+        Run("Raster residency budget falls back before loading", () =>
+            VerifyTextureResidencyBudget(fixture));
         Run("Session retains coarse fallback until detailed coverage is complete", () => VerifySession(fixture));
         Console.WriteLine(_failures == 0
             ? "=== All TileWorldStreaming smoke tests passed ==="
@@ -273,6 +275,9 @@ internal static class Program
         TileWorldDrawStatistics panoramaDraw = session.Draw(batch);
         Check(panoramaUpdate.IsUsingBudgetFallback &&
               panoramaUpdate.RequiredRetainedChunks == 4 &&
+              panoramaUpdate.BudgetFallbackReason ==
+              TileWorldBudgetFallbackReason.MaximumTrackedChunks &&
+              panoramaUpdate.RequiredRetainedTextureBytes == 0 &&
               panoramaDiagnostics.IsUsingBudgetFallback &&
               panoramaDiagnostics.Fallback.TrackedCount == 0 &&
               panoramaDraw.FallbackSurfaceQuads == 4,
@@ -301,6 +306,74 @@ internal static class Program
               detailMemory.EstimatedChunkGpuTextureBytes == 0 &&
               detailMemory.EstimatedFallbackGpuTextureBytes == 144,
             "Detailed authoritative residency is separated from Preview and Raster GPU ownership");
+    }
+
+    private static void VerifyTextureResidencyBudget(WorldFixture fixture)
+    {
+        Throws<ArgumentOutOfRangeException>(() => new TileWorldTextureResidencyBudget(0));
+        Check(TileWorldTextureResidencyBudget.Unlimited.MaximumChunkTextureBytes == long.MaxValue,
+            "Texture residency is opt-in and defaults to an unlimited compatibility boundary");
+        Throws<ArgumentOutOfRangeException>(() => new TileWorldStreamingOptions(
+            TileWorldLodSelectionOptions.Default,
+            WorldChunkStreamingOptions.Default,
+            textureResidencyBudget: default(TileWorldTextureResidencyBudget)));
+
+        var decoder = new FakeDecoder();
+        using var textures = new TextureLibrary(new FakeTextureBackend(), decoder);
+        var options = new TileWorldStreamingOptions(
+            new TileWorldLodSelectionOptions(1f, 0.1f),
+            new WorldChunkStreamingOptions(0, 0, 1, 8, true, 1),
+            TileWorldChunkLoadMode.Inline,
+            new TileWorldTextureUploadBudget(4, 1_024 * 1_024),
+            new TileWorldTextureResidencyBudget(287));
+        ViewportSnapshot rasterView = Snapshot(0f, 0f, 4f, 4f, 0.1f, 700);
+        using (var session = new TileWorldStreamingSession(
+                   fixture.Descriptor,
+                   fixture.TileSets,
+                   textures,
+                   decoder,
+                   options))
+        {
+            TileWorldStreamingUpdateResult update = session.Update(rasterView);
+            TileWorldStreamingDiagnostics diagnostics = session.CaptureDiagnostics();
+            var batch = new RecordingBatch();
+            TileWorldDrawStatistics draw = session.Draw(batch);
+            Check(update.IsUsingBudgetFallback &&
+                  update.BudgetFallbackReason ==
+                  TileWorldBudgetFallbackReason.MaximumChunkTextureBytes &&
+                  update.RequiredRetainedChunks == 0 &&
+                  update.RequiredRetainedTextureBytes == 288 &&
+                  diagnostics.RequiredRetainedTextureBytes == 288 &&
+                  diagnostics.Fallback.TrackedCount == 0 &&
+                  draw.FallbackSurfaceQuads == 1 &&
+                  textures.Count == 1,
+                "A conservative Raster estimate should select Preview before creating Chunk leases or textures");
+        }
+
+        using var noFallbackTextures = new TextureLibrary(new FakeTextureBackend(), decoder);
+        using var noFallback = new TileWorldStreamingSession(
+            fixture.NoFallbackDescriptor,
+            fixture.TileSets,
+            noFallbackTextures,
+            decoder,
+            options);
+        Throws<InvalidOperationException>(() => noFallback.Update(rasterView));
+        Check(noFallback.CaptureDiagnostics().Fallback.TrackedCount == 0 &&
+              noFallbackTextures.Count == 0,
+            "Without Preview, a residency overflow fails before mutating Chunk or Texture ownership");
+
+        using var authoritativeTextures = new TextureLibrary(new FakeTextureBackend(), decoder);
+        using var authoritative = new TileWorldStreamingSession(
+            fixture.SingleLodDescriptor,
+            fixture.TileSets,
+            authoritativeTextures,
+            decoder,
+            options);
+        TileWorldStreamingUpdateResult authoritativeUpdate = authoritative.Update(
+            Snapshot(0f, 0f, 4f, 4f, 1f, 701));
+        Check(!authoritativeUpdate.IsUsingBudgetFallback &&
+              authoritative.CaptureDiagnostics().Active.LoadedCount == 1,
+            "Authoritative Tile payloads are not incorrectly charged to the Raster texture budget");
     }
 
     private static async Task VerifyNonBlockingLodRetirement(WorldFixture fixture)
@@ -674,11 +747,34 @@ internal static class Program
                 singleLodMetadata.Ref,
                 singleLodArchivePath,
                 singleLodMetadata);
+
+            var noFallbackMetadata = new TileWorldMetadata(
+                "stream.no-fallback",
+                lod0.Metadata.ChunkWidth,
+                lod0.Metadata.ChunkHeight,
+                lod0.Metadata.TileSize,
+                lod0.Metadata.Bounds,
+                lod0.Metadata.DeclaredLodCount,
+                lod0.Metadata.RasterSettings,
+                lod0.Metadata.Layers);
+            string noFallbackArchivePath = Path.Combine(_directory, "stream-no-fallback.mgworld");
+            using (FileStream stream = File.Create(noFallbackArchivePath))
+                TileWorldArchiveWriter.Write(
+                    stream,
+                    new TileWorldArchiveBuild(
+                        noFallbackMetadata,
+                        lod0.Chunks,
+                        [rasterLod1, rasterLod2]));
+            NoFallbackDescriptor = new TileWorldDescriptor(
+                noFallbackMetadata.Ref,
+                noFallbackArchivePath,
+                noFallbackMetadata);
         }
 
         public TileSetLibrary TileSets { get; }
         public TileWorldDescriptor Descriptor { get; }
         public TileWorldDescriptor SingleLodDescriptor { get; }
+        public TileWorldDescriptor NoFallbackDescriptor { get; }
 
         public void Dispose()
         {

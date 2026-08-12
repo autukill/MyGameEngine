@@ -40,6 +40,8 @@ public sealed class TileWorldStreamingSession : IDisposable
     private int _desiredLevel;
     private bool _isUsingBudgetFallback;
     private long _requiredRetainedChunks;
+    private TileWorldBudgetFallbackReason _budgetFallbackReason;
+    private long _requiredRetainedTextureBytes;
     private bool _hasViewport;
     private bool _disposed;
 
@@ -59,7 +61,8 @@ public sealed class TileWorldStreamingSession : IDisposable
             supplied.LodSelection,
             supplied.ChunkStreaming,
             supplied.LoadMode,
-            supplied.TextureUploadBudget);
+            supplied.TextureUploadBudget,
+            supplied.TextureResidencyBudget);
         _selector = new TileWorldLodSelector(descriptor.Metadata, _options.LodSelection);
         if (_options.LoadMode == TileWorldChunkLoadMode.Background)
             _backgroundScheduler = new TileWorldBackgroundScheduler(
@@ -126,6 +129,8 @@ public sealed class TileWorldStreamingSession : IDisposable
 
         _isUsingBudgetFallback = false;
         _requiredRetainedChunks = 0;
+        _budgetFallbackReason = TileWorldBudgetFallbackReason.None;
+        _requiredRetainedTextureBytes = 0;
 
         bool fallbackTrackable = TryUpdateOrUseBudgetFallback(
             _fallback,
@@ -202,7 +207,9 @@ public sealed class TileWorldStreamingSession : IDisposable
             uploadBudget.BytesUploaded,
             _retiredLevels.Count,
             _isUsingBudgetFallback,
-            _requiredRetainedChunks);
+            _requiredRetainedChunks,
+            _budgetFallbackReason,
+            _requiredRetainedTextureBytes);
     }
 
     public TileWorldDrawStatistics Draw(
@@ -302,7 +309,9 @@ public sealed class TileWorldStreamingSession : IDisposable
             ResidentFallbackSurfaceCount,
             _retiredLevels.Count,
             _isUsingBudgetFallback,
-            _requiredRetainedChunks);
+            _requiredRetainedChunks,
+            _budgetFallbackReason,
+            _requiredRetainedTextureBytes);
     }
 
     public TileWorldStreamingMemoryDiagnostics CaptureMemoryDiagnostics()
@@ -444,8 +453,13 @@ public sealed class TileWorldStreamingSession : IDisposable
         ref int unloaded,
         ref int failures)
     {
-        long required = level.GetRequiredRetainedChunkCount(viewport);
-        if (required <= _options.ChunkStreaming.MaximumTrackedChunks)
+        long requiredChunks = level.GetRequiredRetainedChunkCount(viewport);
+        long requiredTextureBytes = level.GetRequiredRetainedTextureBytes(viewport);
+        bool chunkCountWithinBudget =
+            requiredChunks <= _options.ChunkStreaming.MaximumTrackedChunks;
+        bool textureBytesWithinBudget =
+            requiredTextureBytes <= _options.TextureResidencyBudget.MaximumChunkTextureBytes;
+        if (chunkCountWithinBudget && textureBytesWithinBudget)
         {
             Accumulate(level.Update(viewport, _textures, ref uploadBudget),
                 ref started, ref completed, ref unloaded, ref failures);
@@ -455,14 +469,31 @@ public sealed class TileWorldStreamingSession : IDisposable
         if (!HasFallbackSurfaces)
         {
             // Preserve WorldChunkStreamer's explicit hard failure when no visual fallback exists.
-            Accumulate(level.Update(viewport, _textures, ref uploadBudget),
-                ref started, ref completed, ref unloaded, ref failures);
+            if (!chunkCountWithinBudget)
+                Accumulate(level.Update(viewport, _textures, ref uploadBudget),
+                    ref started, ref completed, ref unloaded, ref failures);
+            else
+                throw new InvalidOperationException(
+                    $"Viewport requires up to {requiredTextureBytes} bytes of retained Raster " +
+                    $"Chunk textures, exceeding the configured maximum of " +
+                    $"{_options.TextureResidencyBudget.MaximumChunkTextureBytes} bytes.");
             return false;
         }
 
         Accumulate(level.Suspend(), ref started, ref completed, ref unloaded, ref failures);
         _isUsingBudgetFallback = true;
-        _requiredRetainedChunks = Math.Max(_requiredRetainedChunks, required);
+        if (!chunkCountWithinBudget)
+        {
+            _budgetFallbackReason |= TileWorldBudgetFallbackReason.MaximumTrackedChunks;
+            _requiredRetainedChunks = Math.Max(_requiredRetainedChunks, requiredChunks);
+        }
+        if (!textureBytesWithinBudget)
+        {
+            _budgetFallbackReason |= TileWorldBudgetFallbackReason.MaximumChunkTextureBytes;
+            _requiredRetainedTextureBytes = Math.Max(
+                _requiredRetainedTextureBytes,
+                requiredTextureBytes);
+        }
         return false;
     }
 

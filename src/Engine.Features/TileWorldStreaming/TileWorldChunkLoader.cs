@@ -61,6 +61,32 @@ public sealed class TileWorldChunkLoader :
     public int Level { get; }
     public TileWorldMetadata Metadata { get; }
 
+    internal long EstimateMaximumRasterTextureBytes(in WorldChunkRange range)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        long bytesPerLayer = checked(
+            (long)Metadata.RasterSettings.EncodedWidth *
+            Metadata.RasterSettings.EncodedHeight * 4L);
+        int visibleLayerCount = 0;
+        for (int index = 0; index < Metadata.Layers.Count; index++)
+            if (Metadata.Layers[index].Visible) visibleLayerCount++;
+        long bytesPerChunk = checked(bytesPerLayer * visibleLayerCount);
+        long total = 0;
+        for (int y = range.MinY; ; y++)
+        {
+            for (int x = range.MinX; ; x++)
+            {
+                var key = new TileWorldChunkKey(Level, x, y);
+                if (_archive.Contains(key) &&
+                    _archive.GetPayloadKind(key) == TileWorldChunkPayloadKind.RasterLayers)
+                    total = checked(total + bytesPerChunk);
+                if (x == range.MaxX) break;
+            }
+            if (y == range.MaxY) break;
+        }
+        return total;
+    }
+
     public ValueTask<TileWorldChunkLease> LoadAsync(
         WorldChunkCoordinate coordinate,
         CancellationToken cancellationToken)

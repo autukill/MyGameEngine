@@ -58,6 +58,14 @@ internal sealed class TileWorldLevelState : IDisposable
     public long GetRequiredRetainedChunkCount(in ViewportSnapshot viewport) =>
         Layout.GetRange(viewport.VisibleWorldBounds, _options.RetainMarginChunks).Count;
 
+    public long GetRequiredRetainedTextureBytes(in ViewportSnapshot viewport)
+    {
+        WorldChunkRange range = Layout.GetRange(
+            viewport.VisibleWorldBounds,
+            _options.RetainMarginChunks);
+        return _loader.EstimateMaximumRasterTextureBytes(range);
+    }
+
     public bool CanTrack(in ViewportSnapshot viewport) =>
         GetRequiredRetainedChunkCount(viewport) <= _options.MaximumTrackedChunks;
 

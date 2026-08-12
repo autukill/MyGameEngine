@@ -119,6 +119,24 @@ Texture 上传仍超预算，再独立评估 PBO 或共享上传 Context/Fence�
 
 ## 单 LOD、Preview 与 Chunk 预算
 
+除 `MaximumTrackedChunks` 的数量硬上限外，可选的 `TileWorldTextureResidencyBudget` 在启动加载前约束单个 Level 的稳态 Raster Chunk Texture 成本：
+
+```csharp
+var options = new TileWorldStreamingOptions(
+    lodSelection,
+    chunkStreaming,
+    TileWorldChunkLoadMode.Background,
+    textureUploadBudget,
+    new TileWorldTextureResidencyBudget(
+        maximumChunkTextureBytes: 64L * 1024 * 1024));
+```
+
+估算只遍历 Retained 范围内归档中实际存在的 Raster Chunk；每个 Chunk 按 `EncodedWidth × EncodedHeight × 4 × 可见 Layer 数` 计算。权威 Tile Chunk 与稀疏空 Chunk 不占该预算；若某个 Raster Payload 省略了部分可见 Layer，估算会有意偏保守。默认值为 `Unlimited`，因此不会改变既有项目行为。
+
+预算约束的是一个 Level 的 Chunk Texture，不包含 Preview Surface、根 RenderTarget、驱动缓存，也不承诺限制 LOD 交接期间多个 Level 的瞬时总和。逐帧上传节流仍由 `TileWorldTextureUploadBudget` 独立负责：前者限制最终驻留规模，后者限制单帧提交尖峰。
+
+有 Preview 时，超限 Level 会在创建 Chunk Lease 或上传 Texture 前暂停并由 Preview 保底；没有 Preview 时会在修改驻留状态前抛出明确异常。`BudgetFallbackReason` 区分 `MaximumTrackedChunks` 与 `MaximumChunkTextureBytes`，`RequiredRetainedTextureBytes` 给出本次保守需求，便于开发者调整 LOD、Retain Margin 或预算，而不是盲目提高上限。
+
 `lodCount: 1` 是合法配置，但意味着从局部细节到全景都只能使用 LOD0。以 `20×20` Chunk 地图为例，
 全景可能需要数百个 LOD0 Chunk；若它超过 `MaximumTrackedChunks`，运行时不会为了填满画面而偷偷突破
 硬预算。
