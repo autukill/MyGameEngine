@@ -93,7 +93,7 @@
 - Layer 索引现已在实例加入、切层和改 Depth 时维护稳定有序关系，普通 View Draw 不再重复排序；相同 Depth 保持 Scene 加入顺序，同帧后续 Layer 仍能看到变更。10,000 实例双 View 本机调度由 Layer 索引阶段约 1.185 ms 进一步降至 0.470 ms，排序比较为 0/0。
 - Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；`UseRenderViews` 可声明每个 View 的静态跟随策略，Hosting 惰性创建控制器，Gameplay 仍显式提供和切换运行时目标。
 - Interactive Viewport 提供 `ViewportController` 与固定顺序插件链：Core 以 `PointerId/PointerContact` 统一 Mouse、Touch、Pen，Hosting 按 Pointer 独立捕获到最上层 Render View；主 Camera 或每个 Render View 可声明 Drag、双指 Pinch/平移、Wheel、MouseEdges、Decelerate、Animate、Bounce、SnapZoom、ClampZoom、Snap 和 Clamp。运动统一使用秒与 `EasingKind`，交互中断可选 Pause/Cancel/Ignore，持续目标在 Resize/外部偏移后重新收敛；`ViewportSnapshot` 以 Revision 暴露可见世界边界，稳定更新保持 0 B。
-- 独立 `Engine.Features.WorldStreaming` 消费 `ViewportSnapshot`，以确定性行优先顺序管理 Visible/Preloaded/Retained 三层 Chunk；异步并发、单次 Update 启动量、最大跟踪数、取消、非阻塞退休、失败重试和唯一 lease 释放均有明确边界，完全加载的稳定 Snapshot 更新保持 0 B。`Engine.Features.TileWorlds` 提供权威 LOD0、逐 Layer LOD1+ WebP、逐 Layer 全图 Fallback Surface 与 `.mgworld` v3；`Engine.Features.TileWorldStreaming` 已接通 Zoom/滞回、有界后台 WebP 解码、主线程逐帧 Texture 张数/字节预算、单 Level Raster 稳态驻留预算、逐 Chunk 原子发布、非阻塞 LOD 热替换、最粗层常驻，以及 Preview/粗 LOD 两级缺失区域 UV 回退；低频所有权诊断可分别报告待上传 RGBA、权威 payload、Chunk/Preview 逻辑 GPU 字节和在途加载，并接入 Hosting 的 Managed/Native CPU 资源归因。独立 VisualTests 以临时合成世界真实验证 Preview → Raster LOD → LOD0、平滑缩放、受阻解码替换和 GPU 资源释放，不携带大型实际地图。
+- 独立 `Engine.Features.WorldStreaming` 消费 `ViewportSnapshot`，以确定性行优先顺序管理 Visible/Preloaded/Retained 三层 Chunk；异步并发、单次 Update 启动量、最大跟踪数、取消、非阻塞退休、失败重试和唯一 Lease 释放均有明确边界，完全加载的稳定 Snapshot 更新保持 0 B。`Engine.Features.TileWorlds` 提供权威 LOD0、逐 Layer LOD1+ WebP、逐 Layer 全图 Preview 回退图（Fallback Surface）与 `.mgworld` v3；`Engine.Features.TileWorldStreaming` 已接通 Zoom/滞回、有界后台 WebP 解码、主线程逐帧 Texture 张数/字节预算、单 LOD Raster 稳态驻留预算、逐 Chunk 原子发布、非阻塞 LOD 热替换、最粗可用 LOD 常驻，以及 Preview 回退图/粗 LOD 两级缺失区域 UV 回退；低频所有权诊断可分别报告待上传 RGBA、权威 Payload、Chunk/Preview 回退图逻辑 GPU 字节和在途加载，并接入 Hosting 的 Managed/Native CPU 资源归因。独立 VisualTests 以临时合成世界真实验证 Preview 回退图 → Raster LOD → LOD0、平滑缩放、受阻解码替换和 GPU 资源释放，不携带大型实际地图。
 - 独立 `Engine.PerformanceBenchmarks` 已把多 View 性能实验与 DDD 烟测分离：100/1,000/10,000 实例场景同时报告无剔除/剔除耗时、每 View 候选/Draw/拒绝数与分配量，并以确定性计数、零排序和 `0 B/frame` 作为回归守卫。
 - GPU 回归新增 `multi-render-view-lifecycle`：真实组合主 View HDR Bloom + Tone Mapping 与 0.75 RenderScale observer Tone Mapping，resize 后验证五个活动租约的精确尺寸，逐 View 释放后验证活动效果和租约归零、缓存全部回到 Pool。
 - `games/TheGodTheyMade` 的 Gate 4 工程切片已完成：30 分钟场景状态机组合水闸、湿遗迹、葬礼价值选择、无操作恢复和有限三联壁画；Game 呈现相应灰盒视觉并用程序短音反馈钟/雨/闸/葬礼。40 项无窗口检查覆盖三条完整 108,000 Tick 历史、确定性、版本化 Gameplay Command Journal 与 Gate 聚合判定；结构化 Playtest Report 可留存终局、学习轨迹和 Hash，严格审计 CLI 可输出逐项 Gate 结论，Gate 仍等待 5 人外部盲测证据后正式关闭。
@@ -120,7 +120,7 @@
 1. 已建立逻辑 TileSet/TileLayer/TileMap、稀疏 Chunk、负坐标和相机可见 Chunk 渲染，不依赖编辑器 UI。
 2. `assets.json`、ContentPackageManager、AssetCompiler 和强类型生成器已贯通 TileSet/TileMap，复用现有 Texture/Sprite/Atlas 生命周期。
 3. 已提供 Chunk 内静态碰撞贪心烘焙、复用 Buffer、多 Camera 显式可见边界和无窗口回归。
-4. 小型 TileMap 编译产物继续保留严格 JSON；大型 `tileWorlds` 已编译为 `.mgworld` v3，并通过独立运行时 Session 实现异步 Loader、Zoom LOD、非阻塞退休、逐帧 GPU 上传预算、流式驻留、最粗层回退和可选逐 Layer Preview Surface。固定网格 WebP 的预切片 Raster LOD0 导入与生成式 LOD1+ 已由仓库外 12000×12000 真实地图验证；地图热重载、总显存预算与 LRU 仍留在后续切片，仓库内测试不导入完整地图资源。
+4. 小型 TileMap 编译产物继续保留严格 JSON；大型 `tileWorlds` 已编译为 `.mgworld` v3，并通过独立运行时 Session 实现异步 Loader、Zoom LOD、非阻塞退休、逐帧 GPU 上传预算、单 LOD Raster 稳态驻留预算、流式驻留、最粗可用 LOD 和可选逐 Layer Preview 回退图（Fallback Surface）。固定网格 WebP 的预切片 Raster LOD0 导入与生成式 LOD1+ 已由仓库外 12000×12000 真实地图验证；五轮细节/全景循环确认 Chunk 所有权归零、逻辑 GPU 返回基线且 Full GC 后 Managed Heap 无持续增长。该阶段已满足常用单 Session 大地图路径，地图热重载、交接期总预算、跨 Session 共享与 LRU 转为真实瓶颈触发的维护项，仓库内测试不导入完整地图资源。
 
 ## 当前真实游戏里程碑：《神意难测》Gate 4 外部盲测
 
@@ -133,7 +133,7 @@
 1. `AudioClipRef` 同时覆盖静态 WAV 与流式 OGG；流式 Voice 独占解码器，长音频不完整解码进内存。
 2. OpenAL 使用四块 4096 Frame PCM16 Buffer 做同步队列补充，支持循环、抢占、停止和确定性释放。
 3. Hosting 的 `SceneAudio` 在内容包卸载前停止 Voice；跨 Scene 声音仍可显式使用全局 `Audio`。
-4. 下一里程碑进入 Lighting 0/1，并复用 Tilemap Chunk Revision 和静态碰撞几何作为未来遮挡数据边界。
+4. 下一里程碑回到真实游戏驱动的 Gameplay Authoring；Lighting 0/1 保留为画面目标触发的候选，并可复用 Tilemap Chunk Revision 和静态碰撞几何边界。
 
 ## 已知限制
 

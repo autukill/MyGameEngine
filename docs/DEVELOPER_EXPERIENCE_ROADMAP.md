@@ -105,11 +105,11 @@ GameAssets.Packages.SharedPrimitives
 
 当前验收：无窗口顺序测试覆盖输入边沿、变换、生成可见性、Create/Step/Destroy 顺序、实例查询、DestroySelf、inactive Alarm、Prefab 冻结及参数传递、Collider 组合和 Scene 请求；两个 Playground 冒烟均真实跨 Scene。完整语义见 [Gameplay Authoring Experience](GAMEPLAY_AUTHORING.md)、[Scene、Prefab 与碰撞查询](SCENE_PREFABS_COLLISION.md)和 [Gameplay Cookbook](GAMEPLAY_COOKBOOK.md)。
 
-下一步优先级：Animation、TransformHierarchy、Text 多行 Layout、Audio（短音效 + Streaming Music）和 Tilemap/World Authoring 第一条黄金路径已经闭环。下一条主线进入 Lighting 0/1，并直接复用 Tilemap 的 Chunk Revision 与静态碰撞几何边界。暂不展开完整 Skill/Buff、GUI 控件、协程或物理系统；逐帧异形碰撞继续保持需求记录。
+下一步优先级：Animation、TransformHierarchy、Text 多行 Layout、Audio（短音效 + Streaming Music）和 Tilemap/World Authoring 第一条黄金路径已经闭环。主线回到“由真实游戏切片暴露需求，再补 Gameplay Authoring 缺口”，不再按基础设施清单连续扩张。Lighting 0/1 保持高价值候选，但应由实际场景的画面目标触发；完整 Skill/Buff、GUI 控件、协程、物理系统与逐帧异形碰撞继续保持需求记录。
 
 Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一版强类型组合 Authoring：`context.Transforms`、opt-in Binding、纯挂点、Local/World、`KeepLocal/KeepWorld`、`TransformPrefab<TParts>`、具名类型节点与帧边界同步均已落地；AirplaneShooter 使用 `root → weapon → muzzle` 真实样例。仍保留 Scene 扁平 Step、Layer/Depth、Collider 索引，不让空间父子关系接管生命周期、渲染排序或 UI 布局。下一步先由玩法验证是否需要原子多 GameInstance Composite Prefab。使用见 [Transform Hierarchy 创作指南](TRANSFORM_HIERARCHY_AUTHORING.md)。
 
-## 阶段 7：Interactive Viewport 与大世界观察边界（当前主线）
+## 阶段 7：Interactive Viewport 与大世界观察边界（可用基线已完成，转入维护）
 
 目标是把成熟的 pixi-viewport 地图浏览体验重建为 MyGameEngine 原生 Camera 能力，并为 Chunk Streaming/LOD 提供稳定但不耦合资源系统的观察边界。
 
@@ -121,7 +121,9 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 - `UseInteractiveViewport` 为单主 Camera 提供黄金入口；`UseRenderViews` 可让每个 View 独立声明，CameraFollow 所有权冲突在装配期拒绝。
 - Hosting 在 Scene Step 前按最上层 View 路由输入，Resize 后重新约束；核心稳定更新 0 B，真实 OpenGL 隐藏 smoke 通过。
 
-统一多 Pointer/Pinch、Bounce/Animate/Snap/SnapZoom/MouseEdges 和独立 `WorldChunkStreamer` 已完成。TileWorld 已贯通声明式清单、权威 LOD0、逐 Layer LOD1+ exact 无损 WebP、运行时 Zoom/滞回、有界后台解码、非阻塞 LOD 退休、主线程逐帧 Texture 上传预算、完整替换、最粗生成 LOD 回退与逐 Layer Preview/Fallback Surface，并由小型临时合成世界的 VisualTests 覆盖完整视觉接管链和受阻解码热切换。下一步是既有 WebP 切片的离线导入适配器。历史 ZL Editor 的 `12000×12000`、400 张详细切片和一张 Preview 只作为未来真实验收样本，不导入当前功能切片，也不作为公共 API 特例。Chunk、异步 IO、Texture lease 和显存预算不进入 Viewport 项目。完整用法见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)、[World Chunk Streaming](WORLD_CHUNK_STREAMING.md)、[TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md) 与 [TileWorld 运行时流式加载](TILE_WORLD_RUNTIME_STREAMING.md)。
+统一多 Pointer/Pinch、Bounce/Animate/Snap/SnapZoom/MouseEdges 和独立 `WorldChunkStreamer` 已完成。TileWorld 已贯通声明式清单、权威 LOD0、逐 Layer LOD1+ exact 无损 WebP、既有 WebP 切片离线导入、运行时 Zoom/滞回、有界后台解码、非阻塞 LOD 退休、主线程逐帧 Texture 上传预算、单 LOD Raster 稳态驻留预算、完整替换、最粗可用 LOD 与逐 Layer Preview 回退图（Fallback Surface）；所有权诊断可区分 CPU Payload、逻辑 GPU、Lease 与在途任务。小型临时合成世界覆盖自动回归，仓库外 ZL Editor `12000×12000`、400 张详细切片和 Preview 回退图已完成真实 SDK 集成、五轮加载/卸载与内存趋势验证，不作为公共 API 特例或仓库资产。
+
+这条路线现在满足有限大地图的常用生产路径，转入需求驱动维护。跨 Session/多 View 共享缓存、LOD 淡化、逐 Chunk 热重载、交接期总驻留预算和 LRU 仅在真实游戏证明现有边界造成卡顿、显存超限或重复资源时恢复；不再为假设规模提前实现。Chunk、异步 IO、Texture lease 和显存预算仍不进入 Viewport 项目。完整用法见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)、[World Chunk Streaming](WORLD_CHUNK_STREAMING.md)、[TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md) 与 [TileWorld 运行时流式加载](TILE_WORLD_RUNTIME_STREAMING.md)。
 
 ## 候选视觉主线：2D Lighting（已规划，尚未实施）
 
@@ -155,10 +157,11 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | 已完成基础 | Gameplay Signals、Spawn/Wave Authoring | Asteroids 已验证一对多通知与确定性生成时间线 |
 | 已完成接入 | Animation Authoring | Content、强类型生成、Hosting、GameInstance 与 Hot Reload 已闭环 |
 | 已完成接入 | Scene Graph / Transform Hierarchy | Scene、GameInstance、纯挂点与强类型 Transform Prefab 已接入；多实例 Composite Prefab 等真实需求验证 |
-| P1 | Tilemap/World Authoring | 关卡生产、Chunk、碰撞和未来静态光照遮挡的共同基础 |
+| 已完成可用基线 | Tilemap/World Authoring | 声明式编译、预切片导入、Preview、LOD、后台加载、上传/驻留预算和真实外部地图验收已闭环；后续按证据维护 |
 | 已完成接入 | 原生中文 Text Rendering | 真实 Font、中文/单词多行、对齐、Ellipsis、复用 Buffer、Hosting 与 World/SceneGui 已闭环；Shaping 后续 Spike |
 | 已完成接入 | Audio 短音效与 Streaming Music | 声明式 WAV/OGG、OpenAL 四 Buffer 队列、强类型 Clip、SceneAudio 所有权与诊断已闭环 |
-| 当前主线 | 大世界 Authoring | Viewport、Chunk Streaming、LOD0、LOD1+、非阻塞运行时 LOD、GPU 上传预算、最粗层与独立 Preview 保底已完成；下一步推进既有切片离线导入 |
+| 当前主线 | 真实游戏驱动的 Gameplay Authoring | 继续推进可运行场景和游戏切片；只有重复样板、正确性风险或性能数据出现时才增加通用引擎 API |
+| 维护模式 | 大世界 Authoring | 常用单 Session 路径与真实 12000×12000 地图验收已完成；共享缓存、LRU 和淡化由真实瓶颈触发 |
 | 已完成调研 | Yoga/RmlUi/FairyGUI Compatibility Spike | 已建立候选顺序、适配面和 Go/No-Go 门槛 |
 | P2 | RichText、彩色文字、Typewriter、Sprite Emoji | 建立在原生 Text Layout 上 |
 | P2 | Gamepad/Rebinding、Save Game | Logical Input 与显式状态协议已有基础 |
@@ -167,7 +170,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 | P3 | 彩色 Font Emoji、AnimatedImage、FairyGUI 高级组件 | 由真实产品需求和资产驱动 |
 | P3 | Lighting 软阴影/高级材质、完整物理/导航 | 由性能数据和真实玩法驱动 |
 
-Transform Scene/Prefab、Text 多行/Layout Buffer、Audio 短音效/流式音乐与 Tilemap/World Authoring 第一阶段已完成。大地图开发体验已经推进到 `Interactive Viewport → World Chunk Streaming → TileWorld LOD0 → LOD1+ 分层 WebP → 非阻塞运行时 LOD/Loader → 逐帧 GPU 上传预算 → 最粗层回退 → 独立 Preview Surface`；当前下一步是接入既有切片导入，但仅以程序生成的小型 Fixture 建立边界，完整真实地图留给后续集成验收。Lighting 0/1 暂列其后。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
+Transform Scene/Prefab、Text 多行/Layout Buffer、Audio 短音效/流式音乐与 Tilemap/World Authoring 可用基线均已完成。大地图开发体验已经推进到 `Interactive Viewport → World Chunk Streaming → TileWorld LOD0 → LOD1+ 分层 WebP → 既有切片导入 → 非阻塞运行时 LOD/Loader → 逐帧 GPU 上传预算 → 稳态驻留预算 → Preview 回退图（Fallback Surface）→ 所有权与内存趋势验证`，并经过仓库外真实地图验收。当前回到真实游戏切片和 Gameplay Authoring；Lighting、Save Game、Gamepad/Rebinding 或更复杂碰撞等候选，由游戏遇到的第一个明确阻塞决定顺序。HarfBuzz、Yoga C ABI 与 RmlUi Render Spike 可以独立调研，但完整 GUI 集成不能越过输入路由、IME、资源租约和 SceneGui 状态恢复；Yoga Layout Tree 不替代世界 Transform Hierarchy。
 
 ## 设计约束
 

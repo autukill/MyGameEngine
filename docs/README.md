@@ -4,6 +4,7 @@
 
 ## 当前文档
 
+- [MyGameEngine 统一术语](ENGINE_TERMINOLOGY.md)：World、Map、Cell、Tile、Chunk、LOD、Preview 回退图、Viewport 与流式资源生命周期的统一含义和写作约定。
 - [Windows x64 Native AOT 发布](NATIVE_AOT_PUBLISHING.md)：AOT 工具链、显式发布命令、自包含目录边界、零 IL 告警和真实 smoke 验收。
 - [项目现状](PROJECT_STATUS.md)：当前能力、限制和近期里程碑。
 - [Developer Experience Roadmap](DEVELOPER_EXPERIENCE_ROADMAP.md)：Hosting、强类型资产、项目模板、诊断与热重载演进顺序。

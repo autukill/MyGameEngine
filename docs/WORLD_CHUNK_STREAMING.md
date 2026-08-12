@@ -2,6 +2,8 @@
 
 `Engine.Features.WorldStreaming` 把 `ViewportSnapshot` 转换为稳定的世界分块驻留请求。它解决“大地图当前该保留哪些 Chunk、先加载哪些 Chunk、何时取消和释放”的协调问题，不负责地图格式、图片解码、GPU 上传或具体绘制。
 
+Chunk 是为了按区域加载、更新、绘制和释放而划分的世界空间单元，不等于图片、文件或 Texture；统一定义和相关 LOD/Preview 术语见 [MyGameEngine 统一术语](ENGINE_TERMINOLOGY.md)。
+
 依赖方向保持单向：
 
 ```text
@@ -73,8 +75,8 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 同一 Snapshot 会产生三个同心范围：
 
 - `Visible`：当前可见世界 AABB 覆盖的 Chunk，始终最先启动加载。
-- `Preloaded`：Visible 外扩 `PreloadMarginChunks`，为即将进入视野的区域预热。
-- `Retained`：Visible 外扩 `RetainMarginChunks`；Chunk 离开该范围才取消或释放，避免边界附近反复抖动。
+- `Preloaded`（预加载范围）：Visible 外扩 `PreloadMarginChunks`，为即将进入视野的区域预热。
+- `Retained`（保留范围）：Visible 外扩 `RetainMarginChunks`；Chunk 离开该范围才取消或释放，避免边界附近反复抖动。
 
 `RetainMarginChunks` 必须大于等于 `PreloadMarginChunks`。范围按行优先、从左上到右下确定性遍历；负世界坐标使用数学 floor。可见边界恰好落在 Chunk 右/下边缘时，不会错误多算相邻 Chunk。
 
@@ -103,7 +105,7 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 - `Dispose` 幂等。Scene 通常拥有自己的 Streamer，并应在销毁 Scene 内容之前先释放它。
 - `BeginRetirement/DrainRetirement` 保证热替换不等待在途 Loader，同时让最终 lease 仍在调用线程释放。
 - `Suspend()` 清空当前 Desired Set、取消在途加载并释放已完成 Lease，但不终结 Streamer；后续
-  `Update(snapshot)` 会重新建立驻留集。它适合上层 LOD/Preview 策略在硬预算降级期间临时停流。
+  `Update(snapshot)` 会重新建立驻留集。它适合上层 LOD/Preview 回退图策略在硬预算降级期间临时停流。
 
 `CaptureDiagnostics()` 提供 Pending、Loading、Loaded、Failed 以及三层驻留计数，不暴露 Loader 或 GPU 句柄。相同且已完全加载的 Snapshot 重复更新保持 `0 B` 托管分配。
 
@@ -111,7 +113,7 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 
 ## 与 LOD、Content 和绘制的边界
 
-本切片仍只决定 Chunk 的空间驻留，不选择 LOD。独立 `Engine.Features.TileWorldStreaming` 已在其上提供权威 LOD0、逐 Layer LOD1+ exact 无损 WebP、Zoom 选择、滞回、后台解码、主线程 Texture Lease、最粗层回退和可选逐 Layer Preview Surface；Content 与 GPU 所有权没有进入 Viewport 或通用 Streamer。格式见 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)，组合与生命周期见 [TileWorld 运行时 LOD 与流式加载](TILE_WORLD_RUNTIME_STREAMING.md)。下一步是离线既有 WebP 切片导入，当前不会复制完整真实地图资源。
+本切片仍只决定 Chunk 的空间驻留，不选择 LOD。独立 `Engine.Features.TileWorldStreaming` 已在其上提供权威 LOD0、逐 Layer LOD1+ exact 无损 WebP、既有 WebP 切片导入、Zoom 选择、滞回、后台解码、主线程 Texture Lease、上传/驻留预算、最粗可用 LOD 和可选逐 Layer Preview 回退图（Fallback Surface）；Content 与 GPU 所有权没有进入 Viewport 或通用 Streamer。格式见 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)，组合、生命周期与预加载调优见 [TileWorld 运行时 LOD 与流式加载](TILE_WORLD_RUNTIME_STREAMING.md)。
 
 推荐每个 Chunk 的资源边界如下：
 

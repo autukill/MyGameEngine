@@ -183,7 +183,7 @@ dotnet run --project playgrounds/TilemapWorld/TilemapWorld.csproj
 ```
 
 完整 TileSet、地图清单、强类型引用和碰撞边界见 [Tilemap / World Authoring](docs/TILEMAP_WORLD_AUTHORING.md)。
-大型地图的声明式切片、`.mgworld v3`、逐 Layer Preview/Fallback Surface 和 LOD 边界见 [TileWorld 离线切片编译器](docs/TILE_WORLD_OFFLINE_COMPILER.md)，Viewport 驱动的后台加载、滞回和两级回退绘制见 [TileWorld 运行时 LOD 与流式加载](docs/TILE_WORLD_RUNTIME_STREAMING.md)。
+大型地图的声明式切片、`.mgworld v3`、逐 Layer Preview 回退图（Fallback Surface）和 LOD 边界见 [TileWorld 离线切片编译器](docs/TILE_WORLD_OFFLINE_COMPILER.md)，Viewport 驱动的后台加载、滞回和两级回退绘制见 [TileWorld 运行时 LOD 与流式加载](docs/TILE_WORLD_RUNTIME_STREAMING.md)。
 
 完整 Gameplay 小游戏示例使用一个白色 Sprite 组合鸟、管道、背景与七段数字，并接通 Input Action、参数化 Prefab、确定性 Spawn、碰撞计分、GameOver Scene 参数和程序化短音效：
 
@@ -362,7 +362,7 @@ Factory 先用 `RenderEffectPlan` 声明带存储格式和颜色编码的逻辑 
 
 1. 多 Render View 的 Release 基线、声明式 Camera 跟随和 resize/release GPU 回归已经闭环；当前数据不支持引入跨 View 缓存。
 2. Animation 与 Text Rendering 黄金路径已经闭环，多行中文/单词换行、对齐、Ellipsis 和动态 Layout Buffer 已落地；复杂脚本 Shaping 先做 HarfBuzz 兼容性验证，不提前夹带完整 GUI。
-3. Transform、Text 多行、Audio 短音效/流式音乐与 Tilemap/World Authoring 第一阶段已闭环；下一条跨层主线推进 Lighting 0/1。
+3. Transform、Text 多行、Audio 短音效/流式音乐与 Tilemap/World Authoring 可用基线已闭环；大地图路线转入维护，主线回到真实游戏驱动的 Gameplay Authoring。
 4. GUI Compatibility Spike 已完成第一轮决策：Yoga 只作为布局内核继续 NativeAOT 实验，RmlUi 是开发者优先完整 Runtime 候选，FairyGUI 保留设计器优先可选路线。详见[调研记录](docs/HTML_CSS_YOGA_GUI_ROADMAP.md)。
 
 可选离线 Shader 编译已记录在[独立方向文档](docs/OFFLINE_SHADER_COMPILATION.md)，当前暂缓以优先改善日常玩法编写体验。
