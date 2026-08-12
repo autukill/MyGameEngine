@@ -307,3 +307,68 @@ internal sealed class WorldMapSegmentVisibilityController : GameInstance {
         }
     }
 }
+
+internal static class WorldMapSkyColorSampler {
+    public static Vector4 Sample(
+        IReadOnlyList<WorldMapSegmentDefinition> segments,
+        float worldY ) {
+        ArgumentNullException.ThrowIfNull( segments );
+        if ( segments.Count == 0 )
+            throw new ArgumentException( "At least one WorldMap segment is required.", nameof( segments ) );
+        if ( !float.IsFinite( worldY ) ) throw new ArgumentOutOfRangeException( nameof( worldY ) );
+
+        WorldMapSegmentDefinition bottom = segments[0];
+        if ( worldY >= bottom.Bounds.Top ) return bottom.SkyColor;
+        for (int i = 0; i < segments.Count - 1; i++) {
+            WorldMapSegmentDefinition lower = segments[i];
+            WorldMapSegmentDefinition upper = segments[i + 1];
+            if ( worldY >= lower.Bounds.Top && worldY <= lower.Bounds.Bottom )
+                return lower.SkyColor;
+            if ( worldY > upper.Bounds.Bottom && worldY < lower.Bounds.Top ) {
+                float linear = (worldY - upper.Bounds.Bottom) /
+                    (lower.Bounds.Top - upper.Bounds.Bottom);
+                float smooth = linear * linear * (3f - 2f * linear);
+                return Vector4.Lerp( upper.SkyColor, lower.SkyColor, smooth );
+            }
+        }
+
+        WorldMapSegmentDefinition top = segments[^1];
+        return top.SkyColor;
+    }
+}
+
+internal sealed class WorldMapSkyTransitionController : GameInstance {
+    private readonly Camera2D _camera;
+    private readonly IReadOnlyList<WorldMapSegmentDefinition> _segments;
+    private readonly Action<Vector4> _applyColor;
+
+    public Vector4 CurrentColor { get; private set; }
+    public ulong Revision { get; private set; }
+
+    public WorldMapSkyTransitionController(
+        Camera2D camera,
+        IReadOnlyList<WorldMapSegmentDefinition> segments,
+        Action<Vector4> applyColor ) {
+        _camera = camera ?? throw new ArgumentNullException( nameof( camera ) );
+        ArgumentNullException.ThrowIfNull( segments );
+        if ( segments.Count == 0 )
+            throw new ArgumentException( "At least one WorldMap segment is required.", nameof( segments ) );
+        _segments = segments;
+        _applyColor = applyColor ?? throw new ArgumentNullException( nameof( applyColor ) );
+        CurrentColor = segments[0].SkyColor;
+        TimeMode = InstanceTimeMode.Unscaled;
+    }
+
+    public override void OnStep( double deltaTime ) {
+        if ( !_camera.TryGetStableVisibleWorldBounds( out Bounds2D visible ) ) return;
+        UpdateSky( visible.Center.Y );
+    }
+
+    internal void UpdateSky( float viewCenterY ) {
+        Vector4 next = WorldMapSkyColorSampler.Sample( _segments, viewCenterY );
+        if ( next == CurrentColor ) return;
+        CurrentColor = next;
+        Revision++;
+        _applyColor( next );
+    }
+}

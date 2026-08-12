@@ -22,6 +22,7 @@ internal static class Program
         Run("WorldMap first island layout", WorldMapFirstIslandLayout);
         Run("WorldMap five segment catalog", WorldMapFiveSegmentCatalog);
         Run("WorldMap segment visibility", WorldMapSegmentVisibilityBoundary);
+        Run("WorldMap sky color transition", WorldMapSkyColorTransition);
         Run("WorldMap horizontal rubber band", WorldMapHorizontalRubberBand);
         Run("WorldMap progress snapshot", WorldMapProgressSnapshotStates);
         Run("WorldMap node presentation", WorldMapNodePresentation);
@@ -164,6 +165,36 @@ internal static class Program
         group.Apply(true, _ => activationEvents++);
         Check(group.IsActive && memberA.IsActive && memberB.IsActive && activationEvents == 4,
             "Re-entering a segment must reactivate all members.");
+    }
+
+    private static void WorldMapSkyColorTransition()
+    {
+        IReadOnlyList<WorldMapSegmentDefinition> segments = WorldMapSegmentCatalog.All;
+        Vector4 bottom = WorldMapSkyColorSampler.Sample(segments, 14_500f);
+        Vector4 upper = WorldMapSkyColorSampler.Sample(segments, 11_000f);
+        Check(bottom == segments[0].SkyColor && upper == segments[1].SkyColor,
+            "A Camera centered inside a segment must use that segment's exact sky color.");
+
+        float gapMidpoint = (segments[1].Bounds.Bottom + segments[0].Bounds.Top) * .5f;
+        Vector4 midpoint = WorldMapSkyColorSampler.Sample(segments, gapMidpoint);
+        Vector4 expected = Vector4.Lerp(segments[1].SkyColor, segments[0].SkyColor, .5f);
+        Near(midpoint.X, expected.X, .000001f,
+            "The midpoint between segments must smoothly blend sky red.");
+        Near(midpoint.Y, expected.Y, .000001f,
+            "The midpoint between segments must smoothly blend sky green.");
+        Near(midpoint.Z, expected.Z, .000001f,
+            "The midpoint between segments must smoothly blend sky blue.");
+
+        Vector4 applied = default;
+        var camera = new Camera2D(new Vector2(720f, 1_280f));
+        var controller = new WorldMapSkyTransitionController(
+            camera, segments, color => applied = color);
+        controller.UpdateSky(gapMidpoint);
+        Check(controller.Revision == 1 && controller.CurrentColor == midpoint && applied == midpoint,
+            "Changing the Camera segment must apply one new clear color.");
+        controller.UpdateSky(gapMidpoint);
+        Check(controller.Revision == 1,
+            "A stable Camera position must not churn the sky transition revision.");
     }
 
     private static void WorldMapNodePresentation()

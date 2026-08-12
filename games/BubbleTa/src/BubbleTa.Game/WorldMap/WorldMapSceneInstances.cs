@@ -169,6 +169,7 @@ internal sealed class WorldMapSmokeProbe( Action close ) : GameInstance {
         RequireCount<WorldMapLuteaInstance>( 1 );
         RequireCount<WorldMapAppleInstance>( 3 );
         RequireCount<WorldMapSegmentVisibilityController>( 1 );
+        RequireCount<WorldMapSkyTransitionController>( 1 );
         close();
     }
 

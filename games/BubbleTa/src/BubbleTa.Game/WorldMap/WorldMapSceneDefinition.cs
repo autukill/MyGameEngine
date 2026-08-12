@@ -48,6 +48,10 @@ internal static class WorldMapSceneDefinition {
             new WorldMapSegmentVisibility( WorldMapSegmentCatalog.All ),
             [firstSegment],
             context.Scene.RaiseEvent ) );
+        context.Scene.Add( new WorldMapSkyTransitionController(
+            context.Camera,
+            WorldMapSegmentCatalog.All,
+            color => context.Scene.Background = BackgroundConfig.FromColor( color ) ) );
         if ( smoke ) context.Scene.Add( new WorldMapSmokeProbe( context.Close ) );
     }
 
