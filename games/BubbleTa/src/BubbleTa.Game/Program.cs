@@ -28,7 +28,10 @@ internal static class Program {
                 views => views.ConfigureMain( new SceneCameraState(
                     new System.Numerics.Vector2(
                         HomeSceneLayout.CameraPosition.X,
-                        HomeSceneLayout.CameraPosition.Y ) ) ),
+                        HomeSceneLayout.CameraPosition.Y ) ),
+                    viewportPolicy: SceneCameraViewportPolicy.FixedVisibleHeight(
+                        BubbleTaViewport.ReferenceWidth,
+                        BubbleTaViewport.VisibleHeight ) ),
                 context => HomeSceneDefinition.Configure( context, smoke ) )
             .AddScene(
                 GameScenes.WorldMap,
@@ -38,11 +41,19 @@ internal static class Program {
                     navigation: navigation => navigation
                         .Drag( WorldMapSceneLayout.NavigationDrag )
                         .Decelerate()
-                        .Bounce( WorldMapSceneLayout.NavigationBounce ) ),
+                        .Bounce( WorldMapSceneLayout.NavigationBounce ),
+                    viewportPolicy: SceneCameraViewportPolicy.FixedVisibleHeight(
+                        BubbleTaViewport.ReferenceWidth,
+                        BubbleTaViewport.VisibleHeight ) ),
                 context => WorldMapSceneDefinition.Configure( context, progress, smoke ) )
             .StartScene( GameScenes.Home )
             .Build();
 
         game.Run();
     }
+}
+
+internal static class BubbleTaViewport {
+    public const float ReferenceWidth = 720f;
+    public const float VisibleHeight = 1280f;
 }

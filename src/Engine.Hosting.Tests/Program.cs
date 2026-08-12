@@ -34,6 +34,7 @@ internal static class Program
     {
         Console.WriteLine("=== Engine Hosting Smoke Test ===\n");
         TestBuilderPlans();
+        TestSceneCameraViewportPolicy();
         TestBuilderValidation();
         TestSceneAudioScope();
         TestLogicalInputMap();
@@ -216,7 +217,9 @@ internal static class Program
             .UseDefault2DRenderer()
             .AddScene(
                 fixedScene,
-                views => views.ConfigureMain(new SceneCameraState(new Vector2(120f, 0f))),
+                views => views.ConfigureMain(
+                    new SceneCameraState(new Vector2(120f, 0f)),
+                    viewportPolicy: SceneCameraViewportPolicy.FixedVisibleHeight(720f, 1_280f)),
                 _ => { })
             .AddScene(
                 mapScene,
@@ -236,11 +239,103 @@ internal static class Program
         SceneRenderViewDefinition mapMain =
             sceneViews.Scenes[mapScene.Name].Views![RenderViewRef.Main.Name];
         Check(fixedMain.Camera.Position == new Vector2(120f, 0f) &&
+              fixedMain.ViewportPolicy.Mode == SceneCameraViewportMode.FixedVisibleHeight &&
+              fixedMain.ViewportPolicy.ReferenceViewportSize == new Vector2(720f, 1_280f) &&
               fixedMain.Navigation is null &&
               mapMain.Camera.Position == new Vector2(164f, 14_820f) &&
               mapMain.Navigation?.Drag?.Axis == ViewportAxis.Vertical &&
               mapMain.Navigation?.Bounce?.WorldBounds.Bottom == 16_100f,
             "Each Scene freezes independent Camera and Viewport navigation ownership");
+    }
+
+    private static void TestSceneCameraViewportPolicy()
+    {
+        Console.WriteLine("1b. Scene Camera Viewport resize policy");
+        SceneCameraViewportPolicy policy =
+            SceneCameraViewportPolicy.FixedVisibleHeight(720f, 1_280f);
+        var camera = new Camera2D(new Vector2(720f, 1_280f));
+        var state = new SceneCameraState(new Vector2(120f, 0f));
+        policy.Activate(camera, state);
+        Check(camera.Position == state.Position && camera.Zoom == 1f,
+            "Reference-size activation preserves authored Camera coordinates");
+
+        policy.Resize(camera, 360f, 640f);
+        Check(camera.Position == state.Position && MathF.Abs(camera.Zoom - .5f) < .000001f &&
+              camera.TryGetStableVisibleWorldBounds(out Bounds2D halfBounds) &&
+              MathF.Abs(halfBounds.Width - 720f) < .001f &&
+              MathF.Abs(halfBounds.Height - 1_280f) < .001f,
+            "Proportional window shrink scales pixels without shrinking the visible world");
+
+        policy.Resize(camera, 480f, 640f);
+        Check(camera.TryGetStableVisibleWorldBounds(out Bounds2D wideBounds) &&
+              MathF.Abs(wideBounds.Left) < .001f &&
+              MathF.Abs(wideBounds.Width - 960f) < .001f &&
+              MathF.Abs(wideBounds.Height - 1_280f) < .001f,
+            "A wider aspect reveals more centered world space at the fixed visible height");
+
+        var lateCamera = new Camera2D(new Vector2(480f, 640f));
+        policy.Activate(lateCamera, state);
+        Check(lateCamera.TryGetStableVisibleWorldBounds(out Bounds2D lateBounds) &&
+              MathF.Abs(lateBounds.Center.X - wideBounds.Center.X) < .001f &&
+              MathF.Abs(lateBounds.Center.Y - wideBounds.Center.Y) < .001f &&
+              MathF.Abs(lateBounds.Width - 960f) < .001f,
+            "Scene activation after an earlier resize resolves the same centered View");
+
+        SceneCameraViewportPolicy expand =
+            SceneCameraViewportPolicy.Expand(720f, 1_280f);
+        var narrowExpandCamera = new Camera2D(new Vector2(360f, 800f));
+        expand.Activate(narrowExpandCamera, state);
+        Check(narrowExpandCamera.TryGetStableVisibleWorldBounds(out Bounds2D expandBounds) &&
+              MathF.Abs(expandBounds.Left - 120f) < .001f &&
+              expandBounds.Top < 0f &&
+              MathF.Abs(expandBounds.Width - 720f) < .001f &&
+              MathF.Abs(expandBounds.Height - 1_600f) < .001f,
+            "Expand chooses the smaller fit scale and keeps the full reference frame visible");
+
+        SceneCameraViewportPolicy cover =
+            SceneCameraViewportPolicy.Cover(720f, 1_280f);
+        var narrowCoverCamera = new Camera2D(new Vector2(360f, 800f));
+        cover.Activate(narrowCoverCamera, state);
+        Check(narrowCoverCamera.TryGetStableVisibleWorldBounds(out Bounds2D coverBounds) &&
+              coverBounds.Left > 120f && coverBounds.Right < 840f &&
+              MathF.Abs(coverBounds.Width - 576f) < .001f &&
+              MathF.Abs(coverBounds.Height - 1_280f) < .001f,
+            "Cover chooses the larger fill scale and crops only the surplus reference axis");
+
+        SceneCameraViewportPolicy fixedWidth =
+            SceneCameraViewportPolicy.FixedVisibleWidth(720f, 1_280f);
+        var fixedWidthCamera = new Camera2D(new Vector2(360f, 800f));
+        fixedWidth.Activate(fixedWidthCamera, state);
+        Check(fixedWidthCamera.TryGetStableVisibleWorldBounds(out Bounds2D fixedWidthBounds) &&
+              MathF.Abs(fixedWidthBounds.Width - 720f) < .001f &&
+              MathF.Abs(fixedWidthBounds.Height - 1_600f) < .001f,
+            "FixedVisibleWidth preserves width and lets height follow the output aspect");
+
+        narrowExpandCamera.Zoom *= 2f;
+        expand.Resize(narrowExpandCamera, 720f, 1_280f);
+        Check(MathF.Abs(narrowExpandCamera.Zoom - 2f) < .000001f,
+            "Framing resize preserves navigation-authored relative Zoom");
+
+        var rotatedCamera = new Camera2D(new Vector2(720f, 1_280f));
+        expand.Activate(rotatedCamera, new SceneCameraState(
+            new Vector2(30f, 40f), 1f, .35f));
+        bool hadCenter = rotatedCamera.TryViewportToWorld(
+            rotatedCamera.ViewportSize * .5f,
+            out Vector2 rotatedCenterBefore);
+        expand.Resize(rotatedCamera, 480f, 640f);
+        bool hasCenter = rotatedCamera.TryViewportToWorld(
+            rotatedCamera.ViewportSize * .5f,
+            out Vector2 rotatedCenterAfter);
+        Check(hadCenter && hasCenter &&
+              Vector2.Distance(rotatedCenterBefore, rotatedCenterAfter) < .001f,
+            "Framing resize preserves the world center of a rotated Camera");
+
+        var nativeCamera = new Camera2D(new Vector2(720f, 1_280f));
+        SceneCameraViewportPolicy.MatchRenderTarget.Activate(nativeCamera, state);
+        SceneCameraViewportPolicy.MatchRenderTarget.Resize(nativeCamera, 360f, 640f);
+        Check(nativeCamera.Position == state.Position && nativeCamera.Zoom == 1f &&
+              nativeCamera.ViewportSize == new Vector2(360f, 640f),
+            "Existing MatchRenderTarget behavior remains the default");
     }
 
     private static void TestSceneAudioScope()
@@ -367,6 +462,12 @@ internal static class Program
         CheckThrows<ArgumentException>(
             () => new SceneViewLayoutBuilder().ConfigureMain(default),
             "Default-initialized Scene Camera state is rejected explicitly");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => SceneCameraViewportPolicy.FixedVisibleHeight(0f, 1_280f),
+            "Fixed-height Scene Camera policies reject an invalid reference width");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => SceneCameraViewportPolicy.FixedVisibleHeight(720f, float.NaN),
+            "Fixed-height Scene Camera policies reject an invalid visible height");
         CheckThrows<ArgumentException>(
             () => new SceneViewLayoutBuilder().ConfigureMain(
                 SceneCameraState.Default,

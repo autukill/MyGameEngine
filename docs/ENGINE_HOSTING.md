@@ -156,6 +156,27 @@ Scene 可以直接拥有交互式 Camera，不需要为了配置导航创建假�
 
 `SceneViewLayoutBuilder.ConfigureMain/Configure` 可为多个 Render View 分别声明。Scene 装配通过 `context.GetViewportNavigation(RenderViewRef.Main)` 获取当前 Controller；同一 View 不能同时声明 CameraFollow。Scene 切换会清除 Pointer 捕获、重置 Camera/震屏并重建 Controller，长期 GPU View 和 Presentation Slot 不重建。Renderer 级导航入口保留为兼容默认值。完整语义见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)。
 
+默认的 `SceneCameraViewportPolicy.MatchRenderTarget` 保持旧行为：Render View 缩小多少像素，Camera 的逻辑 Viewport 也缩小多少，因此会看到更少的世界。需要“窗口缩小但游戏构图不缩窄”的固定逻辑分辨率游戏，可以在 Scene View 上显式声明：
+
+```csharp
+views.ConfigureMain(
+    new SceneCameraState(new Vector2(120, 0)),
+    viewportPolicy: SceneCameraViewportPolicy.FixedVisibleHeight(720, 1280))
+```
+
+该策略把 `720×1280` 作为作者参考 View：窗口等比缩放时保持相同的世界可见范围，仅改变像素密度；宽高比变化时保持 1280 世界高度、围绕原 View 中心增减横向可见范围。Resize 与 Scene 激活都会重新解析，Camera 当前中心、旋转以及相对 Zoom 会被保留。这是 Scene 级策略，不会把一个场景的适配方式泄漏给另一个场景。
+
+`SceneCameraViewportPolicy` 现提供四个构图原语：
+
+| 策略 | 缩放依据 | 世界构图 |
+|---|---|---|
+| `FixedVisibleHeight` | 输出高度 / 参考高度 | 固定世界高度，宽度随比例变化 |
+| `FixedVisibleWidth` | 输出宽度 / 参考宽度 | 固定世界宽度，高度随比例变化 |
+| `Expand` | 两轴缩放的较小值 | 参考安全画面完整可见，剩余轴展示更多世界 |
+| `Cover` | 两轴缩放的较大值 | 输出完全填满，剩余参考轴允许裁切 |
+
+`Expand` 是 Camera Framing，不是最终合成的 `Contain`：它不会制造留边，而是要求游戏在参考画面之外准备可绘制的背景或世界。若世界不能延展，应继续使用 Presentation `Contain` 或在未来的 Overscan 上限处回退到 Letterbox。
+
 ## Default2DGameContext
 
 Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后执行。Context 提供：

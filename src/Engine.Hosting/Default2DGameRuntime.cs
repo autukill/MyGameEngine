@@ -273,7 +273,7 @@ internal sealed class Default2DGameRuntime : IDisposable
                 view.RenderScale,
                 width,
                 height);
-            view.Camera.ResizeViewport(renderWidth, renderHeight);
+            view.ResizeCamera(renderWidth, renderHeight);
             view.Navigation?.Resize();
             view.Target.Resize(renderWidth, renderHeight);
         }

@@ -86,6 +86,7 @@
 - HTML/CSS/Yoga GUI Compatibility Spike 已比较 Yoga、RmlUi、FairyGUI 与浏览器内核，并固定 NativeAOT、中文、输入、渲染和维护成本的 Go/No-Go 条件。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
 - Hosting 第二阶段多 Camera已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Renderer 长期拥有输出槽位和 GPU 资源，Scene 通过 `SceneViewLayoutBuilder` 独立声明 Camera 初态、CameraFollow 或 Navigation，切换时清理 Pointer 捕获、重置 Camera 并重建 Controller。Runner `--split-cameras` 验证两台真实 Camera。
+- Scene Camera 构图策略已覆盖 `MatchRenderTarget`、固定高度、固定宽度、保证参考画面完整的 `Expand` 和填满裁切的 `Cover`；策略属于各 Scene View，Resize/Scene 切换保持世界中心、旋转与相对 Zoom。BubbleTa 使用固定 1280 世界高度复现旧 GMS1 的横向 Overscan 构图，其他游戏可以选择不裁切的 `Expand`。
 - 多 View 效果策略已显式化：主 View 由 `UseHdr` 配置；次级 View 默认 Direct，也可独立选择 HDR + Tone Mapping 与可选 Bloom。配置报告额外 Pass/租约，工厂按输入 Surface 尺寸创建目标，次级 View 不承担未声明成本。
 - 每 View `SceneLayerFilter.Include/Exclude/All` 已落地，Scene 与主 Stencil 重绘共享过滤语义；名单装配期校验、逐帧 0 B。Runner observer 排除 `MainOnly` 验证小地图式黄金路径。
 - 每 View `SceneDrawStatistics` 已接入 Render 诊断：候选访问、选中/绘制、排序比较始终零分配计数，启用 Frame Statistics 后增加遍历/排序/绘制耗时。Scene 已用运行时同步的 Layer 索引消除“层数 × 全场景”重复扫描，且保留同帧切层和稳定 Depth 排序语义；10,000 实例双 View 本机样本由约 1.536 ms 降至 1.185 ms。
@@ -98,7 +99,7 @@
 - GPU 回归新增 `multi-render-view-lifecycle`：真实组合主 View HDR Bloom + Tone Mapping 与 0.75 RenderScale observer Tone Mapping，resize 后验证五个活动租约的精确尺寸，逐 View 释放后验证活动效果和租约归零、缓存全部回到 Pool。
 - `games/TheGodTheyMade` 的 Gate 4 工程切片已完成：30 分钟场景状态机组合水闸、湿遗迹、葬礼价值选择、无操作恢复和有限三联壁画；Game 呈现相应灰盒视觉并用程序短音反馈钟/雨/闸/葬礼。40 项无窗口检查覆盖三条完整 108,000 Tick 历史、确定性、版本化 Gameplay Command Journal 与 Gate 聚合判定；结构化 Playtest Report 可留存终局、学习轨迹和 Hash，严格审计 CLI 可输出逐项 Gate 结论，Gate 仍等待 5 人外部盲测证据后正式关闭。
 - 《鸣钟谷》外部盲测可构建为约 62 MiB 的 win-x64 自包含 ZIP，附带 SHA-256、源码 commit、编译后资产、无剧透说明与自动留档启动器；测试员无需仓库源码、SDK 或预装 .NET。
-- `games/BubbleTa` 已在 Gate 0 工程骨架上完成 `HomeScene` 与 WorldMap 底部第一岛屿：Home 和 WorldMap 使用独立 Scene 内容租约、exact WebP Atlas 与流式 OGG BGM；第一岛屿保留旧两段主体、两层云、1–20 关数据节点，以及烟雾、石像、蘑菇、人物、飞鸟、水边鱼群和苹果等确定性景观动画。五段/100 关坐标、主题、范围、天空色和漂移方向已规范化为只读目录；Camera 可见区加 200px 保留带驱动 RuntimeGroup 幂等休眠，当前只装配已有美术的 Segment 0。Camera 中心驱动主题天空色，段间留白使用 Smoothstep 平滑混色且不增加 Draw Call。不可变 `WorldMapProgressSnapshot` 派生 Completed/Available/Locked，节点以 8px 拖动阈值区分地图导航和强类型选择请求，但不直接进入玩法。Home 使用固定 Camera；WorldMap 通过主轴手势锁定避免斜向纵拖串入横向 Bounce，纵向浏览完整 Room，明确横拖则提供松手回到中央 View 的橡皮筋反馈。核心泡泡玩法尚未开始，原型资产在正式分发前仍受来源与再分发权限审计 Gate 阻挡。
+- `games/BubbleTa` 已在 Gate 0 工程骨架上完成 `HomeScene` 与 WorldMap 底部第一岛屿：Home 和 WorldMap 使用独立 Scene 内容租约、exact WebP Atlas 与流式 OGG BGM；第一岛屿保留旧两段主体、两层云、1–20 关数据节点，以及烟雾、石像、蘑菇、人物、飞鸟、水边鱼群和苹果等确定性景观动画。五段/100 关坐标、主题、范围、天空色和漂移方向已规范化为只读目录；Camera 可见区加 200px 保留带驱动 RuntimeGroup 幂等休眠，当前只装配已有美术的 Segment 0。Camera 中心驱动主题天空色，段间留白使用 Smoothstep 平滑混色且不增加 Draw Call。Home 与 WorldMap 采用源自旧 GMS1 的固定 1280 世界高度适配，窗口等比缩小时保持构图、宽高比变化时水平居中增减可见范围。不可变 `WorldMapProgressSnapshot` 派生 Completed/Available/Locked，节点以 8px 拖动阈值区分地图导航和强类型选择请求，但不直接进入玩法。Home 使用固定 Camera；WorldMap 通过主轴手势锁定避免斜向纵拖串入横向 Bounce，纵向浏览完整 Room，明确横拖则提供松手回到中央 View 的橡皮筋反馈。核心泡泡玩法尚未开始，原型资产在正式分发前仍受来源与再分发权限审计 Gate 阻挡。
 
 ## 仍在演进
 

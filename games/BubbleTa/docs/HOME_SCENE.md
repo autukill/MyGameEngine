@@ -6,6 +6,7 @@
 
 - 窗口初始为 720×1280，游戏固定更新为 60 Hz。
 - Scene 保留旧 Room 的 960×1280 世界坐标；相机从 `(120, 0)` 观察中央 720×1280 区域。
+- Home 与 WorldMap 都声明 `FixedVisibleHeight(720, 1280)`：窗口等比缩小时仍观察相同世界范围，只降低输出像素；宽高比改变时固定 1280 世界高度并围绕 Room 中心改变横向可见宽度。
 - 背景、12 片 Logo、泡泡、云、三名角色、三颗大星、五个闪点和五条流星均由 Scene 实例装配。
 - 世界按钮使用 Sprite 逻辑边界和屏幕到世界坐标转换；只有同一指针在按钮内按下并在按钮内释放才切换场景。
 - WorldMap 已从占位场景演进为底部第一岛屿的只读景观切片，用来同时验证 `Home → WorldMap → Home` 生命周期、独立内容租约和长地图导航；真实进度与关卡进入仍未实现。
@@ -13,6 +14,14 @@
 - Home 进入时通过 `SceneAudio.PlayMusic` 循环播放流式 OGG；离开 Scene 时 Hosting 会在卸载 Home 内容包之前停止音乐。
 - 世界按钮仅在一次有效的内部按下/内部释放后播放 WAV 点击音并切换 Scene。点击音使用全局一次性 Voice，让已经上传的静态 OpenAL Buffer 跨过切换边界自然播放完；Clip 从内容库移除后，Backend 会在 Voice 完成时释放 Buffer。
 - 设置图标仍只展示。存档初始化和旧全局控制对象均未进入本切片。
+
+## 窗口适配与旧版依据
+
+旧 GMS1 `obj_scale` 的核心规则是固定 `game_h_base = 1280`，用 `device_w / device_h` 反算世界可见宽度，再在每个 Room 内水平居中。当前实现保留这条构图语义，但不再逐 Room 调用全局 `room_set_view`：Home 和 WorldMap 分别在自己的 `SceneViewLayoutBuilder` 声明适配策略，Hosting 在窗口 Resize 和 Scene 切换时统一重算 Camera Zoom 与中心。
+
+- `720×1280 → 360×640`：仍看到 720×1280 世界区域，Camera Zoom 从 1 变为 0.5。
+- `720×1280 → 480×640`：仍看到 1280 世界高度，横向从 720 扩展到 960；Home 恰好展示完整 Room 宽度。
+- 触点仍先经过实际 Viewport Placement，再映射到调整后的 Camera，因此按钮命中和 WorldMap 拖动继续使用世界坐标，不需要按窗口比例手工修正。
 
 ## 内容管线
 

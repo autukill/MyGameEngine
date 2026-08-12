@@ -249,6 +249,8 @@ public sealed class RenderView
     private readonly CameraFollowSettings? _defaultCameraFollow;
     private readonly ViewportNavigationConfiguration? _defaultNavigation;
     private SceneRenderPass? _scenePass;
+    private SceneCameraViewportPolicy _viewportPolicy =
+        SceneCameraViewportPolicy.MatchRenderTarget;
 
     public RenderViewRef Ref { get; }
     public ViewportSlotRef Slot { get; }
@@ -310,9 +312,9 @@ public sealed class RenderView
         Navigation?.Plugins.RemoveAll();
         SceneCameraState camera = configuration?.Camera ?? SceneCameraState.Default;
         Camera.Shake(0f, 0f);
-        Camera.Position = camera.Position;
-        Camera.Zoom = camera.Zoom;
-        Camera.Rotation = camera.Rotation;
+        _viewportPolicy = configuration?.ViewportPolicy ??
+            SceneCameraViewportPolicy.MatchRenderTarget;
+        _viewportPolicy.Activate(Camera, camera);
 
         CameraFollowSettings? follow = configuration is null
             ? _defaultCameraFollow
@@ -325,6 +327,9 @@ public sealed class RenderView
             : null;
         Navigation = navigation?.CreateController(Camera);
     }
+
+    internal void ResizeCamera(int width, int height) =>
+        _viewportPolicy.Resize(Camera, width, height);
 
     internal void AttachScenePass(SceneRenderPass scenePass)
     {

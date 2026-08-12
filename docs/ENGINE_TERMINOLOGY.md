@@ -108,13 +108,48 @@ Preview 回退图是清单 `fallbackSurfaces` 声明的低清全世界图片，�
 | 统一术语 | API / 含义 |
 |---|---|
 | Camera | 决定世界如何变换到 View 坐标，包括位置、Zoom 和旋转。 |
-| Viewport | 管理一个 RenderView 的交互观察窗口、屏幕映射和当前可见世界范围。 |
+| Render View | 一次独立的 Scene 绘制视图，拥有 Camera、Render Surface、Viewport 槽位和可选效果链。 |
+| Viewport | Render View 在输出中的观察窗口；承载屏幕映射、交互导航和当前可见世界范围。它不是 Camera，也不是 Window。 |
 | 可见范围 | `Visible`；Viewport 当前实际覆盖、必须优先就绪的 Chunk。 |
 | 预加载范围 | `Preloaded` / `PreloadMarginChunks`；在可见范围外提前加载的 Chunk。文档不写“预载范围”。 |
 | 保留范围 | `Retained` / `RetainMarginChunks`；Chunk 离开该范围后才取消或释放。 |
 
 Zoom 变大表示拉近：屏幕内覆盖的世界范围变小，需要的 Chunk 通常减少。Zoom 变小表示拉远：屏幕内
 覆盖的世界范围变大，需要的 Chunk 通常增加。
+
+## Camera Framing、参考画面与安全区域
+
+相机构图（Camera Framing）决定 Render View 尺寸或宽高比改变后，Camera 应当看见多少世界。它由
+`SceneCameraViewportPolicy` 声明，属于 Scene View，不是全局 Window 策略。
+
+| 统一术语 | API / 含义 | 不应混同 |
+|---|---|---|
+| 参考画面（Reference View） | 美术和关卡按其创作的逻辑世界尺寸，例如 BubbleTa 的 `720×1280`。`ReferenceViewportSize` 保存该尺寸。 | Window 像素尺寸、RenderTarget 像素尺寸。 |
+| 设计安全画面（Design Safe Frame） | 必须保持可见的核心构图区域。当前 Framing API 将完整 Reference View 作为默认 Design Safe Frame。 | 刘海、系统手势区域所形成的 Display Safe Area。 |
+| 延展背景（Overscan） | 位于 Design Safe Frame 外、允许不同宽高比额外显示或裁掉的世界/背景内容。 | Texture Atlas padding、GPU overscan。 |
+| 显示安全区域（Display Safe Area） | 由刘海、圆角屏和系统手势等平台限制形成的可安全放置 UI 的屏幕区域。 | 世界空间 Design Safe Frame。 |
+| 相对 Zoom | Gameplay、Navigation 或 CameraFollow 在 Framing 基准缩放上施加的 Zoom 倍率。 | Window Resize 自动产生的基础缩放。 |
+
+Camera Framing 的四个基础策略：
+
+| 策略 | 缩放规则 | 统一含义 |
+|---|---|---|
+| 固定可见高度 | `FixedVisibleHeight`；只按输出高度计算。 | 世界高度稳定，宽度随宽高比扩展或裁切。 |
+| 固定可见宽度 | `FixedVisibleWidth`；只按输出宽度计算。 | 世界宽度稳定，高度随宽高比扩展或裁切。 |
+| 完整扩展 | `Expand`；选择宽高两轴中较小的缩放。 | Design Safe Frame 完整可见，剩余轴显示更多 Overscan 世界；文档也可首次写作“完整扩展（Expand / Show All）”。 |
+| 填满裁切 | `Cover`；选择宽高两轴中较大的缩放。 | 输出被世界画面填满，Design Safe Frame 的剩余轴允许裁切。 |
+
+`MatchRenderTarget` 是兼容默认值：Camera 的逻辑 Viewport 直接采用 RenderTarget 像素尺寸，窗口缩小会让
+Camera 看见更少世界。它不是固定逻辑分辨率策略。
+
+Camera `Expand` 与 Presentation `Contain` 都使用较小缩放，但结果不同：
+
+- `Expand` 扩大 Camera 可见世界，使用 Overscan 填满输出，不产生留边。
+- `Contain` 保持源画面边界，在目标槽位内完整呈现，剩余区域是 Letterbox/Pillarbox。
+- Camera `Cover` 与 Presentation `Cover` 都具有“填满并裁切”的直觉，但前者裁切世界构图，后者裁切已经渲染好的 Surface。
+
+文档使用“裁切（Crop）”表示内容不可见；使用“缩放（Scale）”表示尺寸变化。不得把等比缩小窗口后
+Camera 仍显示同一世界范围描述为“裁切”，也不得把显示更多 Overscan 描述为“拉伸”。
 
 ## 加载、上传与驻留
 
@@ -160,5 +195,7 @@ WebP 的压缩文件很小，不代表运行时显存同样小。RGBA8 Texture �
 - 使用“最粗可用 LOD”，不使用容易与 Preview 混淆的“Fallback LOD”。
 - 使用“Preview 回退图（Fallback Surface）”，后续简称“Preview 回退图”。
 - 使用“预加载范围”和“保留范围”，不使用含义不明确的“外围范围”“缓存圈”或“预载范围”。
+- 使用“参考画面（Reference View）”“设计安全画面（Design Safe Frame）”和“延展背景（Overscan）”；只有平台刘海、圆角屏与系统手势区域使用“显示安全区域（Display Safe Area）”。
+- 使用“完整扩展（Expand）”表示保证参考画面完整并显示更多世界；使用 `Contain` 时必须说明它属于 Presentation 并可能产生留边。
 - 只有具体 API/诊断字段使用 `Level`、`Fallback`、`Surface` 等既有英文名称。
 - 如果文档中的局部定义与本文冲突，以本文和当前代码行为为准，并同步修正文档。
