@@ -11,13 +11,14 @@ using GameEngine.Core.Infrastructure.Windowing;
 using GameEngine.Features.Camera.Domain;
 using GameEngine.Features.RenderPipeline.Infrastructure;
 using GameEngine.Hosting;
+using Silk.NET.OpenGL;
 
 /// <summary>
 /// Camera 切片 · 可运行看效果 Demo（GameInstance 事件驱动版）。
 ///
 /// 展示内容：
 ///   - 世界网格 + Reference View / Design Safe Frame / Overscan
-///   - TAB     切换 FixedHeight / FixedWidth / Expand / Cover / MatchRenderTarget
+///   - TAB     切换 Bounded FixedHeight/Expand 与全部基础构图策略
 ///   - WASD    平移相机
 ///   - Q/E / 滚轮  缩放 (Zoom 0.2x~5x)
 ///   - SPACE   重置当前构图策略
@@ -41,6 +42,12 @@ internal static class Program
         new Vector2(-ReferenceWidth * .5f, -ReferenceHeight * .5f));
     private static readonly FramingPreset[] FramingPresets =
     [
+        new("Bounded FixedHeight", SceneCameraViewportPolicy.FixedVisibleHeight(
+                ReferenceWidth, ReferenceHeight)
+            .WithMaximumVisibleSize(OverscanWidth, OverscanHeight)),
+        new("Bounded Expand", SceneCameraViewportPolicy.Expand(
+                ReferenceWidth, ReferenceHeight)
+            .WithMaximumVisibleSize(OverscanWidth, OverscanHeight)),
         new("FixedHeight", SceneCameraViewportPolicy.FixedVisibleHeight(
             ReferenceWidth, ReferenceHeight)),
         new("FixedWidth", SceneCameraViewportPolicy.FixedVisibleWidth(
@@ -52,6 +59,7 @@ internal static class Program
         new("MatchRenderTarget", SceneCameraViewportPolicy.MatchRenderTarget)
     ];
     private static int _framingIndex;
+    private static SceneCameraFramingResult _framing;
 
     private const float ReferenceWidth = 960f;
     private const float ReferenceHeight = 540f;
@@ -90,7 +98,11 @@ internal static class Program
         _batch.DefaultShader = _shader;
         _white = new WhiteTexture(gl);
         _camera = new Camera2D(new Vector2(_window.Width, _window.Height));
-        CurrentFraming.Policy.Activate(_camera, ReferenceCamera);
+        _framing = CurrentFraming.Policy.Activate(
+            _camera,
+            ReferenceCamera,
+            _window.Width,
+            _window.Height);
 
         // 装配场景：所有业务逻辑都是 GameInstance 子类
         _scene = new SceneAggregate("CameraDemo");
@@ -113,10 +125,26 @@ internal static class Program
 
     private static void HandleDraw()
     {
+        GL gl = _window!.Graphics.Gl;
+        gl.Disable(EnableCap.ScissorTest);
+        gl.Viewport(0, 0, (uint)_window.Width, (uint)_window.Height);
+        gl.ClearColor(.025f, .025f, .035f, 1f);
+        gl.Clear((uint)ClearBufferMask.ColorBufferBit);
+
+        int x = (_framing.OutputWidth - _framing.ContentWidth) / 2;
+        int y = (_framing.OutputHeight - _framing.ContentHeight) / 2;
+        if (_framing.HasLetterbox)
+        {
+            gl.Enable(EnableCap.ScissorTest);
+            gl.Scissor(x, y, (uint)_framing.ContentWidth, (uint)_framing.ContentHeight);
+        }
+        gl.Viewport(x, y, (uint)_framing.ContentWidth, (uint)_framing.ContentHeight);
         var ctx = new RenderPassContext(
-            _window!.Graphics.Gl, _shader!, _batch!,
-            _window.Width, _window.Height);
-        _scenePass!.Execute(ctx);   // 内部自动应用相机矩阵 + 实例 RenderStyle
+            gl, _shader!, _batch!,
+            _framing.ContentWidth, _framing.ContentHeight);
+        _scenePass!.Execute(ctx);
+        gl.Disable(EnableCap.ScissorTest);
+        gl.Viewport(0, 0, (uint)_window.Width, (uint)_window.Height);
     }
 
     private static FramingPreset CurrentFraming => FramingPresets[_framingIndex];
@@ -124,21 +152,23 @@ internal static class Program
     private static void HandleResize(int width, int height)
     {
         if (_camera is null || width <= 0 || height <= 0) return;
-        CurrentFraming.Policy.Resize(_camera, width, height);
+        _framing = CurrentFraming.Policy.Resize(_camera, _framing, width, height);
         UpdateWindowTitle();
     }
 
     private static void CycleFraming()
     {
         _framingIndex = (_framingIndex + 1) % FramingPresets.Length;
-        CurrentFraming.Policy.Activate(_camera!, ReferenceCamera);
+        _framing = CurrentFraming.Policy.Activate(
+            _camera!, ReferenceCamera, _window!.Width, _window.Height);
         UpdateWindowTitle();
         Console.WriteLine($"  Framing: {CurrentFraming.Name}");
     }
 
     private static void ResetFraming()
     {
-        CurrentFraming.Policy.Activate(_camera!, ReferenceCamera);
+        _framing = CurrentFraming.Policy.Activate(
+            _camera!, ReferenceCamera, _window!.Width, _window.Height);
         UpdateWindowTitle();
     }
 
@@ -149,6 +179,7 @@ internal static class Program
         _window.NativeWindow.Title =
             $"Camera Framing — {CurrentFraming.Name} — " +
             $"View {visible.Width:F0}×{visible.Height:F0} — " +
+            $"Content {_framing.ContentWidth}×{_framing.ContentHeight} — " +
             $"Window {_window.Width}×{_window.Height}";
     }
 

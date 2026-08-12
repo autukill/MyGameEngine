@@ -3,6 +3,7 @@ namespace GameEngine.Hosting;
 using System.Collections.ObjectModel;
 using System.Numerics;
 using GameEngine.Features.Camera.Domain;
+using GameEngine.Features.RenderPipeline.Domain;
 using GameEngine.Features.ViewportNavigation;
 
 /// <summary>Initial Camera state owned by one Scene activation.</summary>
@@ -40,10 +41,64 @@ public enum SceneCameraViewportMode
     Cover
 }
 
+/// <summary>Controls what happens when aspect-ratio expansion reaches an authored world limit.</summary>
+public enum SceneCameraFramingOverflow
+{
+    Unbounded,
+    Letterbox
+}
+
+/// <summary>
+/// Pure result of resolving one Scene Camera policy against an output pixel size. ContentSize is
+/// the RenderTarget size; ContentRect is its normalized placement inside the original output slot.
+/// </summary>
+public readonly record struct SceneCameraFramingResult
+{
+    public int OutputWidth { get; }
+    public int OutputHeight { get; }
+    public int ContentWidth { get; }
+    public int ContentHeight { get; }
+    public float Scale { get; }
+    public Vector2 VisibleWorldSize { get; }
+    public Vector2 Anchor { get; }
+    public ViewportRect ContentRect { get; }
+    public bool HasLetterbox => ContentWidth != OutputWidth || ContentHeight != OutputHeight;
+
+    internal SceneCameraFramingResult(
+        int outputWidth,
+        int outputHeight,
+        int contentWidth,
+        int contentHeight,
+        float scale,
+        Vector2 visibleWorldSize,
+        Vector2 anchor)
+    {
+        OutputWidth = outputWidth;
+        OutputHeight = outputHeight;
+        ContentWidth = contentWidth;
+        ContentHeight = contentHeight;
+        Scale = scale;
+        VisibleWorldSize = visibleWorldSize;
+        Anchor = anchor;
+        float normalizedWidth = (float)contentWidth / outputWidth;
+        float normalizedHeight = (float)contentHeight / outputHeight;
+        ContentRect = new ViewportRect(
+            (1f - normalizedWidth) * .5f,
+            (1f - normalizedHeight) * .5f,
+            normalizedWidth,
+            normalizedHeight);
+    }
+}
+
 public sealed record SceneCameraViewportPolicy
 {
     public static SceneCameraViewportPolicy MatchRenderTarget { get; } =
-        new(SceneCameraViewportMode.MatchRenderTarget, Vector2.Zero);
+        new(
+            SceneCameraViewportMode.MatchRenderTarget,
+            Vector2.Zero,
+            new Vector2(.5f),
+            null,
+            SceneCameraFramingOverflow.Unbounded);
 
     /// <summary>
     /// Keeps the reference View's visible world height stable while its pixel size changes.
@@ -95,55 +150,171 @@ public sealed record SceneCameraViewportPolicy
 
     public SceneCameraViewportMode Mode { get; }
     public Vector2 ReferenceViewportSize { get; }
+    public Vector2 Anchor { get; }
+    public Vector2? MaximumVisibleSize { get; }
+    public SceneCameraFramingOverflow Overflow { get; }
+    public bool IsBounded => MaximumVisibleSize.HasValue;
 
     private SceneCameraViewportPolicy(
         SceneCameraViewportMode mode,
-        Vector2 referenceViewportSize)
+        Vector2 referenceViewportSize,
+        Vector2 anchor,
+        Vector2? maximumVisibleSize,
+        SceneCameraFramingOverflow overflow)
     {
         Mode = mode;
         ReferenceViewportSize = referenceViewportSize;
+        Anchor = anchor;
+        MaximumVisibleSize = maximumVisibleSize;
+        Overflow = overflow;
     }
 
-    internal void Activate(Camera2D camera, in SceneCameraState state)
+    /// <summary>
+    /// Preserves the world point at a normalized content coordinate during activation and resize.
+    /// (0,0) is top-left, (.5,.5) is center and (1,1) is bottom-right.
+    /// </summary>
+    public SceneCameraViewportPolicy WithAnchor(float x, float y)
+    {
+        ValidateAnchor(x, nameof(x));
+        ValidateAnchor(y, nameof(y));
+        return new SceneCameraViewportPolicy(
+            Mode,
+            ReferenceViewportSize,
+            new Vector2(x, y),
+            MaximumVisibleSize,
+            Overflow);
+    }
+
+    /// <summary>
+    /// Caps aspect-ratio expansion and presents the remaining output area as letterbox bars.
+    /// v1 intentionally supports the non-cropping FixedVisibleHeight and Expand modes.
+    /// </summary>
+    public SceneCameraViewportPolicy WithMaximumVisibleSize(
+        float width,
+        float height,
+        SceneCameraFramingOverflow overflow = SceneCameraFramingOverflow.Letterbox)
+    {
+        if (Mode is not SceneCameraViewportMode.FixedVisibleHeight and
+            not SceneCameraViewportMode.Expand)
+            throw new InvalidOperationException(
+                "Visible-size limits currently support FixedVisibleHeight and Expand policies.");
+        if (!float.IsFinite(width) || width < ReferenceViewportSize.X)
+            throw new ArgumentOutOfRangeException(nameof(width));
+        if (!float.IsFinite(height) || height < ReferenceViewportSize.Y)
+            throw new ArgumentOutOfRangeException(nameof(height));
+        if (overflow != SceneCameraFramingOverflow.Letterbox)
+            throw new ArgumentOutOfRangeException(
+                nameof(overflow), "A visible-size limit requires Letterbox overflow behavior.");
+        return new SceneCameraViewportPolicy(
+            Mode,
+            ReferenceViewportSize,
+            Anchor,
+            new Vector2(width, height),
+            overflow);
+    }
+
+    /// <summary>Resolves framing without mutating a Camera or allocating GPU resources.</summary>
+    public SceneCameraFramingResult Resolve(int outputWidth, int outputHeight)
+    {
+        if (outputWidth <= 0) throw new ArgumentOutOfRangeException(nameof(outputWidth));
+        if (outputHeight <= 0) throw new ArgumentOutOfRangeException(nameof(outputHeight));
+        var output = new Vector2(outputWidth, outputHeight);
+        float scale = ResolveScale(output);
+        Vector2 desiredVisible = output / scale;
+        int contentWidth = outputWidth;
+        int contentHeight = outputHeight;
+        if (MaximumVisibleSize is { } maximum)
+        {
+            Vector2 limited = Vector2.Min(desiredVisible, maximum);
+            contentWidth = Math.Clamp(
+                (int)MathF.Round(limited.X * scale, MidpointRounding.AwayFromZero),
+                1,
+                outputWidth);
+            contentHeight = Math.Clamp(
+                (int)MathF.Round(limited.Y * scale, MidpointRounding.AwayFromZero),
+                1,
+                outputHeight);
+        }
+        var visible = new Vector2(contentWidth / scale, contentHeight / scale);
+        return new SceneCameraFramingResult(
+            outputWidth,
+            outputHeight,
+            contentWidth,
+            contentHeight,
+            scale,
+            visible,
+            Anchor);
+    }
+
+    internal SceneCameraFramingResult Activate(
+        Camera2D camera,
+        in SceneCameraState state,
+        int outputWidth,
+        int outputHeight)
     {
         ArgumentNullException.ThrowIfNull(camera);
-        Vector2 actualSize = camera.ViewportSize;
+        SceneCameraFramingResult result = Resolve(outputWidth, outputHeight);
         camera.Position = state.Position;
         camera.Zoom = state.Zoom;
         camera.Rotation = state.Rotation;
-        if (Mode == SceneCameraViewportMode.MatchRenderTarget) return;
+        if (Mode == SceneCameraViewportMode.MatchRenderTarget)
+        {
+            camera.ResizeViewport(result.ContentWidth, result.ContentHeight);
+            return result;
+        }
 
         Vector2 reference = ReferenceViewportSize;
         camera.ResizeViewport(reference.X, reference.Y);
-        if (!camera.TryViewportToWorld(reference * .5f, out Vector2 referenceCenter))
-            throw new InvalidOperationException("Cannot resolve the reference Scene Camera center.");
-        camera.ResizeViewport(actualSize.X, actualSize.Y);
-        camera.Zoom = CheckedZoom(state.Zoom * ResolveScale(actualSize));
-        PreserveCenter(camera, actualSize, referenceCenter);
+        if (!camera.TryViewportToWorld(reference * Anchor, out Vector2 referenceAnchor))
+            throw new InvalidOperationException("Cannot resolve the reference Scene Camera anchor.");
+        camera.ResizeViewport(result.ContentWidth, result.ContentHeight);
+        camera.Zoom = CheckedZoom(state.Zoom * result.Scale);
+        PreserveAnchor(camera, result, referenceAnchor);
+        return result;
     }
 
-    internal void Resize(Camera2D camera, float width, float height)
+    internal SceneCameraFramingResult Activate(Camera2D camera, in SceneCameraState state) =>
+        Activate(
+            camera,
+            state,
+            CheckedPixelSize(camera.ViewportSize.X),
+            CheckedPixelSize(camera.ViewportSize.Y));
+
+    internal SceneCameraFramingResult Resize(
+        Camera2D camera,
+        in SceneCameraFramingResult previous,
+        int outputWidth,
+        int outputHeight)
     {
         ArgumentNullException.ThrowIfNull(camera);
-        if (!float.IsFinite(width) || width <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(width));
-        if (!float.IsFinite(height) || height <= 0f)
-            throw new ArgumentOutOfRangeException(nameof(height));
+        SceneCameraFramingResult next = Resolve(outputWidth, outputHeight);
         if (Mode == SceneCameraViewportMode.MatchRenderTarget)
         {
-            camera.ResizeViewport(width, height);
-            return;
+            camera.ResizeViewport(next.ContentWidth, next.ContentHeight);
+            return next;
         }
 
-        Vector2 previousSize = camera.ViewportSize;
-        if (!camera.TryViewportToWorld(previousSize * .5f, out Vector2 previousCenter))
-            throw new InvalidOperationException("Cannot resolve the current Scene Camera center.");
-        float previousScale = ResolveScale(previousSize);
-        float nextScale = ResolveScale(new Vector2(width, height));
-        float nextZoom = CheckedZoom(camera.Zoom * nextScale / previousScale);
-        camera.ResizeViewport(width, height);
+        if (!camera.TryViewportToWorld(
+                new Vector2(previous.ContentWidth, previous.ContentHeight) * Anchor,
+                out Vector2 previousAnchor))
+            throw new InvalidOperationException("Cannot resolve the current Scene Camera anchor.");
+        float nextZoom = CheckedZoom(camera.Zoom * next.Scale / previous.Scale);
+        camera.ResizeViewport(next.ContentWidth, next.ContentHeight);
         camera.Zoom = nextZoom;
-        PreserveCenter(camera, new Vector2(width, height), previousCenter);
+        PreserveAnchor(camera, next, previousAnchor);
+        return next;
+    }
+
+    internal SceneCameraFramingResult Resize(Camera2D camera, float width, float height)
+    {
+        var previous = Resolve(
+            CheckedPixelSize(camera.ViewportSize.X),
+            CheckedPixelSize(camera.ViewportSize.Y));
+        return Resize(
+            camera,
+            previous,
+            CheckedPixelSize(width),
+            CheckedPixelSize(height));
     }
 
     private static SceneCameraViewportPolicy Create(
@@ -159,7 +330,10 @@ public sealed record SceneCameraViewportPolicy
             throw new ArgumentOutOfRangeException(nameof(referenceHeight));
         return new SceneCameraViewportPolicy(
             mode,
-            new Vector2(referenceWidth, referenceHeight));
+            new Vector2(referenceWidth, referenceHeight),
+            new Vector2(.5f),
+            null,
+            SceneCameraFramingOverflow.Unbounded);
     }
 
     private float ResolveScale(Vector2 viewportSize)
@@ -183,11 +357,28 @@ public sealed record SceneCameraViewportPolicy
         return value;
     }
 
-    private static void PreserveCenter(Camera2D camera, Vector2 viewportSize, Vector2 targetCenter)
+    private static void PreserveAnchor(
+        Camera2D camera,
+        in SceneCameraFramingResult result,
+        Vector2 targetAnchor)
     {
-        if (!camera.TryViewportToWorld(viewportSize * .5f, out Vector2 currentCenter))
-            throw new InvalidOperationException("Cannot resolve the resized Scene Camera center.");
-        camera.Position += targetCenter - currentCenter;
+        var viewportAnchor = new Vector2(result.ContentWidth, result.ContentHeight) * result.Anchor;
+        if (!camera.TryViewportToWorld(viewportAnchor, out Vector2 currentAnchor))
+            throw new InvalidOperationException("Cannot resolve the resized Scene Camera anchor.");
+        camera.Position += targetAnchor - currentAnchor;
+    }
+
+    private static void ValidateAnchor(float value, string parameterName)
+    {
+        if (!float.IsFinite(value) || value < 0f || value > 1f)
+            throw new ArgumentOutOfRangeException(parameterName);
+    }
+
+    private static int CheckedPixelSize(float value)
+    {
+        if (!float.IsFinite(value) || value <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(value));
+        return Math.Max(1, (int)MathF.Round(value, MidpointRounding.AwayFromZero));
     }
 }
 

@@ -273,9 +273,8 @@ internal sealed class Default2DGameRuntime : IDisposable
                 view.RenderScale,
                 width,
                 height);
-            view.ResizeCamera(renderWidth, renderHeight);
+            view.Resize(renderWidth, renderHeight);
             view.Navigation?.Resize();
-            view.Target.Resize(renderWidth, renderHeight);
         }
         _guiTarget?.Resize(width, height);
         _pipeline.Resize(width, height);
@@ -741,8 +740,14 @@ internal sealed class Default2DGameRuntime : IDisposable
             {
                 configuration = configured;
             }
-            view.ActivateScene(configuration);
+            var (renderWidth, renderHeight) = RenderViewLayoutBuilder.ResolveRenderSize(
+                view.Viewport,
+                view.RenderScale,
+                _window.Width,
+                _window.Height);
+            view.ActivateScene(configuration, renderWidth, renderHeight);
         }
+        _builder.Resize(_sceneTarget.Width, _sceneTarget.Height);
     }
 
     private void ResetViewportInputState()

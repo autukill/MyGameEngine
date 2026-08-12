@@ -251,6 +251,7 @@ public sealed class RenderView
     private SceneRenderPass? _scenePass;
     private SceneCameraViewportPolicy _viewportPolicy =
         SceneCameraViewportPolicy.MatchRenderTarget;
+    private SceneCameraFramingResult _framing;
 
     public RenderViewRef Ref { get; }
     public ViewportSlotRef Slot { get; }
@@ -267,6 +268,8 @@ public sealed class RenderView
     public RenderSurfaceKey DisplayColor { get; }
     public SceneDrawStatistics LastSceneDraw => _scenePass?.LastDrawStatistics ?? default;
     public Vector2D RenderSize => new(_target.Width, _target.Height);
+    /// <summary>The active Scene's resolved Camera framing for this output slot.</summary>
+    public SceneCameraFramingResult Framing => _framing;
     internal RenderTarget2D Target => _target;
     internal int DeclarationOrder { get; }
 
@@ -307,14 +310,22 @@ public sealed class RenderView
         throw new InvalidOperationException(
             $"Render View '{Ref}' does not declare interactive Viewport navigation.");
 
-    internal void ActivateScene(SceneRenderViewDefinition? configuration)
+    internal void ActivateScene(
+        SceneRenderViewDefinition? configuration,
+        int outputWidth,
+        int outputHeight)
     {
         Navigation?.Plugins.RemoveAll();
         SceneCameraState camera = configuration?.Camera ?? SceneCameraState.Default;
         Camera.Shake(0f, 0f);
         _viewportPolicy = configuration?.ViewportPolicy ??
             SceneCameraViewportPolicy.MatchRenderTarget;
-        _viewportPolicy.Activate(Camera, camera);
+        _framing = _viewportPolicy.Activate(
+            Camera,
+            camera,
+            outputWidth,
+            outputHeight);
+        _target.Resize(_framing.ContentWidth, _framing.ContentHeight);
 
         CameraFollowSettings? follow = configuration is null
             ? _defaultCameraFollow
@@ -328,8 +339,18 @@ public sealed class RenderView
         Navigation = navigation?.CreateController(Camera);
     }
 
-    internal void ResizeCamera(int width, int height) =>
-        _viewportPolicy.Resize(Camera, width, height);
+    internal void Resize(int outputWidth, int outputHeight)
+    {
+        _framing = _viewportPolicy.Resize(
+            Camera,
+            _framing,
+            outputWidth,
+            outputHeight);
+        _target.Resize(_framing.ContentWidth, _framing.ContentHeight);
+    }
+
+    internal ViewportFitMode ResolvePresentationFit(ViewportFitMode configured) =>
+        _viewportPolicy.IsBounded ? ViewportFitMode.Contain : configured;
 
     internal void AttachScenePass(SceneRenderPass scenePass)
     {

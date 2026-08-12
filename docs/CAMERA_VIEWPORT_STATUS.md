@@ -106,9 +106,9 @@ second.Camera.Zoom = 0.75f;
 
 `Engine.Features.ViewportNavigation` 已把地图浏览行为从游戏手写 Camera 逻辑中拆出。`SceneViewLayoutBuilder` 让每个 Scene 为主 Camera 或多个 Render View 分别声明 Camera 初态、Drag、双指 Pinch、鼠标锚点 Wheel、帧率无关 Decelerate、ClampZoom 和世界边界；Renderer 级 `UseInteractiveViewport` 保留为兼容默认值。Hosting 在 Scene Step 前按最上层命中 View 路由 Mouse/Touch/Pen Pointer 与滚轮；切换 Scene 时清理 Pointer 捕获、重置 Camera 状态并重建 Controller，Resize 后重新执行当前 Scene 的缩放和边界约束。
 
-Scene View 还可以声明 `SceneCameraViewportPolicy`。它与 Presentation 的 `Stretch/Contain/Cover` 不同：后者决定已经渲染好的 Surface 如何放入屏幕槽位，前者决定窗口 Resize 后 Camera 实际能看见多少世界。`FixedVisibleHeight/FixedVisibleWidth` 保护指定轴；`Expand` 取宽高缩放的较小值，保证完整参考画面并在另一轴显示更多世界；`Cover` 取较大值，填满输出并裁切另一轴。Resize 和 Scene 激活都保留世界中心、旋转及导航产生的相对 Zoom。默认 `MatchRenderTarget` 继续适合编辑器、大地图及希望像素尺寸直接决定可见范围的场景。
+Scene View 还可以声明 `SceneCameraViewportPolicy`。它与 Presentation 的 `Stretch/Contain/Cover` 不同：后者决定已经渲染好的 Surface 如何放入屏幕槽位，前者决定窗口 Resize 后 Camera 实际能看见多少世界。`FixedVisibleHeight/FixedVisibleWidth` 保护指定轴；`Expand` 取宽高缩放的较小值，保证完整参考画面并在另一轴显示更多世界；`Cover` 取较大值，填满输出并裁切另一轴。`WithAnchor` 决定 resize 时保持稳定的世界点；`FixedVisibleHeight/Expand` 可用 `WithMaximumVisibleSize` 限制 Overscan，超限后自动缩小内容 RenderTarget、以 Contain 留边并从输入命中中排除黑边。`SceneCameraFramingResult` 是可离线测试的纯结果，公开 Scale、VisibleWorldSize、Content 尺寸与 ContentRect。默认 `MatchRenderTarget` 继续适合编辑器、大地图及希望像素尺寸直接决定可见范围的场景。
 
-`Camera.VisualTests` 已加入可交互构图标尺：蓝色外框为 `1280×720` Overscan，黄色框为 `960×540` Reference View，绿色框为 `800×450` Design Safe Frame。拖动窗口可直接观察扩展或裁切；`TAB` 依次切换 FixedHeight、FixedWidth、Expand、Cover 与 MatchRenderTarget，`SPACE` 重置当前策略，窗口标题报告实际世界可见尺寸。该测试先验证基础构图原语，最大 Overscan 与超范围 Letterbox 仍留在后续 Presentation 边界实现。
+`Camera.VisualTests` 已加入可交互构图标尺：蓝色外框为 `1280×720` Overscan，黄色框为 `960×540` Reference View，绿色框为 `800×450` Design Safe Frame。拖动窗口可直接观察扩展、裁切或超限留边；`TAB` 依次切换 Bounded FixedHeight、Bounded Expand、四种基础策略与 MatchRenderTarget，`SPACE` 重置当前策略，窗口标题报告实际世界可见尺寸和 Content 尺寸。隐藏窗口 smoke 与纯数学测试覆盖极端 `3440×900` 超宽输出、窄屏、锚点和留边输入边界。
 
 `ViewportSnapshot` 固定可见世界 AABB、中心、Zoom、Render Size 与 Revision，作为 Chunk Streaming/LOD 的只读消费边界。独立 `Engine.Features.WorldStreaming` 已消费该边界，提供 Visible/Preloaded/Retained 驻留、加载预算、取消和租约释放；Viewport 本身仍不加载 Chunk、不拥有 Texture。完整用法见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md) 与 [World Chunk Streaming](WORLD_CHUNK_STREAMING.md)。
 

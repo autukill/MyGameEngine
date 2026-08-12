@@ -161,10 +161,11 @@ Scene 可以直接拥有交互式 Camera，不需要为了配置导航创建假�
 ```csharp
 views.ConfigureMain(
     new SceneCameraState(new Vector2(120, 0)),
-    viewportPolicy: SceneCameraViewportPolicy.FixedVisibleHeight(720, 1280))
+    viewportPolicy: SceneCameraViewportPolicy.FixedVisibleHeight(720, 1280)
+        .WithMaximumVisibleSize(960, 1280))
 ```
 
-该策略把 `720×1280` 作为作者参考 View：窗口等比缩放时保持相同的世界可见范围，仅改变像素密度；宽高比变化时保持 1280 世界高度、围绕原 View 中心增减横向可见范围。Resize 与 Scene 激活都会重新解析，Camera 当前中心、旋转以及相对 Zoom 会被保留。这是 Scene 级策略，不会把一个场景的适配方式泄漏给另一个场景。
+该策略把 `720×1280` 作为作者参考 View：窗口等比缩放时保持相同的世界可见范围，仅改变像素密度；宽高比变化时保持 1280 世界高度、围绕原 View 中心增减横向可见范围。横向最多展示 960 世界单位；更宽输出会产生 Pillarbox，不再暴露 Room 外内容。Resize 与 Scene 激活都会重新解析，Camera 锚点、旋转以及相对 Zoom 会被保留。这是 Scene 级策略，不会把一个场景的适配方式泄漏给另一个场景。
 
 `SceneCameraViewportPolicy` 现提供四个构图原语：
 
@@ -175,9 +176,11 @@ views.ConfigureMain(
 | `Expand` | 两轴缩放的较小值 | 参考安全画面完整可见，剩余轴展示更多世界 |
 | `Cover` | 两轴缩放的较大值 | 输出完全填满，剩余参考轴允许裁切 |
 
-`Expand` 是 Camera Framing，不是最终合成的 `Contain`：它不会制造留边，而是要求游戏在参考画面之外准备可绘制的背景或世界。若世界不能延展，应继续使用 Presentation `Contain` 或在未来的 Overscan 上限处回退到 Letterbox。
+无界 `Expand` 是 Camera Framing，不会制造留边，而是要求游戏在参考画面之外准备可绘制的背景或世界。`FixedVisibleHeight/Expand(...).WithMaximumVisibleSize(width, height)` 则声明有界 Overscan：纯 `Resolve(outputWidth, outputHeight)` 返回 `SceneCameraFramingResult`，其中包含基础 Scale、最终世界可见尺寸、实际 RenderTarget `ContentWidth/ContentHeight` 和归一化 `ContentRect`。Hosting 自动把有界 View 以 `Contain` 呈现，留边不响应输入，也不会进入后处理 RenderTarget；`RenderView.Framing` 可用于诊断。
 
-可以运行 `dotnet run -c Release --project src/Engine.Features/Camera.VisualTests`，通过窗口缩放与 `TAB` 切换查看四种策略。视觉标尺同时画出 Overscan、Reference View 和 Design Safe Frame，避免只凭窗口像素推断 Camera 世界范围；`-- --smoke` 使用隐藏窗口验证真实 GL 装配和关闭释放。
+默认锚点为中心。需要顶部、底部或角色所在点在 resize 时保持稳定，可链式调用 `.WithAnchor(x, y)`；参数是 Content Rect 内的归一化坐标。例如 `.WithAnchor(.5f, 0f)` 保持顶边中央世界点不动。锚点只负责 Camera 构图连续性，不等同于 CameraFollow Anchor。
+
+可以运行 `dotnet run -c Release --project src/Engine.Features/Camera.VisualTests`，通过窗口缩放与 `TAB` 切换查看有界/无界策略。视觉标尺同时画出 Overscan、Reference View 和 Design Safe Frame；把窗口拖成极宽或极窄即可观察 Content Rect 到达上限后的真实留边，窗口标题同时报告 Content 与世界可见尺寸。`-- --smoke` 使用隐藏窗口验证真实 GL 装配和关闭释放。
 
 ## Default2DGameContext
 

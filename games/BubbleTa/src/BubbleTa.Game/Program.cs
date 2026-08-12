@@ -12,7 +12,11 @@ internal static class Program {
         bool smoke = args.Contains( "--smoke", StringComparer.Ordinal );
         EngineWindowOptions options = (EngineWindowOptions.Default with {
             Title = "天天泡泡TA / BubbleTa",
-            Size = new Silk.NET.Maths.Vector2D<int>( 720, 1280 ),
+            // Hidden smoke deliberately uses an extreme landscape output so the real Hosting
+            // path exercises bounded ContentRect, post-process resize and pillarbox presentation.
+            Size = smoke
+                ? new Silk.NET.Maths.Vector2D<int>( 1200, 675 )
+                : new Silk.NET.Maths.Vector2D<int>( 720, 1280 ),
             IsVisible = !smoke,
             VSync = !smoke
         }).WithFixedUpdateRate( 60d );
@@ -31,7 +35,10 @@ internal static class Program {
                         HomeSceneLayout.CameraPosition.Y ) ),
                     viewportPolicy: SceneCameraViewportPolicy.FixedVisibleHeight(
                         BubbleTaViewport.ReferenceWidth,
-                        BubbleTaViewport.VisibleHeight ) ),
+                        BubbleTaViewport.VisibleHeight )
+                        .WithMaximumVisibleSize(
+                            BubbleTaViewport.MaximumVisibleWidth,
+                            BubbleTaViewport.VisibleHeight ) ),
                 context => HomeSceneDefinition.Configure( context, smoke ) )
             .AddScene(
                 GameScenes.WorldMap,
@@ -44,7 +51,10 @@ internal static class Program {
                         .Bounce( WorldMapSceneLayout.NavigationBounce ),
                     viewportPolicy: SceneCameraViewportPolicy.FixedVisibleHeight(
                         BubbleTaViewport.ReferenceWidth,
-                        BubbleTaViewport.VisibleHeight ) ),
+                        BubbleTaViewport.VisibleHeight )
+                        .WithMaximumVisibleSize(
+                            BubbleTaViewport.MaximumVisibleWidth,
+                            BubbleTaViewport.VisibleHeight ) ),
                 context => WorldMapSceneDefinition.Configure( context, progress, smoke ) )
             .StartScene( GameScenes.Home )
             .Build();
@@ -56,4 +66,5 @@ internal static class Program {
 internal static class BubbleTaViewport {
     public const float ReferenceWidth = 720f;
     public const float VisibleHeight = 1280f;
+    public const float MaximumVisibleWidth = 960f;
 }

@@ -14,6 +14,11 @@ internal static class HomeSceneDefinition {
         if ( context.RenderViews[0].Navigation is not null )
             throw new InvalidOperationException(
                 "BubbleTa HomeScene must own a fixed Camera without Viewport navigation." );
+        if ( smoke && (!context.RenderViews[0].Framing.HasLetterbox ||
+            context.RenderViews[0].Framing.ContentWidth != 506 ||
+            context.RenderViews[0].Framing.ContentHeight != 675) )
+            throw new InvalidOperationException(
+                "BubbleTa Home smoke requires the bounded landscape ContentRect." );
         context.Scene.Background = BackgroundConfig.Black;
         context.SceneAudio.PlayMusic( GameAssets.AudioClips.BubbletaHomeBgm );
 

@@ -86,7 +86,7 @@
 - HTML/CSS/Yoga GUI Compatibility Spike 已比较 Yoga、RmlUi、FairyGUI 与浏览器内核，并固定 NativeAOT、中文、输入、渲染和维护成本的 Go/No-Go 条件。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
 - Hosting 第二阶段多 Camera已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Renderer 长期拥有输出槽位和 GPU 资源，Scene 通过 `SceneViewLayoutBuilder` 独立声明 Camera 初态、CameraFollow 或 Navigation，切换时清理 Pointer 捕获、重置 Camera 并重建 Controller。Runner `--split-cameras` 验证两台真实 Camera。
-- Scene Camera 构图策略已覆盖 `MatchRenderTarget`、固定高度、固定宽度、保证参考画面完整的 `Expand` 和填满裁切的 `Cover`；策略属于各 Scene View，Resize/Scene 切换保持世界中心、旋转与相对 Zoom。BubbleTa 使用固定 1280 世界高度复现旧 GMS1 的横向 Overscan 构图，其他游戏可以选择不裁切的 `Expand`。
+- Scene Camera 构图策略已覆盖 `MatchRenderTarget`、固定高度、固定宽度、保证参考画面完整的 `Expand` 和填满裁切的 `Cover`；纯 `SceneCameraFramingResult` 公开 Scale、可见世界、Content 尺寸与 ContentRect，`WithAnchor` 可保持任意归一化世界锚点。`FixedVisibleHeight/Expand` 支持最大可见尺寸：达到 Overscan 上限后 Hosting 缩小实际 RenderTarget、自动 Contain 留边，并让输入和诊断使用同一 Placement。BubbleTa Home/WorldMap 固定 1280 世界高度、最多展示完整 960 宽 Room，极宽窗口不再看到世界外内容。
 - `Camera.VisualTests` 使用独立颜色框展示 Overscan、Reference View 与 Design Safe Frame，支持拖动窗口和 `TAB` 实时切换全部 Camera Framing 模式；窗口标题同步报告实际世界可见尺寸，为后续最大 Overscan/Letterbox 边界提供人工验收入口。
 - 多 View 效果策略已显式化：主 View 由 `UseHdr` 配置；次级 View 默认 Direct，也可独立选择 HDR + Tone Mapping 与可选 Bloom。配置报告额外 Pass/租约，工厂按输入 Surface 尺寸创建目标，次级 View 不承担未声明成本。
 - 每 View `SceneLayerFilter.Include/Exclude/All` 已落地，Scene 与主 Stencil 重绘共享过滤语义；名单装配期校验、逐帧 0 B。Runner observer 排除 `MainOnly` 验证小地图式黄金路径。

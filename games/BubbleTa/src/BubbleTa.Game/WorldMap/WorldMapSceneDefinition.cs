@@ -18,6 +18,11 @@ internal static class WorldMapSceneDefinition {
         if ( context.RenderViews[0].Navigation is null )
             throw new InvalidOperationException(
                 "BubbleTa WorldMapScene requires its Scene-owned Viewport navigation." );
+        if ( smoke && (!context.RenderViews[0].Framing.HasLetterbox ||
+            context.RenderViews[0].Framing.ContentWidth != 506 ||
+            context.RenderViews[0].Framing.ContentHeight != 675) )
+            throw new InvalidOperationException(
+                "BubbleTa WorldMap smoke requires the bounded landscape ContentRect." );
 
         context.Scene.Background = BackgroundConfig.FromColor(
             new Vector4( 108f / 255f, 128f / 255f, 223f / 255f, 1f ) );

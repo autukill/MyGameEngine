@@ -73,6 +73,8 @@ WorldMapScene
 
 Scene 使用独立 `bubbleta.world-map` 包；Home 使用 `bubbleta.home`。Hosting 的 Scene 级内容租约确保 Home→WorldMap 时释放 Home Atlas 并加载 WorldMap Atlas，WorldMap→Home 时执行相反流程。两套 BGM 也由各自 `SceneAudio` 生命周期持有。
 
+WorldMap 与 Home 共用 `FixedVisibleHeight(720, 1280).WithMaximumVisibleSize(960, 1280)` 构图边界。纵向导航仍覆盖完整 16100 高世界；横向宽屏最多看到完整 960 宽 Room，超过后由 Hosting 生成左右留边。Pointer 先经过实际 Content Rect 命中，黑边不会启动 Drag、Wheel 或关卡选择。
+
 ## 已实现的第一岛屿切片
 
 底部第一岛屿保持旧坐标，不重排为屏幕局部坐标：

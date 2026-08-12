@@ -195,10 +195,11 @@ public sealed class Default2DGameContext
         for (int i = 0; i < Viewports.Count; i++)
         {
             SingleCameraViewportDefinition viewport = Viewports[i];
+            RenderView view = ResolveViewForSlot(viewport.Slot);
             Scene.Add(new DefaultWorldPresentationController(
                 Scene.RaiseEvent,
                 source,
-                viewport,
+                ResolvePresentationViewport(viewport, view),
                 checked(layer + viewport.Layer),
                 blend));
         }
@@ -224,7 +225,7 @@ public sealed class Default2DGameContext
             Scene.Add(new DefaultWorldPresentationController(
                 Scene.RaiseEvent,
                 source,
-                binding.Viewport,
+                ResolvePresentationViewport(binding.Viewport, binding.View),
                 checked(layer + binding.Viewport.Layer),
                 blend));
         }
@@ -364,7 +365,7 @@ public sealed class Default2DGameContext
                 binding.View.Ref,
                 viewport.Slot,
                 viewport.Viewport,
-                viewport.Fit,
+                binding.View.ResolvePresentationFit(viewport.Fit),
                 viewport.Layer,
                 placement.X,
                 placement.Y,
@@ -565,7 +566,27 @@ public sealed class Default2DGameContext
             Window.Width,
             Window.Height,
             binding.Viewport.Viewport,
-            binding.Viewport.Fit);
+            binding.View.ResolvePresentationFit(binding.Viewport.Fit));
+
+    private RenderView ResolveViewForSlot(ViewportSlotRef slot)
+    {
+        for (int i = 0; i < _viewportBindings.Length; i++)
+        {
+            if (_viewportBindings[i].Viewport.Slot == slot)
+                return _viewportBindings[i].View;
+        }
+        throw new KeyNotFoundException($"Viewport slot '{slot}' is not configured.");
+    }
+
+    private static SingleCameraViewportDefinition ResolvePresentationViewport(
+        SingleCameraViewportDefinition viewport,
+        RenderView view) =>
+        new(
+            viewport.Slot,
+            viewport.Viewport,
+            view.ResolvePresentationFit(viewport.Fit),
+            viewport.Layer,
+            viewport.DeclarationOrder);
 
     internal void MapScreenToViewportPosition(
         Vector2D screenPosition,

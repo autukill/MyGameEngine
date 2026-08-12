@@ -336,6 +336,75 @@ internal static class Program
         Check(nativeCamera.Position == state.Position && nativeCamera.Zoom == 1f &&
               nativeCamera.ViewportSize == new Vector2(360f, 640f),
             "Existing MatchRenderTarget behavior remains the default");
+
+        SceneCameraViewportPolicy boundedHeight =
+            SceneCameraViewportPolicy.FixedVisibleHeight(720f, 1_280f)
+                .WithMaximumVisibleSize(960f, 1_280f);
+        SceneCameraFramingResult landscape = boundedHeight.Resolve(1_920, 1_080);
+        Check(landscape.OutputWidth == 1_920 && landscape.OutputHeight == 1_080 &&
+              landscape.ContentWidth == 810 && landscape.ContentHeight == 1_080 &&
+              landscape.HasLetterbox &&
+              MathF.Abs(landscape.VisibleWorldSize.X - 960f) < .001f &&
+              MathF.Abs(landscape.VisibleWorldSize.Y - 1_280f) < .001f &&
+              MathF.Abs(landscape.ContentRect.X - .2890625f) < .000001f &&
+              MathF.Abs(landscape.ContentRect.Width - .421875f) < .000001f,
+            "Bounded FixedVisibleHeight returns a centered ContentRect instead of exposing world beyond its maximum");
+        ViewportPlacement fittedContent = ViewportPlacement.Calculate(
+            landscape.ContentWidth,
+            landscape.ContentHeight,
+            landscape.OutputWidth,
+            landscape.OutputHeight,
+            ViewportRect.FullScreen,
+            ViewportFitMode.Contain);
+        Vector2 mappedCenter = fittedContent.ScreenToSource(
+            landscape.OutputWidth * .5f,
+            landscape.OutputHeight * .5f,
+            landscape.ContentWidth,
+            landscape.ContentHeight);
+        Check(fittedContent.X == 555 && fittedContent.Width == 810 &&
+              !fittedContent.Contains(100f, 540f) &&
+              Vector2.Distance(mappedCenter, new Vector2(405f, 540f)) < .001f,
+            "Bounded content presents with matching letterbox geometry and excludes bars from input mapping");
+
+        SceneCameraFramingResult portrait = boundedHeight.Resolve(400, 1_280);
+        Check(!portrait.HasLetterbox && portrait.ContentWidth == 400 &&
+              portrait.ContentHeight == 1_280 &&
+              MathF.Abs(portrait.VisibleWorldSize.X - 400f) < .001f,
+            "A bounded policy remains full-output while the visible world is inside its authored limit");
+
+        SceneCameraViewportPolicy boundedExpand =
+            SceneCameraViewportPolicy.Expand(960f, 540f)
+                .WithMaximumVisibleSize(1_280f, 720f);
+        SceneCameraFramingResult ultraWide = boundedExpand.Resolve(3_440, 900);
+        Check(ultraWide.ContentWidth == 2_133 && ultraWide.ContentHeight == 900 &&
+              ultraWide.HasLetterbox && ultraWide.VisibleWorldSize.X <= 1_280f + 1f &&
+              MathF.Abs(ultraWide.VisibleWorldSize.Y - 540f) < .001f,
+            "Bounded Expand caps only the surplus axis at an extreme aspect ratio");
+
+        SceneCameraViewportPolicy topAnchored =
+            SceneCameraViewportPolicy.Expand(720f, 1_280f).WithAnchor(.5f, 0f);
+        var anchoredCamera = new Camera2D(new Vector2(720f, 1_280f));
+        SceneCameraFramingResult anchoredBefore = topAnchored.Activate(
+            anchoredCamera,
+            new SceneCameraState(new Vector2(120f, 0f)),
+            720,
+            1_280);
+        bool hadAnchor = anchoredCamera.TryViewportToWorld(
+            new Vector2(360f, 0f),
+            out Vector2 worldAnchorBefore);
+        SceneCameraFramingResult anchoredAfter = topAnchored.Resize(
+            anchoredCamera,
+            anchoredBefore,
+            720,
+            1_600);
+        bool hasAnchor = anchoredCamera.TryViewportToWorld(
+            new Vector2(anchoredAfter.ContentWidth * .5f, 0f),
+            out Vector2 worldAnchorAfter);
+        Check(hadAnchor && hasAnchor &&
+              Vector2.Distance(worldAnchorBefore, worldAnchorAfter) < .001f &&
+              anchoredCamera.TryGetStableVisibleWorldBounds(out Bounds2D anchoredBounds) &&
+              MathF.Abs(anchoredBounds.Top) < .001f,
+            "A top-center framing anchor keeps authored top content stable when height expands");
     }
 
     private static void TestSceneAudioScope()
@@ -468,6 +537,17 @@ internal static class Program
         CheckThrows<ArgumentOutOfRangeException>(
             () => SceneCameraViewportPolicy.FixedVisibleHeight(720f, float.NaN),
             "Fixed-height Scene Camera policies reject an invalid visible height");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => SceneCameraViewportPolicy.Expand(720f, 1_280f).WithAnchor(1.1f, .5f),
+            "Scene Camera framing anchors remain normalized");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => SceneCameraViewportPolicy.FixedVisibleHeight(720f, 1_280f)
+                .WithMaximumVisibleSize(700f, 1_280f),
+            "Scene Camera visible limits cannot be smaller than the authored reference View");
+        CheckThrows<InvalidOperationException>(
+            () => SceneCameraViewportPolicy.Cover(720f, 1_280f)
+                .WithMaximumVisibleSize(960f, 1_280f),
+            "Cropping Camera policies reject the non-cropping letterbox limit API");
         CheckThrows<ArgumentException>(
             () => new SceneViewLayoutBuilder().ConfigureMain(
                 SceneCameraState.Default,

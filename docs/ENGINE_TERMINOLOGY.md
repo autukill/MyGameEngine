@@ -164,6 +164,8 @@ Zoom 变大表示拉近：屏幕内覆盖的世界范围变小，需要的 Chunk
 | 参考画面（Reference View） | `ReferenceViewportSize` 保存的 Camera Framing 计算基准：描述基准状态下 Camera 应观察的逻辑尺寸，用来比较输出宽高两轴的缩放比例。 | Room/World 范围、背景资源尺寸、Window 像素尺寸、RenderTarget 像素尺寸或安全区域。 |
 | 设计安全画面（Design Safe Frame） | 必须保持可见的核心构图区域；它由游戏的内容布局约定，可能小于或等于 Reference View。当前 API 尚未把任意 Safe Frame 边界建模为独立参数。 | Reference View 本身，以及刘海、系统手势区域所形成的 Display Safe Area。 |
 | 延展背景（Overscan） | 位于 Design Safe Frame 外、允许不同宽高比额外显示或裁掉的世界/背景内容。 | Texture Atlas padding、GPU overscan。 |
+| 构图内容矩形（Content Rect） | `SceneCameraFramingResult.ContentRect`；Camera 内容在原输出槽中的归一化矩形。未达到 Overscan 上限时为全屏，达到上限后表示实际画面与留边的边界。 | 世界 Bounds、平台 Display Safe Area、Sprite 裁剪矩形。 |
+| 构图锚点（Framing Anchor） | Resize 前后保持同一世界点稳定的归一化内容坐标；默认中心 `(.5,.5)`，顶对齐场景可使用 `(.5,0)`。 | CameraFollow 的目标 Anchor、Sprite Origin。 |
 | 显示安全区域（Display Safe Area） | 由刘海、圆角屏和系统手势等平台限制形成的可安全放置 UI 的屏幕区域。 | 世界空间 Design Safe Frame。 |
 | 相对 Zoom | Gameplay、Navigation 或 CameraFollow 在 Framing 基准缩放上施加的 Zoom 倍率。 | Window Resize 自动产生的基础缩放。 |
 
@@ -186,6 +188,11 @@ Camera `Expand` 与 Presentation `Contain` 都使用较小缩放，但结果不�
 - `Expand` 扩大 Camera 可见世界，使用 Overscan 填满输出，不产生留边。
 - `Contain` 保持源画面边界，在目标槽位内完整呈现，剩余区域是 Letterbox/Pillarbox。
 - Camera `Cover` 与 Presentation `Cover` 都具有“填满并裁切”的直觉，但前者裁切世界构图，后者裁切已经渲染好的 Surface。
+
+`WithMaximumVisibleSize` 为 `FixedVisibleHeight` 或 `Expand` 加上有界 Overscan。未达到上限时仍按
+Camera Framing 扩展；达到上限后不再暴露更多世界，而是缩小实际 RenderTarget，并由 Presentation
+`Contain` 把它放回原输出槽。剩余区域称为 Letterbox（上下留边）或 Pillarbox（左右留边），统一可写作
+“留边”。黑边不属于 Content Rect，也不参与 Screen→View→World 命中。
 
 文档使用“裁切（Crop）”表示内容不可见；使用“缩放（Scale）”表示尺寸变化。不得把等比缩小窗口后
 Camera 仍显示同一世界范围描述为“裁切”，也不得把显示更多 Overscan 描述为“拉伸”。
