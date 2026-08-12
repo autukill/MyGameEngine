@@ -177,6 +177,8 @@ views.ConfigureMain(
 
 `Expand` 是 Camera Framing，不是最终合成的 `Contain`：它不会制造留边，而是要求游戏在参考画面之外准备可绘制的背景或世界。若世界不能延展，应继续使用 Presentation `Contain` 或在未来的 Overscan 上限处回退到 Letterbox。
 
+可以运行 `dotnet run -c Release --project src/Engine.Features/Camera.VisualTests`，通过窗口缩放与 `TAB` 切换查看四种策略。视觉标尺同时画出 Overscan、Reference View 和 Design Safe Frame，避免只凭窗口像素推断 Camera 世界范围；`-- --smoke` 使用隐藏窗口验证真实 GL 装配和关闭释放。
+
 ## Default2DGameContext
 
 Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后执行。Context 提供：

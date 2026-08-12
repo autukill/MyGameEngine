@@ -34,5 +34,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="HostingTests" />
+    <InternalsVisibleTo Include="CameraVisualTests" />
   </ItemGroup>
 </Project>

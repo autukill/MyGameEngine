@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\Engine.Core\Engine.Core.csproj" />
     <ProjectReference Include="..\Camera\Camera.csproj" />
     <ProjectReference Include="..\RenderPipeline\RenderPipeline.csproj" />
+    <ProjectReference Include="..\..\Engine.Hosting\Engine.Hosting.csproj" />
   </ItemGroup>
 
 </Project>
