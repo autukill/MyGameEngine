@@ -4,6 +4,7 @@ using System.Numerics;
 using BubbleTa.Game.Content;
 using BubbleTa.Game.Home;
 using BubbleTa.Game.WorldMap;
+using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.Camera.Domain;
@@ -19,6 +20,8 @@ internal static class Program
         Run("Home audio references are generated", HomeAudioReferencesAreGenerated);
         Run("WorldMap content references are generated", WorldMapContentReferencesAreGenerated);
         Run("WorldMap first island layout", WorldMapFirstIslandLayout);
+        Run("WorldMap five segment catalog", WorldMapFiveSegmentCatalog);
+        Run("WorldMap segment visibility", WorldMapSegmentVisibilityBoundary);
         Run("WorldMap horizontal rubber band", WorldMapHorizontalRubberBand);
         Run("WorldMap progress snapshot", WorldMapProgressSnapshotStates);
         Run("WorldMap node presentation", WorldMapNodePresentation);
@@ -95,6 +98,72 @@ internal static class Program
         }
         Check(timed == 4 && moving == 3,
             "First island must retain four Timed and three Moving node types.");
+    }
+
+    private static void WorldMapFiveSegmentCatalog()
+    {
+        IReadOnlyList<WorldMapSegmentDefinition> segments = WorldMapSegmentCatalog.All;
+        Check(segments.Count == 5, "WorldMap must expose exactly five authored segments.");
+        int expectedLevel = 1;
+        int nodeCount = 0;
+        for (int segmentId = 0; segmentId < segments.Count; segmentId++)
+        {
+            WorldMapSegmentDefinition segment = segments[segmentId];
+            Check(segment.Id == segmentId && segment.FirstLevel == expectedLevel &&
+                  segment.LastLevel == expectedLevel + 19 && segment.Nodes.Length == 20,
+                "Each ordered WorldMap segment must own a contiguous twenty-level range.");
+            foreach (WorldMapNodePlacement node in segment.Nodes)
+            {
+                Check(node.Level == expectedLevel++,
+                    "The five-segment catalog must preserve levels 1 through 100 without gaps.");
+                Check(segment.Bounds.Contains(node.Position),
+                    "Every authored node must remain inside its segment boundary.");
+                nodeCount++;
+            }
+        }
+
+        Check(nodeCount == 100 && expectedLevel == 101,
+            "The complete WorldMap catalog must contain one hundred nodes.");
+        Check(segments[0].Bounds.Top == 13_300f && segments[4].Bounds.Top == 550f &&
+              segments[0].HorizontalDirection == 0 &&
+              segments[2].HorizontalDirection == -1 &&
+              segments[0].Theme == WorldMapSegmentTheme.ForestVillage &&
+              segments[3].Theme == WorldMapSegmentTheme.SnowCastle &&
+              WorldMapSegmentCatalog.GetByLevel(65).Id == 3,
+            "Segment bounds, themes, and level lookup must retain the legacy map ordering.");
+    }
+
+    private static void WorldMapSegmentVisibilityBoundary()
+    {
+        var visibility = new WorldMapSegmentVisibility(WorldMapSegmentCatalog.All, 200f);
+        var bottomView = new Bounds2D(164f, 14_820f, 884f, 16_100f);
+        Check(visibility.Update(bottomView) && visibility.ActiveCount == 1 &&
+              visibility.IsActive(0) && !visibility.IsActive(1),
+            "The initial bottom View must retain only the first island segment.");
+        ulong revision = visibility.Revision;
+        Check(!visibility.Update(bottomView) && visibility.Revision == revision,
+            "An unchanged View must not churn the visibility revision.");
+
+        var transitionView = new Bounds2D(164f, 12_500f, 884f, 13_780f);
+        Check(visibility.Update(transitionView) && visibility.ActiveCount == 2 &&
+              visibility.IsActive(0) && visibility.IsActive(1),
+            "The retain margin must keep adjacent segments alive through a transition.");
+
+        var memberA = new WorldMapStaticDecorationInstance(
+            new SpriteRef("test.segment.a"), Vector2D.Zero, 0);
+        var memberB = new WorldMapStaticDecorationInstance(
+            new SpriteRef("test.segment.b"), Vector2D.Zero, 0);
+        var group = new WorldMapSegmentRuntimeGroup(0, [memberA, memberB]);
+        int activationEvents = 0;
+        group.Apply(false, _ => activationEvents++);
+        Check(!group.IsActive && !memberA.IsActive && !memberB.IsActive && activationEvents == 2,
+            "Leaving a segment must deactivate every assembled member exactly once.");
+        group.Apply(false, _ => activationEvents++);
+        Check(activationEvents == 2,
+            "Repeated visibility state must not emit duplicate activation events.");
+        group.Apply(true, _ => activationEvents++);
+        Check(group.IsActive && memberA.IsActive && memberB.IsActive && activationEvents == 4,
+            "Re-entering a segment must reactivate all members.");
     }
 
     private static void WorldMapNodePresentation()

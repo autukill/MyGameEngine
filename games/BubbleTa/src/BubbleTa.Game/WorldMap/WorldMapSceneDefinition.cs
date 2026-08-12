@@ -2,6 +2,7 @@ namespace BubbleTa.Game.WorldMap;
 
 using System.Numerics;
 using BubbleTa.Game.Content;
+using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Hosting;
 
@@ -21,44 +22,53 @@ internal static class WorldMapSceneDefinition {
         context.Scene.Background = BackgroundConfig.FromColor(
             new Vector4( 108f / 255f, 128f / 255f, 223f / 255f, 1f ) );
         context.SceneAudio.PlayMusic( GameAssets.AudioClips.BubbletaWorldMapBgm );
+        var firstSegmentMembers = new List<GameInstance>( 48 );
 
         AddClouds( context, GameAssets.Sprites.BubbletaWorldMapCloudUnder,
-            WorldMapSceneLayout.UnderClouds );
+            WorldMapSceneLayout.UnderClouds, firstSegmentMembers );
 
-        context.Scene.Add( new WorldMapIslandInstance(
+        AddSegmentMember( context, firstSegmentMembers, new WorldMapIslandInstance(
             GameAssets.Sprites.BubbletaWorldMapIslandUpper,
             WorldMapSceneLayout.IslandUpperPosition ) );
-        context.Scene.Add( new WorldMapIslandInstance(
+        AddSegmentMember( context, firstSegmentMembers, new WorldMapIslandInstance(
             GameAssets.Sprites.BubbletaWorldMapIslandLower,
             WorldMapSceneLayout.IslandLowerPosition ) );
 
-        AddDecorations( context );
+        AddDecorations( context, firstSegmentMembers );
         var controller = new WorldMapController(
             () => context.Scenes.SwitchTo( GameScenes.Home ) );
-        AddLevelNodes( context, progress, controller.RequestSelection );
+        AddLevelNodes( context, progress, controller.RequestSelection, firstSegmentMembers );
         AddClouds( context, GameAssets.Sprites.BubbletaWorldMapCloudAbove,
-            WorldMapSceneLayout.AboveClouds );
+            WorldMapSceneLayout.AboveClouds, firstSegmentMembers );
 
         context.Scene.Add( controller );
+        var firstSegment = new WorldMapSegmentRuntimeGroup( 0, firstSegmentMembers.ToArray() );
+        context.Scene.Add( new WorldMapSegmentVisibilityController(
+            context.Camera,
+            new WorldMapSegmentVisibility( WorldMapSegmentCatalog.All ),
+            [firstSegment],
+            context.Scene.RaiseEvent ) );
         if ( smoke ) context.Scene.Add( new WorldMapSmokeProbe( context.Close ) );
     }
 
-    private static void AddDecorations( Default2DGameContext context ) {
-        context.Scene.Add( new WorldMapSmokeInstance(
+    private static void AddDecorations(
+        Default2DGameContext context,
+        List<GameInstance> members ) {
+        AddSegmentMember( context, members, new WorldMapSmokeInstance(
             GameAssets.Sprites.BubbletaWorldMapDecorationSmoke,
             WorldMapSceneLayout.SmokePosition ) );
-        context.Scene.Add( new WorldMapStaticDecorationInstance(
+        AddSegmentMember( context, members, new WorldMapStaticDecorationInstance(
             GameAssets.Sprites.BubbletaWorldMapDecorationStone,
             WorldMapSceneLayout.StonePosition,
             19 ) );
-        context.Scene.Add( new WorldMapMushroomInstance(
+        AddSegmentMember( context, members, new WorldMapMushroomInstance(
             GameAssets.Sprites.BubbletaWorldMapDecorationMushroom,
             WorldMapSceneLayout.MushroomPosition ) );
-        context.Scene.Add( new WorldMapBirdInstance(
+        AddSegmentMember( context, members, new WorldMapBirdInstance(
             GameAssets.Sprites.BubbletaWorldMapDecorationBird,
             WorldMapSceneLayout.BirdPosition,
             0xB17D_0001UL ) );
-        context.Scene.Add( new WorldMapLuteaInstance(
+        AddSegmentMember( context, members, new WorldMapLuteaInstance(
             GameAssets.Sprites.BubbletaWorldMapDecorationLutea,
             GameAssets.Sprites.BubbletaWorldMapDecorationLuteaFish,
             WorldMapSceneLayout.LuteaPosition,
@@ -71,10 +81,11 @@ internal static class WorldMapSceneDefinition {
         ];
         ReadOnlySpan<WorldMapPersonPlacement> placements = WorldMapSceneLayout.People;
         for (int i = 0; i < placements.Length; i++)
-            context.Scene.Add( new WorldMapPersonInstance( people[i], placements[i] ) );
+            AddSegmentMember( context, members,
+                new WorldMapPersonInstance( people[i], placements[i] ) );
 
         foreach ( WorldMapApplePlacement placement in WorldMapSceneLayout.Apples )
-            context.Scene.Add( new WorldMapAppleInstance(
+            AddSegmentMember( context, members, new WorldMapAppleInstance(
                 GameAssets.Sprites.BubbletaWorldMapDecorationApple,
                 placement ) );
     }
@@ -82,20 +93,23 @@ internal static class WorldMapSceneDefinition {
     private static void AddClouds(
         Default2DGameContext context,
         SpriteRef sprite,
-        ReadOnlySpan<WorldMapCloudPlacement> placements ) {
+        ReadOnlySpan<WorldMapCloudPlacement> placements,
+        List<GameInstance> members ) {
         foreach ( WorldMapCloudPlacement placement in placements )
-            context.Scene.Add( new WorldMapCloudInstance( sprite, placement ) );
+            AddSegmentMember( context, members,
+                new WorldMapCloudInstance( sprite, placement ) );
     }
 
     private static void AddLevelNodes(
         Default2DGameContext context,
         WorldMapProgressSnapshot progress,
-        Action<WorldMapLevelSelectionRequested> requestSelection ) {
+        Action<WorldMapLevelSelectionRequested> requestSelection,
+        List<GameInstance> members ) {
         ReadOnlySpan<WorldMapNodePlacement> nodes = WorldMapSceneLayout.FirstIslandNodes;
         for (int i = 0; i < nodes.Length; i++) {
             WorldMapNodePlacement placement = nodes[i];
             WorldMapLevelState state = progress.GetState( placement.Level );
-            context.Scene.Add( new WorldMapLevelNodeInstance(
+            AddSegmentMember( context, members, new WorldMapLevelNodeInstance(
                 SelectNodeSprite( placement.Kind, state ),
                 placement,
                 state,
@@ -105,6 +119,15 @@ internal static class WorldMapSceneDefinition {
                     : null,
                 requestSelection ) );
         }
+    }
+
+    private static T AddSegmentMember<T>(
+        Default2DGameContext context,
+        List<GameInstance> members,
+        T instance ) where T : GameInstance {
+        context.Scene.Add( instance );
+        members.Add( instance );
+        return instance;
     }
 
     internal static SpriteRef SelectNodeSprite( WorldMapNodeKind kind, WorldMapLevelState state ) {
