@@ -29,7 +29,7 @@ games/BubbleTa/
 
 | 项目 | 类型 | 当前职责 |
 |---|---|---|
-| `BubbleTa.Game` | Exe | 可运行的 HomeScene、声明式内容包与 WorldMap 占位场景 |
+| `BubbleTa.Game` | Exe | 可运行的 HomeScene、声明式内容与音频包、WorldMap 占位场景 |
 | `BubbleTa.Game.Tests` | Exe Tests | 首页动画、确定性装饰、按钮与 ESC 行为 |
 | `BubbleTa.Simulation` | Library | 未来组合射击、消除、掉落、计分和胜负流程 |
 | `BubbleTa.BubbleGrid` | Library | 独立泡泡网格模块，不依赖引擎或游戏表现 |
@@ -38,7 +38,7 @@ games/BubbleTa/
 
 ## 当前非目标
 
-- 不复制旧 GML、第三方 UI 源码、SDK、音频或旧打包产物。首页使用的 32 张旧图片是内部重建原型的受控例外，发布前必须完成逐项来源与再分发权限审计。
+- 不复制旧 GML、第三方 UI 源码、SDK 或旧打包产物。首页使用的 32 张旧图片以及 Home BGM/点击音是内部重建原型的受控例外，发布前必须完成逐项来源与再分发权限审计。
 - 不实现核心泡泡玩法、关卡转换、正式设置界面、商店、签到、支付或 Android SDK。
 - 不把泡泡龙专属规则加入 `Engine.Core`。
 - 不把尚未被第二个消费者验证的模块提升为通用 Engine Feature。
@@ -58,4 +58,6 @@ dotnet run -c Release --project games/BubbleTa/tests/BubbleTa.Game.Tests/BubbleT
 dotnet run -c Release --project games/BubbleTa/src/BubbleTa.Game/BubbleTa.Game.csproj -- --smoke
 ```
 
-Home 使用鼠标点击世界按钮进入明显不同的 WorldMap 占位场景；Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。设置按钮第一版只展示，不响应点击。引擎已经支持声明式 OGG 与 `SceneAudio.PlayMusic`，但 BubbleTa 仍保持静音，直到提供来源和再分发权限明确的 Home BGM。
+Home 进入时循环播放流式 OGG BGM。鼠标在世界按钮内完成按下与释放后播放一次 WAV 点击音，并进入明显不同的 WorldMap 占位场景；取消点击不会发声。Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。设置按钮第一版只展示，不响应点击。
+
+音乐由 `SceneAudio.PlayMusic` 持有，离开 Home 时自动停止；点击音使用显式跨 Scene 的一次性 Voice，确保切换发生后仍能自然播放完。两项声音均来自旧工程 MP3 的内部原型转码，不代表已获得公开分发许可，详见 [资产来源说明](src/BubbleTa.Game/Assets/ASSET_PROVENANCE.md)。

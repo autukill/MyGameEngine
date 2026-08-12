@@ -9,7 +9,9 @@
 - 背景、12 片 Logo、泡泡、云、三名角色、三颗大星、五个闪点和五条流星均由 Scene 实例装配。
 - 世界按钮使用 Sprite 逻辑边界和屏幕到世界坐标转换；只有同一指针在按钮内按下并在按钮内释放才切换场景。
 - WorldMap 当前只是纯色占位场景，用来验证 `Home → WorldMap → Home` 生命周期，不代表 `rm_world` 已经迁移。
-- 设置图标只展示。首页 BGM、点击音效、存档初始化和旧全局控制对象均未进入本切片。MyGameEngine 已具备声明式 OGG Streaming 与 SceneAudio 生命周期，但不会自动使用或转换旧 MP3；待提供许可清晰的音乐后，只需在 Home 包声明 `streaming: true` 并在配置期调用 `context.SceneAudio.PlayMusic(...)`。
+- Home 进入时通过 `SceneAudio.PlayMusic` 循环播放流式 OGG；离开 Scene 时 Hosting 会在卸载 Home 内容包之前停止音乐。
+- 世界按钮仅在一次有效的内部按下/内部释放后播放 WAV 点击音并切换 Scene。点击音使用全局一次性 Voice，让已经上传的静态 OpenAL Buffer 跨过切换边界自然播放完；Clip 从内容库移除后，Backend 会在 Voice 完成时释放 Buffer。
+- 设置图标仍只展示。存档初始化和旧全局控制对象均未进入本切片。
 
 ## 内容管线
 
@@ -17,8 +19,9 @@
 
 1. 严格解析 Texture 与 Sprite 声明；
 2. 把 32 张无损 WebP 以 `smooth` 采样打入最多 2048×2048 的无损 WebP Atlas 页面；
-3. 生成运行时内容包和强类型 `GameAssets` 常量；
-4. 将女主九帧光效注册为约 9.2 FPS 的多帧 Sprite。
+3. 校验并复制流式 OGG BGM 与预解码 WAV 点击音；
+4. 生成运行时内容包和强类型 `GameAssets` 常量；
+5. 将女主九帧光效注册为约 9.2 FPS 的多帧 Sprite。
 
 运行时代码只使用 `SpriteRef` 和生成的资源名称，不读取旧 GameMaker 工程，也不持有源 WebP 路径。BubbleTa 现通过 `UseContentCatalog()` 与带包参数的 `AddScene` 声明 Home 租约：配置 Home 前加载 `bubbleta.home`，离开 Home 后释放其 Sprite 与两页 Atlas，返回时重新装配。顶层聚合根仍负责离线编译与强类型引用生成，但不再作为运行期常驻租约。详细语义见 [Scene 级 Content 生命周期](../../../docs/SCENE_CONTENT_LIFECYCLE.md)。
 
@@ -50,10 +53,10 @@
 
 `BubbleTa.Game.Tests` 通过 `InternalsVisibleTo` 检查游戏内部表现状态，不把首页类提升成引擎公共 API。测试覆盖 Logo 时序、周期装饰、角色入场、流星与闪点确定性、按钮捕获语义和 ESC 回调。
 
-`--smoke` 使用隐藏窗口和固定推进，验证编译内容包可装配、Home 实例建立、动画进入稳定阶段、切换到 WorldMap 并自动关闭。人工检查仍用于确认最终图层、中央裁切和美术观感。
+`--smoke` 使用隐藏窗口、Silent Audio Backend 和固定推进，验证编译内容包及两类 Audio Clip 可装配、Home 实例建立、动画进入稳定阶段、切换到 WorldMap 并自动关闭。人工检查仍用于确认最终图层、中央裁切、音乐循环、点击反馈和美术观感。
 
 ## 资产发布 Gate
 
-`Assets/Home` 中的 32 张 WebP 由用户自己的 2015 年旧工程 PNG 无损转码而来，仅用于内部重建原型。格式转换不会改变其许可状态；它们进入仓库不等于已经获得公开发布或商业分发许可。
+`Assets/Home` 中的 32 张 WebP 由用户自己的 2015 年旧工程 PNG 无损转码而来；BGM 和点击音由旧 MP3 分别转为 OGG 与 WAV。它们仅用于内部重建原型。格式转换不会改变许可状态；进入仓库不等于已经获得公开发布或商业分发许可。MP3 转 OGG 还是有损到有损的转码，正式版本应优先取得无损母带或替换音乐。
 
 任何公开演示、安装包或商店发布之前，必须完成逐项来源、作者、授权范围、可修改性和再分发权限审计；无法确认的资源必须替换。详细清单边界见 `src/BubbleTa.Game/Assets/ASSET_PROVENANCE.md`。

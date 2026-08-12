@@ -2,6 +2,10 @@
   "schemaVersion": 1,
   "id": "bubbleta.home",
   "dependencies": [],
+  "audioClips": [
+    { "name": "bubbleta.home.bgm", "path": "Audio/home-bgm.ogg", "streaming": true },
+    { "name": "bubbleta.home.click", "path": "Audio/click.wav", "streaming": false }
+  ],
   "atlas": {
     "pageEncoding": "webpLossless",
     "maxPageSize": { "width": 2048, "height": 2048 },

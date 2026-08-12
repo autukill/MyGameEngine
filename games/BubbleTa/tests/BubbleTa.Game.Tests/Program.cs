@@ -1,6 +1,7 @@
 namespace BubbleTa.Game.Tests;
 
 using System.Numerics;
+using BubbleTa.Game.Content;
 using BubbleTa.Game.Home;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
@@ -12,6 +13,7 @@ internal static class Program
     private static int Main()
     {
         Run("Legacy layout is centralized", LegacyLayoutIsCentralized);
+        Run("Home audio references are generated", HomeAudioReferencesAreGenerated);
         Run("Logo reveal timing", LogoRevealTiming);
         Run("Periodic decorations", PeriodicDecorations);
         Run("Character entrance and idle", CharacterEntranceAndIdle);
@@ -21,6 +23,14 @@ internal static class Program
         Run("Escape callbacks", EscapeCallbacks);
         Console.WriteLine($"BubbleTa.Game.Tests passed: {_passed}");
         return 0;
+    }
+
+    private static void HomeAudioReferencesAreGenerated()
+    {
+        Check(GameAssets.AudioClips.BubbletaHomeBgm.Name == "bubbleta.home.bgm",
+            "Home BGM must have a strongly typed generated reference.");
+        Check(GameAssets.AudioClips.BubbletaHomeClick.Name == "bubbleta.home.click",
+            "Home click SFX must have a strongly typed generated reference.");
     }
 
     private static void LegacyLayoutIsCentralized()

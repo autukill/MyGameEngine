@@ -3,6 +3,7 @@ namespace BubbleTa.Game.Home;
 using System.Numerics;
 using BubbleTa.Game.Content;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Features.Audio;
 using GameEngine.Hosting;
 
 internal static class HomeSceneDefinition {
@@ -15,6 +16,7 @@ internal static class HomeSceneDefinition {
             HomeSceneLayout.CameraPosition.Y );
         context.Camera.Zoom = 1f;
         context.Scene.Background = BackgroundConfig.Black;
+        context.SceneAudio.PlayMusic( GameAssets.AudioClips.BubbletaHomeBgm );
 
         context.Scene.Add( new StaticHomeSpriteInstance( GameAssets.Sprites.BubbletaHomeBackground, HomeSceneLayout.BackgroundPosition,
             Vector2D.One, 10_000 ) );
@@ -36,7 +38,12 @@ internal static class HomeSceneDefinition {
             screen => context.TryScreenToWorld( screen, out Vector2D world, out _ )
                 ? world
                 : null,
-            () => context.Scenes.SwitchTo( GameScenes.WorldMap ) ) );
+            () => {
+                // The decoded click intentionally survives the Home -> WorldMap boundary. OpenAL
+                // retains its static buffer until this one-shot Voice completes after package unload.
+                context.Audio.Play( GameAssets.AudioClips.BubbletaHomeClick, AudioPlayOptions.Sfx );
+                context.Scenes.SwitchTo( GameScenes.WorldMap );
+            } ) );
         context.Scene.Add( new StaticHomeSpriteInstance(
             GameAssets.Sprites.BubbletaHomeSettings,
             HomeSceneLayout.SettingsPosition,

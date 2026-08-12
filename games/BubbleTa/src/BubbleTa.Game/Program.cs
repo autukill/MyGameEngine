@@ -17,6 +17,7 @@ internal static class Program {
 
         using var game = GameApplication
             .Create( options )
+            .UseAudio( new AudioHostingOptions( ForceSilentBackend: smoke ) )
             .UseDefault2DRenderer( renderer => renderer.UseContentCatalog() )
             .AddScene(
                 GameScenes.Home,
