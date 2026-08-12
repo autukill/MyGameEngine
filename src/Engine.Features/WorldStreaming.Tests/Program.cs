@@ -219,6 +219,10 @@ internal static class Program
         streamer.Update(Snapshot(0f, 0f, 512f, 512f, 1));
         Check(loader.CreatedCount == 4 && loader.DisposedCount == 0,
             "Loaded leases remain owned while retained");
+        Check(streamer.SumLoadedChunkMetric(static _ => 17L) == 68L,
+            "Loaded lease metrics aggregate without exposing the internal residency table");
+        Throws<InvalidOperationException>(() =>
+            streamer.SumLoadedChunkMetric(static _ => -1L));
         streamer.Dispose();
         streamer.Dispose();
         Check(loader.DisposedCount == 4,

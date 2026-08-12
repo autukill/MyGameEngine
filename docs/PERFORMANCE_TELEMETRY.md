@@ -131,6 +131,20 @@ using IDisposable registration = context.RegisterGpuMemoryUsage(
 
 名称必须唯一，估算必须非负；释放 registration 后下一份快照不再包含该资源。通过 `TextureLibrary` 注册的自定义 Texture 已自动计入，不应重复登记。
 
+CPU 侧可用相同的显式所有权方式补充“可解释部分”：
+
+```csharp
+using IDisposable registration = context.RegisterCpuMemoryUsage(
+    "world.streaming.decoded",
+    CpuMemoryDomain.Managed,
+    () => worldStream.CaptureMemoryDiagnostics().OwnedCpuPayloadBytes);
+```
+
+`CpuMemoryDomain.Managed` 用于数组、对象图等托管所有权，`Native` 用于调用方明确拥有的非托管块。
+快照中的 `CustomCpuResources` 按名称稳定排序，`CpuMemoryAttribution` 聚合两类总数。这些值只用于解释
+所有权，不会加到 Working Set、Private Bytes 或 Managed Heap 上，因为它们本来就是进程计数的子集，
+重复相加会制造虚假的“总内存”。同一个资源也不应注册两次。
+
 自定义 RenderPass 直接调用 GL 绘制后，仍应调用 `RenderPassContext.RecordDrawCall()`；SpriteBatch 会自动记录 Draw、有效 Flush 和纹理切换。
 
 ## Runner 出口

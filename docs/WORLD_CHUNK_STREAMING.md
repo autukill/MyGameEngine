@@ -107,6 +107,8 @@ sealed class MapChunkLoader : IWorldChunkLoader<MapChunkLease>
 
 `CaptureDiagnostics()` 提供 Pending、Loading、Loaded、Failed 以及三层驻留计数，不暴露 Loader 或 GPU 句柄。相同且已完全加载的 Snapshot 重复更新保持 `0 B` 托管分配。
 
+需要诊断 Lease 自身持有的资源时，可低频调用 `SumLoadedChunkMetric(measure)`。它只遍历已经进入 `Loaded` 状态的 Lease，不暴露内部驻留表，也不会延长 Lease 生命周期。回调应返回非负、可重复计算的估算值；该入口用于遥测或测试，不应放进每帧 Gameplay 热路径。
+
 ## 与 LOD、Content 和绘制的边界
 
 本切片仍只决定 Chunk 的空间驻留，不选择 LOD。独立 `Engine.Features.TileWorldStreaming` 已在其上提供权威 LOD0、逐 Layer LOD1+ exact 无损 WebP、Zoom 选择、滞回、后台解码、主线程 Texture Lease、最粗层回退和可选逐 Layer Preview Surface；Content 与 GPU 所有权没有进入 Viewport 或通用 Streamer。格式见 [TileWorld 离线切片编译器](TILE_WORLD_OFFLINE_COMPILER.md)，组合与生命周期见 [TileWorld 运行时 LOD 与流式加载](TILE_WORLD_RUNTIME_STREAMING.md)。下一步是离线既有 WebP 切片导入，当前不会复制完整真实地图资源。

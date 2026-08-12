@@ -43,6 +43,18 @@ internal sealed class TileWorldLevelState : IDisposable
     public WorldChunkLayout Layout { get; }
     public WorldChunkStreamer<TileWorldChunkLease> Streamer { get; }
 
+    public TileWorldLevelMemoryDiagnostics CaptureMemoryDiagnostics()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        WorldChunkStreamingDiagnostics residency = Streamer.CaptureDiagnostics();
+        return new TileWorldLevelMemoryDiagnostics(
+            residency.LoadedCount,
+            Streamer.ActiveLoadCount,
+            Streamer.SumLoadedChunkMetric(static lease => lease.PreparedDecodedBytes),
+            Streamer.SumLoadedChunkMetric(static lease => lease.EstimatedAuthoritativePayloadBytes),
+            Streamer.SumLoadedChunkMetric(static lease => lease.EstimatedGpuTextureBytes));
+    }
+
     public long GetRequiredRetainedChunkCount(in ViewportSnapshot viewport) =>
         Layout.GetRange(viewport.VisibleWorldBounds, _options.RetainMarginChunks).Count;
 
@@ -136,3 +148,10 @@ internal sealed class TileWorldLevelState : IDisposable
         }
     }
 }
+
+internal readonly record struct TileWorldLevelMemoryDiagnostics(
+    int ResidentChunkLeaseCount,
+    int InFlightChunkLoadCount,
+    long PreparedChunkDecodedBytes,
+    long AuthoritativeChunkPayloadBytes,
+    long EstimatedChunkGpuTextureBytes);

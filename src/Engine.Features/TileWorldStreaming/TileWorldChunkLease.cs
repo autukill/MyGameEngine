@@ -1,9 +1,11 @@
 namespace GameEngine.Features.TileWorldStreaming;
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Features.TextureAssets.Domain;
 using GameEngine.Features.TextureAssets.Infrastructure;
+using GameEngine.Features.Tilemaps.Domain;
 using GameEngine.Features.TileWorlds.Domain;
 
 public readonly record struct TileWorldRuntimeRasterLayer(
@@ -30,6 +32,9 @@ public sealed class TileWorldChunkLease : IDisposable
     private TileWorldRuntimeRasterLayer[] _rasterLayers = [];
     private TileWorldRuntimeRasterLayer[]? _stagedRasterLayers;
     private TextureLibrary? _textureLibrary;
+    private TileWorldChunkData? _authoritativeData;
+    private long _preparedDecodedBytes;
+    private long _estimatedGpuTextureBytes;
     private int _nextPreparedLayer;
     private bool _committed;
     private bool _disposed;
@@ -44,18 +49,25 @@ public sealed class TileWorldChunkLease : IDisposable
     {
         Key = key;
         HasPayload = hasPayload;
-        AuthoritativeData = authoritativeData;
+        _authoritativeData = authoritativeData;
         _preparedLayers = preparedLayers;
+        for (int index = 0; index < preparedLayers.Length; index++)
+            _preparedDecodedBytes = checked(
+                _preparedDecodedBytes + preparedLayers[index].RgbaPixels.LongLength);
         _textureNamePrefix = textureNamePrefix;
         _sampler = sampler;
     }
 
     public TileWorldChunkKey Key { get; }
     public bool HasPayload { get; }
-    public TileWorldChunkData? AuthoritativeData { get; }
+    public TileWorldChunkData? AuthoritativeData => _authoritativeData;
     public IReadOnlyList<TileWorldRuntimeRasterLayer> RasterLayers => _rasterLayers;
     public bool IsCommitted => _committed;
     public bool IsDisposed => _disposed;
+    public long PreparedDecodedBytes => _preparedDecodedBytes;
+    public long EstimatedGpuTextureBytes => _estimatedGpuTextureBytes;
+    public long EstimatedAuthoritativePayloadBytes =>
+        EstimateAuthoritativePayloadBytes(_authoritativeData);
 
     public void CommitTextures(TextureLibrary textures)
     {
@@ -113,6 +125,7 @@ public sealed class TileWorldChunkLease : IDisposable
                     (float)(layer.Gutter + layer.Width) / encodedWidth,
                     (float)(layer.Gutter + layer.Height) / encodedHeight));
             _nextPreparedLayer++;
+            _estimatedGpuTextureBytes = checked(_estimatedGpuTextureBytes + bytes);
         }
         catch
         {
@@ -125,6 +138,7 @@ public sealed class TileWorldChunkLease : IDisposable
             _rasterLayers = _stagedRasterLayers;
             _stagedRasterLayers = null;
             _preparedLayers = null;
+            _preparedDecodedBytes = 0;
             _committed = true;
         }
         return true;
@@ -167,8 +181,11 @@ public sealed class TileWorldChunkLease : IDisposable
         _rasterLayers = [];
         _stagedRasterLayers = null;
         _preparedLayers = null;
+        _authoritativeData = null;
         _textureLibrary = null;
         _nextPreparedLayer = 0;
+        _preparedDecodedBytes = 0;
+        _estimatedGpuTextureBytes = 0;
     }
 
     private void ValidateTextureLibrary(TextureLibrary textures)
@@ -187,5 +204,20 @@ public sealed class TileWorldChunkLease : IDisposable
         _stagedRasterLayers = null;
         _textureLibrary = null;
         _nextPreparedLayer = 0;
+        _estimatedGpuTextureBytes = 0;
+    }
+
+    private static long EstimateAuthoritativePayloadBytes(TileWorldChunkData? data)
+    {
+        if (data is null) return 0;
+        long total = 0;
+        for (int index = 0; index < data.Layers.Count; index++)
+        {
+            TileWorldChunkLayerData layer = data.Layers[index];
+            total = checked(total +
+                layer.Cells.LongLength * Unsafe.SizeOf<TileCell>() +
+                layer.CollisionRects.LongLength * Unsafe.SizeOf<TileWorldCollisionRect>());
+        }
+        return total;
     }
 }

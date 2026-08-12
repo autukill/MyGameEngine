@@ -34,6 +34,7 @@ public sealed class Default2DGameContext
     private readonly RenderTarget2D[] _rootRenderTargets;
     private readonly ViewportBinding[] _viewportBindings;
     private readonly Dictionary<string, Func<long>> _customGpuMemory = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, CpuMemoryContributor> _customCpuMemory = new(StringComparer.Ordinal);
     public EngineWindow Window { get; }
     public SceneAggregate Scene { get; }
     public TextureLibrary Textures { get; }
@@ -451,6 +452,24 @@ public sealed class Default2DGameContext
             availableBytes,
             custom.Length,
             customBytes);
+        var customCpu = _customCpuMemory
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair =>
+            {
+                long bytes = pair.Value.EstimateBytes();
+                if (bytes < 0)
+                    throw new InvalidOperationException(
+                        $"CPU memory contributor '{pair.Key}' returned a negative estimate.");
+                return new CustomCpuMemoryDiagnostics(pair.Key, pair.Value.Domain, bytes);
+            })
+            .ToArray();
+        var cpuAttribution = new CpuMemoryAttributionEstimate(
+            customCpu.Count(item => item.Domain == CpuMemoryDomain.Managed),
+            customCpu.Where(item => item.Domain == CpuMemoryDomain.Managed)
+                .Sum(item => item.EstimatedBytes),
+            customCpu.Count(item => item.Domain == CpuMemoryDomain.Native),
+            customCpu.Where(item => item.Domain == CpuMemoryDomain.Native)
+                .Sum(item => item.EstimatedBytes));
         IReadOnlyList<PerformanceBudgetViolation> violations = budget is null
             ? Array.Empty<PerformanceBudgetViolation>()
             : budget.Evaluate(frame, memory);
@@ -462,6 +481,8 @@ public sealed class Default2DGameContext
             textures,
             memory,
             Array.AsReadOnly(custom),
+            cpuAttribution,
+            Array.AsReadOnly(customCpu),
             violations,
             processMemory);
     }
@@ -476,6 +497,25 @@ public sealed class Default2DGameContext
             throw new ArgumentException(
                 $"GPU memory usage '{name}' is already registered.", nameof(name));
         return new GpuMemoryRegistration(this, name);
+    }
+
+    /// <summary>
+    /// Registers a low-frequency ownership estimate for managed or native CPU memory. The value is
+    /// attribution only and is never added to Working Set or Private Bytes.
+    /// </summary>
+    public IDisposable RegisterCpuMemoryUsage(
+        string name,
+        CpuMemoryDomain domain,
+        Func<long> estimateBytes)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("CPU memory usage name cannot be empty.", nameof(name));
+        if (!Enum.IsDefined(domain)) throw new ArgumentOutOfRangeException(nameof(domain));
+        ArgumentNullException.ThrowIfNull(estimateBytes);
+        if (!_customCpuMemory.TryAdd(name, new CpuMemoryContributor(domain, estimateBytes)))
+            throw new ArgumentException(
+                $"CPU memory usage '{name}' is already registered.", nameof(name));
+        return new CpuMemoryRegistration(this, name);
     }
 
     /// <summary>请求在当前 Step/Draw 回调完成后的安全帧边界关闭窗口。</summary>
@@ -551,6 +591,10 @@ public sealed class Default2DGameContext
         SingleCameraViewportDefinition Viewport,
         RenderView View);
 
+    private readonly record struct CpuMemoryContributor(
+        CpuMemoryDomain Domain,
+        Func<long> EstimateBytes);
+
     private sealed class GpuMemoryRegistration(
         Default2DGameContext owner,
         string name) : IDisposable
@@ -559,5 +603,15 @@ public sealed class Default2DGameContext
 
         public void Dispose() =>
             Interlocked.Exchange(ref _owner, null)?._customGpuMemory.Remove(name);
+    }
+
+    private sealed class CpuMemoryRegistration(
+        Default2DGameContext owner,
+        string name) : IDisposable
+    {
+        private Default2DGameContext? _owner = owner;
+
+        public void Dispose() =>
+            Interlocked.Exchange(ref _owner, null)?._customCpuMemory.Remove(name);
     }
 }

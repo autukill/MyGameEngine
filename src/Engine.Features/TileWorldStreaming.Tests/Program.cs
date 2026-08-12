@@ -77,10 +77,16 @@ internal static class Program
                 new WorldChunkCoordinate(0, 0), CancellationToken.None);
             Check(lease.HasPayload && !lease.IsCommitted && decoder.DecodeCount == 2,
                 "Raster WebP layers should decode without touching the GPU.");
+            Check(lease.PreparedDecodedBytes == 288 &&
+                  lease.EstimatedGpuTextureBytes == 0 &&
+                  lease.EstimatedAuthoritativePayloadBytes == 0,
+                "A prepared Raster lease attributes its two decoded RGBA layers to CPU ownership");
             Check(textures.Count == 0, "Background preparation must not mutate TextureLibrary.");
             lease.CommitTextures(textures);
             Check(lease.IsCommitted && lease.RasterLayers.Count == 2 && textures.Count == 2,
                 "Main-thread commit should register every prepared Layer atomically.");
+            Check(lease.PreparedDecodedBytes == 0 && lease.EstimatedGpuTextureBytes == 288,
+                "A committed Raster lease transfers attribution from decoded CPU arrays to GPU textures");
             Check(backend.Samplers.All(value => value == TextureSampler.PixelArt),
                 "Runtime upload should inherit the TileWorld raster sampler.");
             Vector4 uv = lease.RasterLayers[0].InnerUvBounds;
@@ -88,7 +94,8 @@ internal static class Program
                 "Runtime UV should exclude the one-pixel Gutter.");
             lease.Dispose();
             lease.Dispose();
-            Check(textures.Count == 0 && backend.DeleteCount == 2,
+            Check(textures.Count == 0 && backend.DeleteCount == 2 &&
+                  lease.PreparedDecodedBytes == 0 && lease.EstimatedGpuTextureBytes == 0,
                 "Idempotent lease disposal should release all owned GPU textures.");
             await ThrowsAsync<ArgumentOutOfRangeException>(() => loader.LoadAsync(
                 new WorldChunkCoordinate(2, 0), CancellationToken.None).AsTask());
@@ -120,6 +127,9 @@ internal static class Program
             lod0.CommitTextures(textures);
             Check(lod0.AuthoritativeData is not null && lod0.RasterLayers.Count == 0,
                 "LOD0 should retain authoritative Tile and collision data without GPU upload.");
+            Check(lod0.EstimatedAuthoritativePayloadBytes > 0 &&
+                  lod0.PreparedDecodedBytes == 0 && lod0.EstimatedGpuTextureBytes == 0,
+                "An authoritative lease reports CPU Tile payload without inventing Raster ownership");
         }
 
         var failingBackend = new FakeTextureBackend { FailCreateAttempt = 2 };
@@ -267,6 +277,13 @@ internal static class Program
               panoramaDiagnostics.Fallback.TrackedCount == 0 &&
               panoramaDraw.FallbackSurfaceQuads == 4,
             "An oversized single-LOD panorama should stay within the hard Chunk budget and draw Preview regions");
+        TileWorldStreamingMemoryDiagnostics panoramaMemory = session.CaptureMemoryDiagnostics();
+        Check(panoramaMemory.LevelStateCount == 1 &&
+              panoramaMemory.ResidentChunkLeaseCount == 0 &&
+              panoramaMemory.OwnedCpuPayloadBytes == 0 &&
+              panoramaMemory.EstimatedFallbackGpuTextureBytes == 144 &&
+              panoramaMemory.EstimatedChunkGpuTextureBytes == 0,
+            "Single-LOD budget fallback attributes only the resident Preview GPU texture");
         long fallbackAllocated = MeasureStableUpdates(session, panorama);
         Check(fallbackAllocated == 0,
             $"A stable Preview budget fallback should allocate 0 B, actual {fallbackAllocated:N0} B");
@@ -278,6 +295,12 @@ internal static class Program
               detailUpdate.RequiredRetainedChunks == 0 &&
               detailDiagnostics.Fallback.TrackedCount == 1,
             "Zooming into a budget-sized region should automatically resume LOD0 Chunk streaming");
+        TileWorldStreamingMemoryDiagnostics detailMemory = session.CaptureMemoryDiagnostics();
+        Check(detailMemory.ResidentChunkLeaseCount == 1 &&
+              detailMemory.AuthoritativeChunkPayloadBytes > 0 &&
+              detailMemory.EstimatedChunkGpuTextureBytes == 0 &&
+              detailMemory.EstimatedFallbackGpuTextureBytes == 144,
+            "Detailed authoritative residency is separated from Preview and Raster GPU ownership");
     }
 
     private static async Task VerifyNonBlockingLodRetirement(WorldFixture fixture)
@@ -342,14 +365,19 @@ internal static class Program
             CancellationToken.None);
         Check(!lease.IsCommitted && lease.Surfaces.Count == 0 && decoder.DecodeCount == 1,
             "Fallback WebP should decode without touching the GPU.");
+        Check(lease.PreparedDecodedBytes == 144 && lease.EstimatedGpuTextureBytes == 0,
+            "A prepared Preview attributes its decoded RGBA array to CPU ownership.");
         lease.CommitTextures(textures);
         Check(lease.IsCommitted && lease.Surfaces.Count == 1 && textures.Count == 1 &&
               backend.Samplers.Single() == TextureSampler.Smooth,
             "Main-thread commit should upload the declared per-Layer fallback sampler.");
+        Check(lease.PreparedDecodedBytes == 0 && lease.EstimatedGpuTextureBytes == 144,
+            "A committed Preview transfers attribution from CPU decode storage to one GPU texture.");
         Check(lease.TryGet(0, out _) && !lease.TryGet(1, out _),
             "Fallback surfaces retain their explicit TileWorld Layer binding.");
         lease.Dispose();
-        Check(textures.Count == 0 && backend.DeleteCount == 1,
+        Check(textures.Count == 0 && backend.DeleteCount == 1 &&
+              lease.EstimatedGpuTextureBytes == 0,
             "Fallback lease disposal releases its owned Texture exactly once.");
     }
 

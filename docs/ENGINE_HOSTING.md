@@ -172,6 +172,7 @@ Scene 配置回调只在窗口 GL Context 就绪、默认资源装配完成后�
 - `TryCaptureFrameStatistics()`，读取显式启用后的最近完成帧统计。
 - `CapturePerformanceSnapshot()`，低频聚合帧计数、Texture/Atlas、根目标、Pool 缓存和预算超限项。
 - `RegisterGpuMemoryUsage()`，为绕过引擎资源库的高级 GPU 资源补充动态估算。
+- `RegisterCpuMemoryUsage()`，为 Feature 自己明确持有的 Managed/Native payload 注册低频动态估算；它只做归因，不会修改进程 Working Set、Private Bytes 或 GC 计数。
 - `CaptureRenderDiagnostics()`，显式获取 Pass、逻辑 Surface、Effect owner、临时 RenderTarget 租约与可选帧统计的纯值快照。
 - `Close()`，供 ESC 等实例行为请求关闭；Host 会等当前 Step/Draw 回调返回后再触发原生 Closing，避免回调中途释放 Pipeline。
 

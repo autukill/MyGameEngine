@@ -161,6 +161,29 @@ Preview 绑定明确 Layer，因此 `DrawLayer()` 仍能保持 Gameplay 深度�
 
 ## 底层组合入口
 
+## 资源所有权与内存诊断
+
+`TileWorldStreamingSession.CaptureMemoryDiagnostics()` 提供一次低频的所有权快照：
+
+- `PreparedChunkDecodedBytes`：后台解码完成、尚未提交 GPU 的 Chunk RGBA 数组。
+- `AuthoritativeChunkPayloadBytes`：LOD0 Tile Cell 与碰撞矩形的有效载荷估算。
+- `EstimatedChunkGpuTextureBytes`：已提交 Raster Chunk Texture 的逻辑 RGBA8 字节数。
+- `PreparedFallbackDecodedBytes` / `EstimatedFallbackGpuTextureBytes`：Preview Surface 在 CPU 准备态和 GPU 提交态的对应估算。
+- `ResidentChunkLeaseCount`、`InFlightChunkLoadCount` 与 `LevelStateCount`：判断资源由哪个运行时状态继续持有。
+
+这些字段回答的是“当前 Session 明确拥有多少资源”，不是进程总内存分析器：不包含压缩归档、解码器临时缓冲、CLR 数组头、驱动缓存、线程栈，已经失去引用但尚未 GC 的对象也不算作 Session 所有权。在途 Loader 的内部临时缓冲无法安全观察，因此只报告在途数量。
+
+GPU 字段会与 Hosting 的 `TextureLibrary` 显存估算重叠，二者用于交叉核对，不得相加。若要把 CPU 所有权纳入统一遥测，可注册：
+
+```csharp
+using IDisposable registration = context.RegisterCpuMemoryUsage(
+    "tileworld.streaming.payloads",
+    CpuMemoryDomain.Managed,
+    () => session.CaptureMemoryDiagnostics().OwnedCpuPayloadBytes);
+```
+
+注册本身不拥有 Session；应先释放注册，再释放 Session。
+
 不使用 Hosting 时可直接组合：
 
 ```csharp

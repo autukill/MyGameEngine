@@ -2013,6 +2013,10 @@ internal static class Program
             false);
         Check(knownMemory.UnattributedPrivateBytes == 70,
             "Unattributed private memory excludes the GC committed heap without claiming ownership");
+        var cpuAttribution = new CpuMemoryAttributionEstimate(2, 1_024, 1, 2_048);
+        Check(cpuAttribution.ContributorCount == 3 &&
+              cpuAttribution.TotalAttributedBytes == 3_072,
+            "Managed and native ownership contributors aggregate without changing process counters");
 
         long timestamp = 0;
         int captures = 0;
@@ -2028,6 +2032,8 @@ internal static class Program
                     null!,
                     memory,
                     Array.Empty<CustomGpuMemoryDiagnostics>(),
+                    cpuAttribution,
+                    Array.Empty<CustomCpuMemoryDiagnostics>(),
                     violations,
                     processMemory);
             },

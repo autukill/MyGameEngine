@@ -104,3 +104,27 @@ public readonly record struct TileWorldDrawStatistics(
     int MissingActiveChunks,
     int FallbackQuads,
     int FallbackSurfaceQuads = 0);
+
+/// <summary>
+/// Low-frequency ownership snapshot. CPU values count payload arrays still referenced by
+/// TileWorld leases; GPU values are logical RGBA8 estimates and may overlap Hosting Texture totals.
+/// </summary>
+public readonly record struct TileWorldStreamingMemoryDiagnostics(
+    int LevelStateCount,
+    int ResidentChunkLeaseCount,
+    int InFlightChunkLoadCount,
+    long PreparedChunkDecodedBytes,
+    long AuthoritativeChunkPayloadBytes,
+    long EstimatedChunkGpuTextureBytes,
+    bool IsFallbackSurfaceLoadInFlight,
+    long PreparedFallbackDecodedBytes,
+    long EstimatedFallbackGpuTextureBytes)
+{
+    public long OwnedCpuPayloadBytes => checked(
+        PreparedChunkDecodedBytes +
+        AuthoritativeChunkPayloadBytes +
+        PreparedFallbackDecodedBytes);
+
+    public long EstimatedGpuTextureBytes => checked(
+        EstimatedChunkGpuTextureBytes + EstimatedFallbackGpuTextureBytes);
+}

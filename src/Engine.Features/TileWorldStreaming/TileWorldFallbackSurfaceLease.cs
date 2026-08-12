@@ -27,6 +27,8 @@ public sealed class TileWorldFallbackSurfaceLease : IDisposable
     private TileWorldRuntimeFallbackSurface[]? _stagedSurfaces;
     private TextureLibrary? _textures;
     private int _nextPreparedSurface;
+    private long _preparedDecodedBytes;
+    private long _estimatedGpuTextureBytes;
     private bool _committed;
     private bool _disposed;
 
@@ -36,11 +38,16 @@ public sealed class TileWorldFallbackSurfaceLease : IDisposable
     {
         _textureNamePrefix = textureNamePrefix;
         _prepared = prepared;
+        for (int index = 0; index < prepared.Length; index++)
+            _preparedDecodedBytes = checked(
+                _preparedDecodedBytes + prepared[index].RgbaPixels.LongLength);
     }
 
     public IReadOnlyList<TileWorldRuntimeFallbackSurface> Surfaces => _surfaces;
     public bool IsCommitted => _committed;
     public bool IsDisposed => _disposed;
+    public long PreparedDecodedBytes => _preparedDecodedBytes;
+    public long EstimatedGpuTextureBytes => _estimatedGpuTextureBytes;
 
     public void CommitTextures(TextureLibrary textures)
     {
@@ -88,6 +95,7 @@ public sealed class TileWorldFallbackSurfaceLease : IDisposable
                 surface.LayerIndex,
                 texture);
             _nextPreparedSurface++;
+            _estimatedGpuTextureBytes = checked(_estimatedGpuTextureBytes + bytes);
         }
         catch
         {
@@ -100,6 +108,7 @@ public sealed class TileWorldFallbackSurfaceLease : IDisposable
             _surfaces = _stagedSurfaces;
             _stagedSurfaces = null;
             _prepared = null;
+            _preparedDecodedBytes = 0;
             _committed = true;
         }
         return true;
@@ -143,6 +152,8 @@ public sealed class TileWorldFallbackSurfaceLease : IDisposable
         _prepared = null;
         _textures = null;
         _nextPreparedSurface = 0;
+        _preparedDecodedBytes = 0;
+        _estimatedGpuTextureBytes = 0;
     }
 
     private void ValidateTextureLibrary(TextureLibrary textures)
@@ -162,5 +173,6 @@ public sealed class TileWorldFallbackSurfaceLease : IDisposable
         _stagedSurfaces = null;
         _textures = null;
         _nextPreparedSurface = 0;
+        _estimatedGpuTextureBytes = 0;
     }
 }

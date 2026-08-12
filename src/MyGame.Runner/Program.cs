@@ -362,6 +362,8 @@ internal static class Program {
                     $"privateMiB={snapshot.ProcessMemory.PrivateBytes / 1048576d:F2}, " +
                     $"managedMiB={snapshot.ProcessMemory.ManagedHeapEstimateBytes / 1048576d:F2}, " +
                     $"gcLastCommittedMiB={snapshot.ProcessMemory.GcCommittedAfterLastCollectionBytes / 1048576d:F2}, " +
+                    $"ownedManagedMiB={snapshot.CpuMemoryAttribution.ManagedBytes / 1048576d:F2}, " +
+                    $"ownedNativeMiB={snapshot.CpuMemoryAttribution.NativeBytes / 1048576d:F2}, " +
                     $"violations={snapshot.BudgetViolations.Count}" );
             }
             if ( _jsonWriter is null ) return;

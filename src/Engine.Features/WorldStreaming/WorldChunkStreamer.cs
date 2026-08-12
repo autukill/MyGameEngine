@@ -178,6 +178,26 @@ public sealed class WorldChunkStreamer<TChunk> : IDisposable
     }
 
     /// <summary>
+    /// Sums a caller-defined metric across currently loaded leases without exposing the internal
+    /// entry collection. Intended for low-frequency ownership diagnostics.
+    /// </summary>
+    public long SumLoadedChunkMetric(Func<TChunk, long> measure)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(measure);
+        long total = 0;
+        foreach (Entry entry in _entries.Values)
+        {
+            if (entry.State != WorldChunkLoadState.Loaded || entry.Chunk is null) continue;
+            long value = measure(entry.Chunk);
+            if (value < 0)
+                throw new InvalidOperationException("A loaded Chunk metric cannot be negative.");
+            total = checked(total + value);
+        }
+        return total;
+    }
+
+    /// <summary>
     /// Cancels in-flight loads and enters a non-blocking retirement state. Call
     /// <see cref="DrainRetirement"/> from the owning update thread until it returns true, then
     /// dispose the streamer and its loader. Lease disposal and events remain on the caller thread.

@@ -107,6 +107,31 @@ public readonly record struct GpuMemoryEstimate(
 
 public sealed record CustomGpuMemoryDiagnostics(string Name, long EstimatedBytes);
 
+public enum CpuMemoryDomain
+{
+    Managed = 0,
+    Native = 1
+}
+
+/// <summary>
+/// Caller-attributed CPU memory. Values explain ownership but are not added to process counters,
+/// because contributors may overlap GC committed memory or native allocations reported elsewhere.
+/// </summary>
+public sealed record CustomCpuMemoryDiagnostics(
+    string Name,
+    CpuMemoryDomain Domain,
+    long EstimatedBytes);
+
+public readonly record struct CpuMemoryAttributionEstimate(
+    int ManagedContributorCount,
+    long ManagedBytes,
+    int NativeContributorCount,
+    long NativeBytes)
+{
+    public int ContributorCount => checked(ManagedContributorCount + NativeContributorCount);
+    public long TotalAttributedBytes => checked(ManagedBytes + NativeBytes);
+}
+
 /// <summary>
 /// Low-frequency process and managed-heap memory snapshot. Process counters include runtime,
 /// native libraries, thread stacks, graphics drivers and other memory outside the managed heap.
@@ -174,6 +199,8 @@ public sealed record RuntimePerformanceSnapshot(
     TextureLibraryDiagnostics Textures,
     GpuMemoryEstimate GpuMemory,
     IReadOnlyList<CustomGpuMemoryDiagnostics> CustomResources,
+    CpuMemoryAttributionEstimate CpuMemoryAttribution,
+    IReadOnlyList<CustomCpuMemoryDiagnostics> CustomCpuResources,
     IReadOnlyList<PerformanceBudgetViolation> BudgetViolations,
     ProcessMemoryDiagnostics ProcessMemory = default);
 

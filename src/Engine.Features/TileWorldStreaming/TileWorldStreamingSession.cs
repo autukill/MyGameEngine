@@ -305,6 +305,69 @@ public sealed class TileWorldStreamingSession : IDisposable
             _requiredRetainedChunks);
     }
 
+    public TileWorldStreamingMemoryDiagnostics CaptureMemoryDiagnostics()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        int levelStates = 0;
+        int residentLeases = 0;
+        int inFlightLoads = 0;
+        long preparedChunkBytes = 0;
+        long authoritativeBytes = 0;
+        long chunkGpuBytes = 0;
+
+        AccumulateLevelMemory(
+            _fallback,
+            ref levelStates,
+            ref residentLeases,
+            ref inFlightLoads,
+            ref preparedChunkBytes,
+            ref authoritativeBytes,
+            ref chunkGpuBytes);
+        if (!ReferenceEquals(_active, _fallback))
+            AccumulateLevelMemory(
+                _active,
+                ref levelStates,
+                ref residentLeases,
+                ref inFlightLoads,
+                ref preparedChunkBytes,
+                ref authoritativeBytes,
+                ref chunkGpuBytes);
+        if (_pending is not null)
+            AccumulateLevelMemory(
+                _pending,
+                ref levelStates,
+                ref residentLeases,
+                ref inFlightLoads,
+                ref preparedChunkBytes,
+                ref authoritativeBytes,
+                ref chunkGpuBytes);
+        for (int index = 0; index < _retiredLevels.Count; index++)
+            AccumulateLevelMemory(
+                _retiredLevels[index],
+                ref levelStates,
+                ref residentLeases,
+                ref inFlightLoads,
+                ref preparedChunkBytes,
+                ref authoritativeBytes,
+                ref chunkGpuBytes);
+
+        TileWorldFallbackSurfaceLease? fallbackSurface = _fallbackSurface;
+        Task<TileWorldFallbackSurfaceLease>? fallbackTask = _fallbackSurfaceLoad;
+        if (fallbackSurface is null && fallbackTask?.IsCompletedSuccessfully == true)
+            fallbackSurface = fallbackTask.Result;
+        bool fallbackInFlight = fallbackTask is not null && !fallbackTask.IsCompleted;
+        return new TileWorldStreamingMemoryDiagnostics(
+            levelStates,
+            residentLeases,
+            inFlightLoads,
+            preparedChunkBytes,
+            authoritativeBytes,
+            chunkGpuBytes,
+            fallbackInFlight,
+            fallbackSurface?.PreparedDecodedBytes ?? 0,
+            fallbackSurface?.EstimatedGpuTextureBytes ?? 0);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -353,6 +416,24 @@ public sealed class TileWorldStreamingSession : IDisposable
         (!ReferenceEquals(_active, _fallback) && _desiredLevel == _fallback.Level
             ? _fallback.Level
             : null);
+
+    private static void AccumulateLevelMemory(
+        TileWorldLevelState level,
+        ref int levelStates,
+        ref int residentLeases,
+        ref int inFlightLoads,
+        ref long preparedChunkBytes,
+        ref long authoritativeBytes,
+        ref long chunkGpuBytes)
+    {
+        TileWorldLevelMemoryDiagnostics memory = level.CaptureMemoryDiagnostics();
+        levelStates++;
+        residentLeases = checked(residentLeases + memory.ResidentChunkLeaseCount);
+        inFlightLoads = checked(inFlightLoads + memory.InFlightChunkLoadCount);
+        preparedChunkBytes = checked(preparedChunkBytes + memory.PreparedChunkDecodedBytes);
+        authoritativeBytes = checked(authoritativeBytes + memory.AuthoritativeChunkPayloadBytes);
+        chunkGpuBytes = checked(chunkGpuBytes + memory.EstimatedChunkGpuTextureBytes);
+    }
 
     private bool TryUpdateOrUseBudgetFallback(
         TileWorldLevelState level,
