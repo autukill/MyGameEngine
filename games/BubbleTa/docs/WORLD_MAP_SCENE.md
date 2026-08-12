@@ -1,6 +1,6 @@
 # BubbleTa.WorldMapScene 考古与渐进重建规格
 
-> 状态：旧 `rm_world` 已完成第一轮只读考古；WorldMap 占位 Scene 已独立拥有纵向 Camera Navigation，正式地图美术、关卡节点和运营入口尚未迁入。
+> 状态：旧 `rm_world` 已完成第一轮只读考古；底部第一岛屿、两层云、1–20 关只读节点和 WorldMap BGM 已迁入。其余四段、真实进度、关卡进入与运营入口尚未实现。
 
 ## 旧 Room 的真实结构
 
@@ -71,13 +71,25 @@ WorldMapScene
 └── WorldMapProgressSnapshot       # 纯数据，不直接访问存档后端
 ```
 
-Scene 使用独立 `bubbleta.world-map` 包；Home 使用 `bubbleta.home`。当前已接入 Hosting 的 Scene 级内容租约，因此 Home→WorldMap 会释放 Home Atlas，WorldMap→Home 会重新加载 Home。WorldMap 在正式资产清单建立前仍是 package-free 占位场景。
+Scene 使用独立 `bubbleta.world-map` 包；Home 使用 `bubbleta.home`。Hosting 的 Scene 级内容租约确保 Home→WorldMap 时释放 Home Atlas 并加载 WorldMap Atlas，WorldMap→Home 时执行相反流程。两套 BGM 也由各自 `SceneAudio` 生命周期持有。
+
+## 已实现的第一岛屿切片
+
+底部第一岛屿保持旧坐标，不重排为屏幕局部坐标：
+
+- 岛屿锚点为 `(538, 13300)`；上、下半图均为 `524×668`，以 `2×` 绘制。
+- 上半图底边与下半图顶边都位于 `y=14636`，下半图的底部原点位于 `y=15972`。
+- 1–20 关的坐标与 Normal/Timed/Moving 类型来自旧 `scr_island_create_level_spot`；当前只有第 1 关展示可用图，2–20 关统一展示锁图。
+- 八片后景云和六片前景云采用固定表与正弦漂移，不依赖随机数，因而测试和录屏结果可复现。
+- `Assets/WorldMap/assets.json` 包含 14 张 exact lossless WebP 源图、一张 lossless WebP Atlas 页面和流式 `world-bgm.ogg`。
+
+节点当前是只读景观，不处理 Hover、点击、数字文字或关卡切换。这样先验证真实场景的内容租约、绘制层级和纵向导航，而不提前耦合尚未确定的进度与关卡契约。
 
 ## 渐进实施顺序
 
-1. **坐标与相机样本（已完成基础边界）**：已固定 `1048×16100` Room、底部初始 Camera 和纵向 Drag/Decelerate/Bounce；Navigation Controller 随 WorldMap Scene 激活，返回 Home 后不会保留惯性。五段数据和更精确的旧手感参数仍随景观切片补充。
-2. **第一岛屿段景观**：只迁移底部 1–20 关段的两张岛屿图、必要云层和少量装饰，建立 `WorldMap/assets.json`。
-3. **关卡节点展示**：由不可变进度快照生成三种节点状态；点击只发布选择事件。
+1. **坐标、相机与第一岛屿景观（已完成）**：已固定 `1048×16100` Room、底部初始 Camera、纵向 Drag/Decelerate/Bounce、第一岛屿两张主体图、两层云和 20 个只读节点。
+2. **第一岛屿装饰**：逐项迁移蘑菇、烟、石人与苹果等表现，并保持确定性、可见时更新。
+3. **关卡进度与选择**：由不可变进度快照生成 Locked/Available/Completed 状态；点击只发布选择事件，不直接进入玩法。
 4. **五段虚拟化**：按相机可见范围激活段与装饰，避免 100 个节点和所有粒子永久更新。
 5. **景观过渡**：加入岛屿漂移、云层视差和天空颜色混合。
 6. **产品层后置**：核心关卡与存档契约稳定后，再讨论关卡开始面板和资源栏。

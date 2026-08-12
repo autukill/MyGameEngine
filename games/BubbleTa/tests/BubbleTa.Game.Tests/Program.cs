@@ -15,6 +15,10 @@ internal static class Program
     {
         Run("Legacy layout is centralized", LegacyLayoutIsCentralized);
         Run("Home audio references are generated", HomeAudioReferencesAreGenerated);
+        Run("WorldMap content references are generated", WorldMapContentReferencesAreGenerated);
+        Run("WorldMap first island layout", WorldMapFirstIslandLayout);
+        Run("WorldMap node presentation", WorldMapNodePresentation);
+        Run("WorldMap cloud motion", WorldMapCloudMotion);
         Run("Logo reveal timing", LogoRevealTiming);
         Run("Periodic decorations", PeriodicDecorations);
         Run("Character entrance and idle", CharacterEntranceAndIdle);
@@ -32,6 +36,96 @@ internal static class Program
             "Home BGM must have a strongly typed generated reference.");
         Check(GameAssets.AudioClips.BubbletaHomeClick.Name == "bubbleta.home.click",
             "Home click SFX must have a strongly typed generated reference.");
+    }
+
+    private static void WorldMapContentReferencesAreGenerated()
+    {
+        Check(GameAssets.Packages.BubbletaWorldMap.Id == "bubbleta.world-map",
+            "WorldMap package must have a strongly typed generated reference.");
+        Check(GameAssets.AudioClips.BubbletaWorldMapBgm.Name == "bubbleta.world-map.bgm",
+            "WorldMap BGM must have a strongly typed generated reference.");
+        Check(GameAssets.Sprites.BubbletaWorldMapIslandUpper.Name ==
+              "bubbleta.world-map.island-upper" &&
+              GameAssets.Sprites.BubbletaWorldMapIslandLower.Name ==
+              "bubbleta.world-map.island-lower",
+            "Both WorldMap island halves must have generated Sprite references.");
+    }
+
+    private static void WorldMapFirstIslandLayout()
+    {
+        ReadOnlySpan<WorldMapNodePlacement> nodes = WorldMapSceneLayout.FirstIslandNodes;
+        Check(nodes.Length == 20, "First island must retain twenty authored level nodes.");
+        for (int i = 0; i < nodes.Length; i++)
+            Check(nodes[i].Level == i + 1, "First island level IDs must remain ordered 1 through 20.");
+
+        Check(WorldMapSceneLayout.IslandUpperPosition == new Vector2D(538f, 13_300f) &&
+              WorldMapSceneLayout.IslandLowerPosition == new Vector2D(538f, 15_972f),
+            "First island halves must retain the legacy anchor positions.");
+        float upperBottom = WorldMapSceneLayout.IslandUpperPosition.Y + 668f * 2f;
+        float lowerTop = WorldMapSceneLayout.IslandLowerPosition.Y - 668f * 2f;
+        Near(upperBottom, WorldMapSceneLayout.FirstIslandSeamY, .001f,
+            "Upper island half must end at the authored seam.");
+        Near(lowerTop, WorldMapSceneLayout.FirstIslandSeamY, .001f,
+            "Lower island half must begin at the authored seam.");
+
+        Check(nodes[0].Position == new Vector2D(511f, 15_545f) &&
+              nodes[^1].Position == new Vector2D(460f, 13_628f),
+            "First and twentieth nodes must retain the legacy endpoints.");
+        int timed = 0;
+        int moving = 0;
+        foreach (WorldMapNodePlacement node in nodes)
+        {
+            if (node.Kind == WorldMapNodeKind.Timed) timed++;
+            if (node.Kind == WorldMapNodeKind.Moving) moving++;
+        }
+        Check(timed == 4 && moving == 3,
+            "First island must retain four Timed and three Moving node types.");
+    }
+
+    private static void WorldMapNodePresentation()
+    {
+        WorldMapNodePlacement availablePlacement = WorldMapSceneLayout.FirstIslandNodes[0];
+        var available = new WorldMapLevelNodeInstance(
+            WorldMapSceneDefinition.SelectNodeSprite(availablePlacement.Kind, false),
+            availablePlacement,
+            false);
+        Check(available.Level == 1 && !available.IsLocked &&
+              available.Sprite == GameAssets.Sprites.BubbletaWorldMapLevelSpot,
+            "Level one must be the only available read-only node.");
+
+        WorldMapNodePlacement lockedPlacement = WorldMapSceneLayout.FirstIslandNodes[3];
+        var locked = new WorldMapLevelNodeInstance(
+            WorldMapSceneDefinition.SelectNodeSprite(lockedPlacement.Kind, true),
+            lockedPlacement,
+            true);
+        Check(locked.Level == 4 && locked.Kind == WorldMapNodeKind.Timed &&
+              locked.IsLocked && locked.Sprite == GameAssets.Sprites.BubbletaWorldMapLevelSpotLock,
+            "Locked nodes must retain authored kinds while presenting the lock Sprite.");
+        Check(WorldMapSceneDefinition.SelectNodeSprite(WorldMapNodeKind.Timed, false) ==
+              GameAssets.Sprites.BubbletaWorldMapLevelSpotTime &&
+              WorldMapSceneDefinition.SelectNodeSprite(WorldMapNodeKind.Moving, false) ==
+              GameAssets.Sprites.BubbletaWorldMapLevelSpotMove,
+            "Unlocked special node kinds must map to their dedicated Sprites.");
+    }
+
+    private static void WorldMapCloudMotion()
+    {
+        WorldMapCloudPlacement placement = WorldMapSceneLayout.UnderClouds[0];
+        var first = new WorldMapCloudInstance(
+            GameAssets.Sprites.BubbletaWorldMapCloudUnder,
+            placement);
+        var second = new WorldMapCloudInstance(
+            GameAssets.Sprites.BubbletaWorldMapCloudUnder,
+            placement);
+        first.OnStep(3.5d);
+        second.OnStep(3.5d);
+        Check(first.Position == second.Position,
+            "Authored cloud motion must be deterministic for equal placements and elapsed time.");
+        Check(first.Position != placement.Position,
+            "Clouds must drift around their authored origin.");
+        Check(WorldMapSceneLayout.UnderClouds.Length == 8 &&
+              WorldMapSceneLayout.AboveClouds.Length == 6,
+            "First island must have deterministic rear and foreground cloud layers.");
     }
 
     private static void LegacyLayoutIsCentralized()
@@ -238,7 +332,7 @@ internal static class Program
         Check(closed == 1, "Home Escape must close once.");
 
         int returned = 0;
-        var world = new WorldMapPlaceholderController(() => returned++);
+        var world = new WorldMapController(() => returned++);
         world.OnKeyDown(InputKey.Space);
         world.OnKeyDown(InputKey.Escape);
         Check(returned == 1, "WorldMap Escape must return Home once.");

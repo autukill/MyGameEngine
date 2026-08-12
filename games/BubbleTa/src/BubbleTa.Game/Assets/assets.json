@@ -5,6 +5,10 @@
     {
       "id": "bubbleta.home",
       "manifest": "Home/assets.json"
+    },
+    {
+      "id": "bubbleta.world-map",
+      "manifest": "WorldMap/assets.json"
     }
   ],
   "textures": [],

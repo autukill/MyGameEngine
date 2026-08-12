@@ -31,6 +31,7 @@ internal static class Program {
                 context => HomeSceneDefinition.Configure( context, smoke ) )
             .AddScene(
                 GameScenes.WorldMap,
+                GameAssets.Packages.BubbletaWorldMap,
                 views => views.ConfigureMain(
                     new SceneCameraState( WorldMapSceneLayout.InitialCameraPosition ),
                     navigation: navigation => navigation
@@ -39,7 +40,7 @@ internal static class Program {
                         .Bounce( new ViewportBounceOptions(
                             WorldMapSceneLayout.RoomBounds,
                             ViewportAxis.Vertical ) ) ),
-                context => WorldMapPlaceholderScene.Configure( context, smoke ) )
+                context => WorldMapSceneDefinition.Configure( context, smoke ) )
             .StartScene( GameScenes.Home )
             .Build();
 

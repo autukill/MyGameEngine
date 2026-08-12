@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "id": "bubbleta.world-map",
+  "dependencies": [],
+  "audioClips": [
+    { "name": "bubbleta.world-map.bgm", "path": "Audio/world-bgm.ogg", "streaming": true }
+  ],
+  "atlas": {
+    "pageEncoding": "webpLossless",
+    "maxPageSize": { "width": 2048, "height": 2048 },
+    "padding": 2,
+    "extrude": 1,
+    "textures": [
+      "bubbleta.world-map.island-upper.texture",
+      "bubbleta.world-map.island-lower.texture",
+      "bubbleta.world-map.cloud-above.0.texture",
+      "bubbleta.world-map.cloud-above.1.texture",
+      "bubbleta.world-map.cloud-above.2.texture",
+      "bubbleta.world-map.cloud-above.3.texture",
+      "bubbleta.world-map.cloud-under.0.texture",
+      "bubbleta.world-map.cloud-under.1.texture",
+      "bubbleta.world-map.cloud-under.2.texture",
+      "bubbleta.world-map.cloud-under.3.texture",
+      "bubbleta.world-map.level-spot.texture",
+      "bubbleta.world-map.level-spot-lock.texture",
+      "bubbleta.world-map.level-spot-time.texture",
+      "bubbleta.world-map.level-spot-move.texture"
+    ]
+  },
+  "textures": [
+    { "name": "bubbleta.world-map.island-upper.texture", "path": "island-upper.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.island-lower.texture", "path": "island-lower.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.cloud-above.0.texture", "path": "cloud-above-0.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.cloud-above.1.texture", "path": "cloud-above-1.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.cloud-above.2.texture", "path": "cloud-above-2.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.cloud-above.3.texture", "path": "cloud-above-3.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.cloud-under.0.texture", "path": "cloud-under-0.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.cloud-under.1.texture", "path": "cloud-under-1.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.cloud-under.2.texture", "path": "cloud-under-2.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.cloud-under.3.texture", "path": "cloud-under-3.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.level-spot.texture", "path": "level-spot.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.level-spot-lock.texture", "path": "level-spot-lock.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.level-spot-time.texture", "path": "level-spot-time.webp", "sampling": "smooth" },
+    { "name": "bubbleta.world-map.level-spot-move.texture", "path": "level-spot-move.webp", "sampling": "smooth" }
+  ],
+  "sprites": [
+    { "name": "bubbleta.world-map.island-upper", "layout": "single", "texture": "bubbleta.world-map.island-upper.texture", "size": { "width": 524, "height": 668 }, "origin": { "x": 262, "y": 0 } },
+    { "name": "bubbleta.world-map.island-lower", "layout": "single", "texture": "bubbleta.world-map.island-lower.texture", "size": { "width": 524, "height": 668 }, "origin": { "x": 262, "y": 668 } },
+    {
+      "name": "bubbleta.world-map.cloud-above",
+      "layout": "frames",
+      "frames": [
+        { "texture": "bubbleta.world-map.cloud-above.0.texture" },
+        { "texture": "bubbleta.world-map.cloud-above.1.texture" },
+        { "texture": "bubbleta.world-map.cloud-above.2.texture" },
+        { "texture": "bubbleta.world-map.cloud-above.3.texture" }
+      ],
+      "size": { "width": 285, "height": 141 },
+      "origin": { "x": 0, "y": 0 }
+    },
+    {
+      "name": "bubbleta.world-map.cloud-under",
+      "layout": "frames",
+      "frames": [
+        { "texture": "bubbleta.world-map.cloud-under.0.texture" },
+        { "texture": "bubbleta.world-map.cloud-under.1.texture" },
+        { "texture": "bubbleta.world-map.cloud-under.2.texture" },
+        { "texture": "bubbleta.world-map.cloud-under.3.texture" }
+      ],
+      "size": { "width": 285, "height": 147 },
+      "origin": { "x": 0, "y": 0 }
+    },
+    { "name": "bubbleta.world-map.level-spot", "layout": "single", "texture": "bubbleta.world-map.level-spot.texture", "size": { "width": 90, "height": 69 }, "origin": { "x": 45, "y": 34 } },
+    { "name": "bubbleta.world-map.level-spot-lock", "layout": "single", "texture": "bubbleta.world-map.level-spot-lock.texture", "size": { "width": 90, "height": 69 }, "origin": { "x": 45, "y": 34 } },
+    { "name": "bubbleta.world-map.level-spot-time", "layout": "single", "texture": "bubbleta.world-map.level-spot-time.texture", "size": { "width": 90, "height": 69 }, "origin": { "x": 45, "y": 34 } },
+    { "name": "bubbleta.world-map.level-spot-move", "layout": "single", "texture": "bubbleta.world-map.level-spot-move.texture", "size": { "width": 90, "height": 69 }, "origin": { "x": 45, "y": 34 } }
+  ]
+}

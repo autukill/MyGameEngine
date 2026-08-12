@@ -93,18 +93,3 @@ internal static class HomeSceneDefinition {
             context.Scene.Add( new LogoRevealInstance( sprites[i], placements[i] ) );
     }
 }
-
-internal static class WorldMapPlaceholderScene {
-    public static void Configure( Default2DGameContext context, bool smoke ) {
-        if ( context.Content is not null )
-            throw new InvalidOperationException(
-                "The package-free WorldMap placeholder must not retain Home content." );
-        if ( context.RenderViews[0].Navigation is null )
-            throw new InvalidOperationException(
-                "BubbleTa WorldMapScene requires its Scene-owned Viewport navigation." );
-        context.Scene.Background = BackgroundConfig.FromColor(
-            new Vector4( .035f, .12f, .24f, 1f ) );
-        context.Scene.Add( new WorldMapPlaceholderController( () => context.Scenes.SwitchTo( GameScenes.Home ) ) );
-        if ( smoke ) context.Scene.Add( new WorldMapSmokeProbe( context.Close ) );
-    }
-}

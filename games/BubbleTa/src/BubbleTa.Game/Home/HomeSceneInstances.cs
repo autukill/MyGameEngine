@@ -483,12 +483,6 @@ internal sealed class HomeSceneController( Action close ) : GameInstance {
     }
 }
 
-internal sealed class WorldMapPlaceholderController( Action returnHome ) : GameInstance {
-    public override void OnKeyDown( InputKey key ) {
-        if ( key == InputKey.Escape ) returnHome();
-    }
-}
-
 internal sealed class HomeSmokeProbe : GameInstance {
     private int _steps;
 
@@ -511,14 +505,5 @@ internal sealed class HomeSmokeProbe : GameInstance {
         if ( actual != expected )
             throw new InvalidOperationException(
                 $"BubbleTa Home smoke expected {expected} {typeof(T).Name} instances, got {actual}." );
-    }
-}
-
-internal sealed class WorldMapSmokeProbe( Action close ) : GameInstance {
-    private int _steps;
-
-    public override void OnStep( double deltaTime ) {
-        _steps++;
-        if ( _steps >= 3 ) close();
     }
 }
