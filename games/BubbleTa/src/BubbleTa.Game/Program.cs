@@ -16,6 +16,7 @@ internal static class Program {
             IsVisible = !smoke,
             VSync = !smoke
         }).WithFixedUpdateRate( 60d );
+        WorldMapProgressSnapshot progress = WorldMapProgressSnapshot.NewGame;
 
         using var game = GameApplication
             .Create( options )
@@ -38,7 +39,7 @@ internal static class Program {
                         .Drag( WorldMapSceneLayout.NavigationDrag )
                         .Decelerate()
                         .Bounce( WorldMapSceneLayout.NavigationBounce ) ),
-                context => WorldMapSceneDefinition.Configure( context, smoke ) )
+                context => WorldMapSceneDefinition.Configure( context, progress, smoke ) )
             .StartScene( GameScenes.Home )
             .Build();
 

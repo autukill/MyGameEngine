@@ -20,7 +20,9 @@ internal static class Program
         Run("WorldMap content references are generated", WorldMapContentReferencesAreGenerated);
         Run("WorldMap first island layout", WorldMapFirstIslandLayout);
         Run("WorldMap horizontal rubber band", WorldMapHorizontalRubberBand);
+        Run("WorldMap progress snapshot", WorldMapProgressSnapshotStates);
         Run("WorldMap node presentation", WorldMapNodePresentation);
+        Run("WorldMap node selection", WorldMapNodeSelection);
         Run("WorldMap cloud motion", WorldMapCloudMotion);
         Run("WorldMap decoration layout", WorldMapDecorationLayout);
         Run("WorldMap decoration timing", WorldMapDecorationTiming);
@@ -97,26 +99,30 @@ internal static class Program
 
     private static void WorldMapNodePresentation()
     {
-        WorldMapNodePlacement availablePlacement = WorldMapSceneLayout.FirstIslandNodes[0];
-        var available = new WorldMapLevelNodeInstance(
-            WorldMapSceneDefinition.SelectNodeSprite(availablePlacement.Kind, false),
-            availablePlacement,
-            false);
-        Check(available.Level == 1 && !available.IsLocked &&
+        var progress = new WorldMapProgressSnapshot(3, [3, 2]);
+        WorldMapNodePlacement completedPlacement = WorldMapSceneLayout.FirstIslandNodes[0];
+        WorldMapLevelNodeInstance completed = CreateNode(completedPlacement, progress);
+        Check(completed.Level == 1 && completed.State == WorldMapLevelState.Completed &&
+              completed.Stars == 3 && !completed.IsLocked && completed.Color.X < 1f &&
+              completed.Sprite == GameAssets.Sprites.BubbletaWorldMapLevelSpot,
+            "Completed nodes must retain their authored kind, stars, and subdued presentation.");
+
+        WorldMapNodePlacement availablePlacement = WorldMapSceneLayout.FirstIslandNodes[2];
+        WorldMapLevelNodeInstance available = CreateNode(availablePlacement, progress);
+        Check(available.Level == 3 && available.State == WorldMapLevelState.Available &&
               available.Sprite == GameAssets.Sprites.BubbletaWorldMapLevelSpot,
-            "Level one must be the only available read-only node.");
+            "The highest unlocked level must use its authored available Sprite.");
 
         WorldMapNodePlacement lockedPlacement = WorldMapSceneLayout.FirstIslandNodes[3];
-        var locked = new WorldMapLevelNodeInstance(
-            WorldMapSceneDefinition.SelectNodeSprite(lockedPlacement.Kind, true),
-            lockedPlacement,
-            true);
+        WorldMapLevelNodeInstance locked = CreateNode(lockedPlacement, progress);
         Check(locked.Level == 4 && locked.Kind == WorldMapNodeKind.Timed &&
               locked.IsLocked && locked.Sprite == GameAssets.Sprites.BubbletaWorldMapLevelSpotLock,
             "Locked nodes must retain authored kinds while presenting the lock Sprite.");
-        Check(WorldMapSceneDefinition.SelectNodeSprite(WorldMapNodeKind.Timed, false) ==
+        Check(WorldMapSceneDefinition.SelectNodeSprite(
+                  WorldMapNodeKind.Timed, WorldMapLevelState.Available) ==
               GameAssets.Sprites.BubbletaWorldMapLevelSpotTime &&
-              WorldMapSceneDefinition.SelectNodeSprite(WorldMapNodeKind.Moving, false) ==
+              WorldMapSceneDefinition.SelectNodeSprite(
+                  WorldMapNodeKind.Moving, WorldMapLevelState.Completed) ==
               GameAssets.Sprites.BubbletaWorldMapLevelSpotMove,
             "Unlocked special node kinds must map to their dedicated Sprites.");
     }
@@ -141,6 +147,77 @@ internal static class Program
             "Horizontal overscroll must return to the authored View left edge.");
         Near(viewport.VisibleWorldBounds.Top, 13_820f, .001f,
             "A vertically valid position must remain unchanged during horizontal Bounce.");
+    }
+
+    private static void WorldMapProgressSnapshotStates()
+    {
+        byte[] stars = [3, 1, 0];
+        var progress = new WorldMapProgressSnapshot(4, stars);
+        stars[0] = 0;
+
+        Check(progress.HighestUnlockedLevel == 4 &&
+              progress.GetState(1) == WorldMapLevelState.Completed &&
+              progress.GetState(4) == WorldMapLevelState.Available &&
+              progress.GetState(5) == WorldMapLevelState.Locked,
+            "A progress snapshot must derive completed, available, and locked states.");
+        Check(progress.GetStars(1) == 3 && progress.GetStars(2) == 1 &&
+              progress.GetStars(4) == 0,
+            "A progress snapshot must defensively retain optional completion stars.");
+        Throws<ArgumentOutOfRangeException>(
+            () => _ = new WorldMapProgressSnapshot(0, []),
+            "Progress must reject an invalid highest unlocked level.");
+        Throws<ArgumentOutOfRangeException>(
+            () => _ = new WorldMapProgressSnapshot(2, [4]),
+            "Progress must reject more than three stars.");
+        Throws<ArgumentException>(
+            () => _ = new WorldMapProgressSnapshot(2, [0, 1]),
+            "The currently available level cannot already contain completion stars.");
+    }
+
+    private static void WorldMapNodeSelection()
+    {
+        WorldMapNodePlacement placement = WorldMapSceneLayout.FirstIslandNodes[0];
+        Vector2D inside = placement.Position;
+        Vector2D outside = placement.Position + new Vector2D(100f, 100f);
+        var controller = new WorldMapController(() => { });
+        var selectable = new WorldMapLevelNodeInstance(
+            GameAssets.Sprites.BubbletaWorldMapLevelSpot,
+            placement,
+            WorldMapLevelState.Available,
+            0,
+            static screen => screen,
+            controller.RequestSelection);
+
+        selectable.UpdatePointer(inside, inside, true);
+        Check(selectable.IsCaptured, "An unlocked node must capture an inside press.");
+        selectable.UpdatePointer(inside, inside, false);
+        Check(selectable.WasSelected && controller.LastSelection is { Level: 1 },
+            "An inside press-release must emit one typed selection request.");
+
+        int draggedSelections = 0;
+        var dragged = new WorldMapLevelNodeInstance(
+            selectable.Sprite, placement, WorldMapLevelState.Available, 0,
+            static screen => screen, _ => draggedSelections++);
+        dragged.UpdatePointer(inside, inside, true);
+        dragged.UpdatePointer(inside, inside + new Vector2D(9f, 0f), true);
+        dragged.UpdatePointer(inside, inside + new Vector2D(9f, 0f), false);
+        Check(draggedSelections == 0 && !dragged.IsCaptured,
+            "Moving beyond the Viewport drag threshold must cancel node selection.");
+
+        int lockedSelections = 0;
+        var locked = new WorldMapLevelNodeInstance(
+            GameAssets.Sprites.BubbletaWorldMapLevelSpotLock,
+            placement,
+            WorldMapLevelState.Locked,
+            0,
+            static screen => screen,
+            _ => lockedSelections++);
+        locked.UpdatePointer(inside, inside, true);
+        locked.UpdatePointer(inside, inside, false);
+        locked.UpdatePointer(outside, outside, true);
+        locked.UpdatePointer(inside, inside, false);
+        Check(lockedSelections == 0 && !locked.WasSelected,
+            "Locked nodes and outside presses must never request a selection.");
     }
 
     private static void WorldMapCloudMotion()
@@ -180,8 +257,8 @@ internal static class Program
 
         var bird = new WorldMapBirdInstance(
             new SpriteRef("test.bird.depth"), WorldMapSceneLayout.BirdPosition, 1UL);
-        var node = new WorldMapLevelNodeInstance(
-            new SpriteRef("test.node.depth"), WorldMapSceneLayout.FirstIslandNodes[0], false);
+        WorldMapLevelNodeInstance node = CreateNode(
+            WorldMapSceneLayout.FirstIslandNodes[0], WorldMapProgressSnapshot.NewGame);
         Check(bird.Depth < node.Depth,
             "Birds must render above level nodes; smaller Depth values are drawn later.");
     }
@@ -478,6 +555,20 @@ internal static class Program
         return button;
     }
 
+    private static WorldMapLevelNodeInstance CreateNode(
+        in WorldMapNodePlacement placement,
+        WorldMapProgressSnapshot progress)
+    {
+        WorldMapLevelState state = progress.GetState(placement.Level);
+        return new WorldMapLevelNodeInstance(
+            WorldMapSceneDefinition.SelectNodeSprite(placement.Kind, state),
+            placement,
+            state,
+            progress.GetStars(placement.Level),
+            static screen => screen,
+            static _ => { });
+    }
+
     private static void StepBoth(
         Action<double> first,
         Action<double> second,
@@ -510,6 +601,21 @@ internal static class Program
     private static void Check(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static void Throws<TException>(Action action, string message)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(message);
     }
 
     private static void Near(float actual, float expected, float tolerance, string message)

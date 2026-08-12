@@ -1,6 +1,6 @@
 # 《天天泡泡TA / BubbleTa》
 
-> 状态：`BubbleTa.HomeScene` 与 WorldMap 底部第一岛屿已可运行；核心泡泡玩法尚未开始，仍处于 Gate 0 行为重建阶段。
+> 状态：`BubbleTa.HomeScene` 与 WorldMap 底部第一岛屿已可运行；WorldMap 节点已有不可变进度快照和抗拖拽误触的选择请求边界。核心泡泡玩法尚未开始，仍处于 Gate 0 行为重建阶段。
 
 `BubbleTa` 是对 2015 年 GameMaker Studio 1 泡泡龙项目的现代重建候选。旧源码与 HTML5 构建仅作为行为参考、关卡来源和资产审计输入，不会直接复制旧运行时、第三方 UI 框架、支付 SDK 或商业化代码。
 
@@ -58,6 +58,6 @@ dotnet run -c Release --project games/BubbleTa/tests/BubbleTa.Game.Tests/BubbleT
 dotnet run -c Release --project games/BubbleTa/src/BubbleTa.Game/BubbleTa.Game.csproj -- --smoke
 ```
 
-Home 进入时循环播放自己的流式 OGG BGM。鼠标在世界按钮内完成按下与释放后播放一次 WAV 点击音，并进入 WorldMap 底部第一岛屿；取消点击不会发声。WorldMap 展示两张无缝拼接的岛屿主体、前后云层、20 个只读关卡节点，以及烟雾、石像、蘑菇、人物、飞鸟、水边鱼群和苹果等确定性景观动画，并播放独立的流式 OGG BGM。Home 拥有固定 Camera；WorldMap 每次拖动会锁定主方向，纵向手势浏览完整地图，明确的横向手势可以暂时拉离中央 View 并在松开后橡皮筋回弹。两个 Scene 不共享 Navigation 状态。Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。
+Home 进入时循环播放自己的流式 OGG BGM。鼠标在世界按钮内完成按下与释放后播放一次 WAV 点击音，并进入 WorldMap 底部第一岛屿；取消点击不会发声。WorldMap 展示两张无缝拼接的岛屿主体、前后云层、20 个由进度快照驱动的关卡节点，以及烟雾、石像、蘑菇、人物、飞鸟、水边鱼群和苹果等确定性景观动画，并播放独立的流式 OGG BGM。节点可以表达 Completed、Available 与 Locked；可选节点的完整点击只产生选择请求，超过 8px 的地图拖动会取消点击，当前不会进入玩法。Home 拥有固定 Camera；WorldMap 每次拖动会锁定主方向，纵向手势浏览完整地图，明确的横向手势可以暂时拉离中央 View 并在松开后橡皮筋回弹。两个 Scene 不共享 Navigation 状态。Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。
 
 两首音乐均由各自 Scene 的 `SceneAudio.PlayMusic` 持有，离开时自动停止；点击音使用显式跨 Scene 的一次性 Voice，确保切换发生后仍能自然播放完。图片和声音均来自旧工程的内部原型迁移，不代表已获得公开分发许可，详见 [资产来源说明](src/BubbleTa.Game/Assets/ASSET_PROVENANCE.md)。

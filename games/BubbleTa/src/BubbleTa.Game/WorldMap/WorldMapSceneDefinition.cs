@@ -6,7 +6,11 @@ using GameEngine.Core.Domain.ValueObjects;
 using GameEngine.Hosting;
 
 internal static class WorldMapSceneDefinition {
-    public static void Configure( Default2DGameContext context, bool smoke ) {
+    public static void Configure(
+        Default2DGameContext context,
+        WorldMapProgressSnapshot progress,
+        bool smoke ) {
+        ArgumentNullException.ThrowIfNull( progress );
         if ( context.Content?.Id != GameAssets.Packages.BubbletaWorldMap.Id )
             throw new InvalidOperationException(
                 "BubbleTa WorldMapScene requires its scene-scoped WorldMap content package." );
@@ -29,12 +33,13 @@ internal static class WorldMapSceneDefinition {
             WorldMapSceneLayout.IslandLowerPosition ) );
 
         AddDecorations( context );
-        AddLevelNodes( context );
+        var controller = new WorldMapController(
+            () => context.Scenes.SwitchTo( GameScenes.Home ) );
+        AddLevelNodes( context, progress, controller.RequestSelection );
         AddClouds( context, GameAssets.Sprites.BubbletaWorldMapCloudAbove,
             WorldMapSceneLayout.AboveClouds );
 
-        context.Scene.Add( new WorldMapController(
-            () => context.Scenes.SwitchTo( GameScenes.Home ) ) );
+        context.Scene.Add( controller );
         if ( smoke ) context.Scene.Add( new WorldMapSmokeProbe( context.Close ) );
     }
 
@@ -82,20 +87,29 @@ internal static class WorldMapSceneDefinition {
             context.Scene.Add( new WorldMapCloudInstance( sprite, placement ) );
     }
 
-    private static void AddLevelNodes( Default2DGameContext context ) {
+    private static void AddLevelNodes(
+        Default2DGameContext context,
+        WorldMapProgressSnapshot progress,
+        Action<WorldMapLevelSelectionRequested> requestSelection ) {
         ReadOnlySpan<WorldMapNodePlacement> nodes = WorldMapSceneLayout.FirstIslandNodes;
         for (int i = 0; i < nodes.Length; i++) {
             WorldMapNodePlacement placement = nodes[i];
-            bool locked = placement.Level != 1;
+            WorldMapLevelState state = progress.GetState( placement.Level );
             context.Scene.Add( new WorldMapLevelNodeInstance(
-                SelectNodeSprite( placement.Kind, locked ),
+                SelectNodeSprite( placement.Kind, state ),
                 placement,
-                locked ) );
+                state,
+                progress.GetStars( placement.Level ),
+                screen => context.TryScreenToWorld( screen, out Vector2D world, out _ )
+                    ? world
+                    : null,
+                requestSelection ) );
         }
     }
 
-    internal static SpriteRef SelectNodeSprite( WorldMapNodeKind kind, bool locked ) {
-        if ( locked ) return GameAssets.Sprites.BubbletaWorldMapLevelSpotLock;
+    internal static SpriteRef SelectNodeSprite( WorldMapNodeKind kind, WorldMapLevelState state ) {
+        if ( state == WorldMapLevelState.Locked )
+            return GameAssets.Sprites.BubbletaWorldMapLevelSpotLock;
         return kind switch {
             WorldMapNodeKind.Normal => GameAssets.Sprites.BubbletaWorldMapLevelSpot,
             WorldMapNodeKind.Timed => GameAssets.Sprites.BubbletaWorldMapLevelSpotTime,
