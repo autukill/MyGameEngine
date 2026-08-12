@@ -52,24 +52,38 @@ public sealed class GameApplicationBuilder
     public GameApplicationBuilder ConfigureScene(
         string sceneName,
         Action<Default2DGameContext> configure)
-        => ConfigureScene(sceneName, null, configure);
+        => ConfigureScene(sceneName, null, null, configure);
 
     public GameApplicationBuilder ConfigureScene(
         string sceneName,
         ContentPackageRef contentPackage,
         Action<Default2DGameContext> configure)
-        => ConfigureScene(sceneName, (ContentPackageRef?)contentPackage, configure);
+        => ConfigureScene(sceneName, (ContentPackageRef?)contentPackage, null, configure);
+
+    public GameApplicationBuilder ConfigureScene(
+        string sceneName,
+        Action<SceneViewLayoutBuilder> views,
+        Action<Default2DGameContext> configure)
+        => ConfigureScene(sceneName, null, BuildSceneViews(views), configure);
+
+    public GameApplicationBuilder ConfigureScene(
+        string sceneName,
+        ContentPackageRef contentPackage,
+        Action<SceneViewLayoutBuilder> views,
+        Action<Default2DGameContext> configure)
+        => ConfigureScene(sceneName, contentPackage, BuildSceneViews(views), configure);
 
     private GameApplicationBuilder ConfigureScene(
         string sceneName,
         ContentPackageRef? contentPackage,
+        IReadOnlyDictionary<string, SceneRenderViewDefinition>? views,
         Action<Default2DGameContext> configure)
     {
         if (_initialScene is not null || _scenes.Count > 0)
             throw new InvalidOperationException("The initial Scene is already configured.");
         ValidateSceneContentPackage(contentPackage);
         SceneRef scene = new(sceneName);
-        AddSceneCore(scene, contentPackage, configure);
+        AddSceneCore(scene, contentPackage, views, configure);
         _initialScene = new UntypedSceneActivation(scene);
         return this;
     }
@@ -77,17 +91,31 @@ public sealed class GameApplicationBuilder
     public GameApplicationBuilder AddScene(
         SceneRef scene,
         Action<Default2DGameContext> configure)
-        => AddSceneCore(scene, null, configure);
+        => AddSceneCore(scene, null, null, configure);
 
     public GameApplicationBuilder AddScene(
         SceneRef scene,
         ContentPackageRef contentPackage,
         Action<Default2DGameContext> configure)
-        => AddSceneCore(scene, contentPackage, configure);
+        => AddSceneCore(scene, contentPackage, null, configure);
+
+    public GameApplicationBuilder AddScene(
+        SceneRef scene,
+        Action<SceneViewLayoutBuilder> views,
+        Action<Default2DGameContext> configure)
+        => AddSceneCore(scene, null, BuildSceneViews(views), configure);
+
+    public GameApplicationBuilder AddScene(
+        SceneRef scene,
+        ContentPackageRef contentPackage,
+        Action<SceneViewLayoutBuilder> views,
+        Action<Default2DGameContext> configure)
+        => AddSceneCore(scene, contentPackage, BuildSceneViews(views), configure);
 
     private GameApplicationBuilder AddSceneCore(
         SceneRef scene,
         ContentPackageRef? contentPackage,
+        IReadOnlyDictionary<string, SceneRenderViewDefinition>? views,
         Action<Default2DGameContext> configure)
     {
         if (scene.IsEmpty)
@@ -96,7 +124,7 @@ public sealed class GameApplicationBuilder
         ArgumentNullException.ThrowIfNull(configure);
         if (!_scenes.TryAdd(
                 scene.Name,
-                new UntypedSceneDefinition(scene, contentPackage, configure)))
+                new UntypedSceneDefinition(scene, contentPackage, views, configure)))
             throw new ArgumentException($"Scene '{scene.Name}' is already registered.", nameof(scene));
         _initialScene ??= new UntypedSceneActivation(scene);
         return this;
@@ -105,17 +133,31 @@ public sealed class GameApplicationBuilder
     public GameApplicationBuilder AddScene<TArgs>(
         SceneRef<TArgs> scene,
         Action<Default2DGameContext, TArgs> configure) where TArgs : struct
-        => AddSceneCore(scene, null, configure);
+        => AddSceneCore(scene, null, null, configure);
 
     public GameApplicationBuilder AddScene<TArgs>(
         SceneRef<TArgs> scene,
         ContentPackageRef contentPackage,
         Action<Default2DGameContext, TArgs> configure) where TArgs : struct
-        => AddSceneCore(scene, contentPackage, configure);
+        => AddSceneCore(scene, contentPackage, null, configure);
+
+    public GameApplicationBuilder AddScene<TArgs>(
+        SceneRef<TArgs> scene,
+        Action<SceneViewLayoutBuilder> views,
+        Action<Default2DGameContext, TArgs> configure) where TArgs : struct
+        => AddSceneCore(scene, null, BuildSceneViews(views), configure);
+
+    public GameApplicationBuilder AddScene<TArgs>(
+        SceneRef<TArgs> scene,
+        ContentPackageRef contentPackage,
+        Action<SceneViewLayoutBuilder> views,
+        Action<Default2DGameContext, TArgs> configure) where TArgs : struct
+        => AddSceneCore(scene, contentPackage, BuildSceneViews(views), configure);
 
     private GameApplicationBuilder AddSceneCore<TArgs>(
         SceneRef<TArgs> scene,
         ContentPackageRef? contentPackage,
+        IReadOnlyDictionary<string, SceneRenderViewDefinition>? views,
         Action<Default2DGameContext, TArgs> configure) where TArgs : struct
     {
         if (scene.IsEmpty)
@@ -124,7 +166,7 @@ public sealed class GameApplicationBuilder
         ArgumentNullException.ThrowIfNull(configure);
         if (!_scenes.TryAdd(
                 scene.Name,
-                new TypedSceneDefinition<TArgs>(scene, contentPackage, configure)))
+                new TypedSceneDefinition<TArgs>(scene, contentPackage, views, configure)))
             throw new ArgumentException($"Scene '{scene.Name}' is already registered.", nameof(scene));
         _initialScene ??= new UntypedSceneActivation(scene.Untyped);
         return this;
@@ -137,6 +179,15 @@ public sealed class GameApplicationBuilder
             throw new ArgumentException(
                 "Scene content package reference cannot be empty.",
                 nameof(contentPackage));
+    }
+
+    private static IReadOnlyDictionary<string, SceneRenderViewDefinition> BuildSceneViews(
+        Action<SceneViewLayoutBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        var builder = new SceneViewLayoutBuilder();
+        configure(builder);
+        return builder.Build();
     }
 
     public GameApplicationBuilder StartScene(SceneRef scene)
@@ -272,6 +323,7 @@ public sealed class GameApplicationBuilder
         }
         var renderer = _renderer.ToPlan();
         renderer.Validate();
+        ValidateSceneViews(renderer);
         bool hasSceneContent = _scenes.Values.Any(scene => scene.ContentPackage.HasValue);
         if (hasSceneContent && !renderer.ContentCatalogOnly)
             throw new InvalidOperationException(
@@ -365,6 +417,32 @@ public sealed class GameApplicationBuilder
             _stateVerifier,
             _closeOnReplayCompletion,
             _audio);
+    }
+
+    private void ValidateSceneViews(Default2DRendererPlan renderer)
+    {
+        var available = new HashSet<string>(StringComparer.Ordinal);
+        if (renderer.RenderViews is { } renderViews)
+        {
+            for (int i = 0; i < renderViews.Count; i++)
+                available.Add(renderViews[i].Ref.Name);
+        }
+        else
+        {
+            available.Add(RenderViewRef.Main.Name);
+        }
+
+        foreach (ISceneDefinition scene in _scenes.Values)
+        {
+            if (scene.Views is null) continue;
+            foreach (SceneRenderViewDefinition view in scene.Views.Values)
+            {
+                if (!available.Contains(view.View.Name))
+                    throw new InvalidOperationException(
+                        $"Scene '{scene.Scene.Name}' configures Render View '{view.View}', " +
+                        "but that View is not declared by the renderer layout.");
+            }
+        }
     }
 
     private void RequireInputReplayNotConfigured()

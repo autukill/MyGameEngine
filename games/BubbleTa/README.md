@@ -58,6 +58,6 @@ dotnet run -c Release --project games/BubbleTa/tests/BubbleTa.Game.Tests/BubbleT
 dotnet run -c Release --project games/BubbleTa/src/BubbleTa.Game/BubbleTa.Game.csproj -- --smoke
 ```
 
-Home 进入时循环播放流式 OGG BGM。鼠标在世界按钮内完成按下与释放后播放一次 WAV 点击音，并进入明显不同的 WorldMap 占位场景；取消点击不会发声。Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。设置按钮第一版只展示，不响应点击。
+Home 进入时循环播放流式 OGG BGM。鼠标在世界按钮内完成按下与释放后播放一次 WAV 点击音，并进入明显不同的 WorldMap 占位场景；取消点击不会发声。Home 拥有固定 Camera，WorldMap 占位场景已独立声明纵向拖动、惯性和边界回弹，两个 Scene 不共享 Navigation 状态。Home 中按 `ESC` 关闭，WorldMap 中按 `ESC` 返回 Home。设置按钮第一版只展示，不响应点击。
 
 音乐由 `SceneAudio.PlayMusic` 持有，离开 Home 时自动停止；点击音使用显式跨 Scene 的一次性 Voice，确保切换发生后仍能自然播放完。两项声音均来自旧工程 MP3 的内部原型转码，不代表已获得公开分发许可，详见 [资产来源说明](src/BubbleTa.Game/Assets/ASSET_PROVENANCE.md)。

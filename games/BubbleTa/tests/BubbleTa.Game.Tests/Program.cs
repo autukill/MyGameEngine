@@ -3,6 +3,7 @@ namespace BubbleTa.Game.Tests;
 using System.Numerics;
 using BubbleTa.Game.Content;
 using BubbleTa.Game.Home;
+using BubbleTa.Game.WorldMap;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
 
@@ -43,6 +44,10 @@ internal static class Program
             "Legacy central crop must start at x=120.");
         Check(HomeSceneLayout.WorldButtonPosition == new Vector2D(512f, 1056f),
             "World button must retain its legacy Room position.");
+        Check(WorldMapSceneLayout.RoomBounds.Width == 1_048f &&
+              WorldMapSceneLayout.RoomBounds.Height == 16_100f &&
+              WorldMapSceneLayout.InitialCameraPosition == new Vector2(164f, 14_820f),
+            "WorldMap Scene View must retain the legacy Room and bottom Camera boundary.");
     }
 
     private static void LogoRevealTiming()

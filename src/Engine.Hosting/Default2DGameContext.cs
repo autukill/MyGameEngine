@@ -56,6 +56,7 @@ public sealed class Default2DGameContext
     public ShaderLibrary Shaders { get; }
     /// <summary>The global package, or the lease owned by the currently active Scene.</summary>
     public LoadedContentPackage? Content { get; private set; }
+    /// <summary>The persistent main View Camera reset to the active Scene's declared state.</summary>
     public Camera2D Camera { get; }
     public RenderPipeline Pipeline { get; }
     public ScenePipelineBuilder Effects { get; }
@@ -239,11 +240,11 @@ public sealed class Default2DGameContext
         throw new KeyNotFoundException($"Render View '{view}' is not configured.");
     }
 
-    /// <summary>Gets the follow controller declared for a Render View.</summary>
+    /// <summary>Gets the follow controller owned by the active Scene for a Render View.</summary>
     public CameraFollowController GetCameraFollow(RenderViewRef view) =>
         GetRenderView(view).RequireCameraFollow();
 
-    /// <summary>Gets the interactive Viewport controller declared for a Render View.</summary>
+    /// <summary>Gets the interactive Viewport controller owned by the active Scene.</summary>
     public ViewportController GetViewportNavigation(RenderViewRef view) =>
         GetRenderView(view).RequireNavigation();
 

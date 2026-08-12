@@ -688,7 +688,9 @@ internal sealed class Default2DGameRuntime : IDisposable
 
     private void ConfigureScene(ISceneActivation activation)
     {
-        _scenes.GetDefinition(activation.Scene).Configure(Context, activation);
+        ISceneDefinition definition = _scenes.GetDefinition(activation.Scene);
+        ActivateSceneViews(definition);
+        definition.Configure(Context, activation);
         var renderer = _plan.Renderer;
         SceneAggregate scene = _scene!;
         if (renderer.MultipleRenderViewsEnabled)
@@ -725,6 +727,47 @@ internal sealed class Default2DGameRuntime : IDisposable
             blend: PresentationBlendMode.Opaque);
         if (_plan.Renderer.SceneGuiEnabled)
             scene.Add(new DefaultGuiPresentationController(scene.RaiseEvent));
+    }
+
+    private void ActivateSceneViews(ISceneDefinition scene)
+    {
+        ResetViewportInputState();
+        for (int i = 0; i < _renderViews.Count; i++)
+        {
+            RenderView view = _renderViews[i];
+            SceneRenderViewDefinition? configuration = null;
+            if (scene.Views is not null &&
+                scene.Views.TryGetValue(view.Ref.Name, out SceneRenderViewDefinition? configured))
+            {
+                configuration = configured;
+            }
+            view.ActivateScene(configuration);
+        }
+    }
+
+    private void ResetViewportInputState()
+    {
+        _viewportDownPointers.Clear();
+        _viewportPointerCaptures.Clear();
+        _viewportReleasedPointers.Clear();
+
+        IInputProvider input = _window.Input;
+        int pointerCount = input.PointerCount;
+        if (pointerCount < 0 || pointerCount > MaximumViewportPointers)
+            throw new InvalidOperationException(
+                $"Viewport navigation supports between 0 and {MaximumViewportPointers} pointers.");
+        // A pointer held across the Scene boundary is not a fresh press in the new Scene.
+        for (int i = 0; i < pointerCount; i++)
+        {
+            PointerContact contact = input.GetPointer(i);
+            if (!_viewportDownPointers.Add(contact.Id))
+                throw new InvalidOperationException(
+                    $"Input provider returned duplicate pointer '{contact.Id}'.");
+            if (!contact.IsDown) _viewportReleasedPointers.Add(contact.Id);
+        }
+        for (int i = 0; i < _viewportReleasedPointers.Count; i++)
+            _viewportDownPointers.Remove(_viewportReleasedPointers[i]);
+        _viewportReleasedPointers.Clear();
     }
 
     private static void RegisterMaterial(

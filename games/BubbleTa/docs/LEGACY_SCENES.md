@@ -46,7 +46,7 @@ Room 预放置 34 个实例，包括：
 
 `BubbleTa.HomeScene` 已完成第一版行为重建：保留 960×1280 Room 坐标，以位于 `(120, 0)` 的 720×1280 相机做中央裁切；旧 46 FPS Alarm 换算为秒，由 60 Hz 固定更新推进。12 片 Logo 入场、云/泡泡/星光周期 Tween、三名角色入场与浮动、五个确定性闪点和五条确定性流星均已落地。
 
-世界按钮已接到最小 `WorldMapScene` 占位场景，设置按钮仍只展示。第一版静音，不迁移首页 MP3，也不复制旧 `obj_ini`/`obj_drawer` 全局逻辑。实现与验证细节见 [HomeScene 实现说明](HOME_SCENE.md)。
+世界按钮已接到最小 `WorldMapScene` 占位场景，设置按钮仍只展示。Home 已接入流式 OGG BGM 和 WAV 点击音；Home 固定 Camera 与 WorldMap 纵向导航分别由各自 Scene View 拥有。旧 `obj_ini`/`obj_drawer` 全局逻辑仍不复制。实现与验证细节见 [HomeScene 实现说明](HOME_SCENE.md)。
 
 ## `rm_world`：纵向世界地图
 

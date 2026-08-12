@@ -9,6 +9,7 @@
 - 背景、12 片 Logo、泡泡、云、三名角色、三颗大星、五个闪点和五条流星均由 Scene 实例装配。
 - 世界按钮使用 Sprite 逻辑边界和屏幕到世界坐标转换；只有同一指针在按钮内按下并在按钮内释放才切换场景。
 - WorldMap 当前只是纯色占位场景，用来验证 `Home → WorldMap → Home` 生命周期，不代表 `rm_world` 已经迁移。
+- Home 在 Scene 注册期声明固定 Camera，不创建 Navigation Controller；WorldMap 占位 Scene 独立声明纵向 Drag/Decelerate/Bounce。切换时 Hosting 重置 Camera、清理 Pointer 捕获和惯性，不再依赖 Scene 回调手工覆盖 Renderer 全局状态。
 - Home 进入时通过 `SceneAudio.PlayMusic` 循环播放流式 OGG；离开 Scene 时 Hosting 会在卸载 Home 内容包之前停止音乐。
 - 世界按钮仅在一次有效的内部按下/内部释放后播放 WAV 点击音并切换 Scene。点击音使用全局一次性 Voice，让已经上传的静态 OpenAL Buffer 跨过切换边界自然播放完；Clip 从内容库移除后，Backend 会在 Voice 完成时释放 Buffer。
 - 设置图标仍只展示。存档初始化和旧全局控制对象均未进入本切片。

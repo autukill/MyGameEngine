@@ -1,6 +1,6 @@
 # BubbleTa.WorldMapScene 考古与渐进重建规格
 
-> 状态：旧 `rm_world` 已完成第一轮只读考古；正式世界地图美术、关卡节点和运营入口尚未迁入。
+> 状态：旧 `rm_world` 已完成第一轮只读考古；WorldMap 占位 Scene 已独立拥有纵向 Camera Navigation，正式地图美术、关卡节点和运营入口尚未迁入。
 
 ## 旧 Room 的真实结构
 
@@ -75,7 +75,7 @@ Scene 使用独立 `bubbleta.world-map` 包；Home 使用 `bubbleta.home`。当�
 
 ## 渐进实施顺序
 
-1. **坐标与相机样本**：先固定 Room、View、五段起始坐标和滚动边界，使用无窗口测试验证拖动与回弹。
+1. **坐标与相机样本（已完成基础边界）**：已固定 `1048×16100` Room、底部初始 Camera 和纵向 Drag/Decelerate/Bounce；Navigation Controller 随 WorldMap Scene 激活，返回 Home 后不会保留惯性。五段数据和更精确的旧手感参数仍随景观切片补充。
 2. **第一岛屿段景观**：只迁移底部 1–20 关段的两张岛屿图、必要云层和少量装饰，建立 `WorldMap/assets.json`。
 3. **关卡节点展示**：由不可变进度快照生成三种节点状态；点击只发布选择事件。
 4. **五段虚拟化**：按相机可见范围激活段与装饰，避免 100 个节点和所有粒子永久更新。

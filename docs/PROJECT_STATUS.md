@@ -85,20 +85,20 @@
 - 独立 TransformHierarchy 阶段 0 提供 generation Handle、Local/World 矩阵、KeepLocal/KeepWorld、循环/Shear/不可逆拒绝、2048 深树迭代传播和 0 B 稳态。
 - HTML/CSS/Yoga GUI Compatibility Spike 已比较 Yoga、RmlUi、FairyGUI 与浏览器内核，并固定 NativeAOT、中文、输入、渲染和维护成本的 Go/No-Go 条件。
 - Hosting 第一阶段多 Viewport 已落地：一份 Camera/Scene/后处理结果可声明式呈现到多个稳定槽位，支持 Stretch/Contain/Cover、奇数尺寸无缝取整、布局感知 Screen→View→World 转换和 Viewport 诊断；Runner `--mirrored-viewports` 在 HDR 链上验证不重复 Pass。
-- Hosting 第二阶段多 Camera 已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Runner `--split-cameras` 验证两台真实 Camera。
+- Hosting 第二阶段多 Camera已落地：`RenderViewRef/RenderView`、`UseRenderViews`、独立 Camera/SceneColor/SceneRenderPass、RenderScale、resize、按 View 输入反算与根目标诊断；Renderer 长期拥有输出槽位和 GPU 资源，Scene 通过 `SceneViewLayoutBuilder` 独立声明 Camera 初态、CameraFollow 或 Navigation，切换时清理 Pointer 捕获、重置 Camera 并重建 Controller。Runner `--split-cameras` 验证两台真实 Camera。
 - 多 View 效果策略已显式化：主 View 由 `UseHdr` 配置；次级 View 默认 Direct，也可独立选择 HDR + Tone Mapping 与可选 Bloom。配置报告额外 Pass/租约，工厂按输入 Surface 尺寸创建目标，次级 View 不承担未声明成本。
 - 每 View `SceneLayerFilter.Include/Exclude/All` 已落地，Scene 与主 Stencil 重绘共享过滤语义；名单装配期校验、逐帧 0 B。Runner observer 排除 `MainOnly` 验证小地图式黄金路径。
 - 每 View `SceneDrawStatistics` 已接入 Render 诊断：候选访问、选中/绘制、排序比较始终零分配计数，启用 Frame Statistics 后增加遍历/排序/绘制耗时。Scene 已用运行时同步的 Layer 索引消除“层数 × 全场景”重复扫描，且保留同帧切层和稳定 Depth 排序语义；10,000 实例双 View 本机样本由约 1.536 ms 降至 1.185 ms。
 - 每个 Render View 已在绘制前执行保守 Camera 可见性剔除：默认从 Sprite Size/Origin 推导，支持自定义 `LocalDrawBounds` 与 `AlwaysVisible` 退出，未知边界 fail-open；旋转、缩放、负缩放与震屏均按实际绘制边界处理。10,000 实例、每 View 可见 20% 的样本把 Draw 回调由 20,000 次降至 4,000 次；无 GPU 假 Batch 的边界检查成本约 0.10 ms，保持 0 B/frame。
 - Layer 索引现已在实例加入、切层和改 Depth 时维护稳定有序关系，普通 View Draw 不再重复排序；相同 Depth 保持 Scene 加入顺序，同帧后续 Layer 仍能看到变更。10,000 实例双 View 本机调度由 Layer 索引阶段约 1.185 ms 进一步降至 0.470 ms，排序比较为 0/0。
-- Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；`UseRenderViews` 可声明每个 View 的静态跟随策略，Hosting 惰性创建控制器，Gameplay 仍显式提供和切换运行时目标。
-- Interactive Viewport 提供 `ViewportController` 与固定顺序插件链：Core 以 `PointerId/PointerContact` 统一 Mouse、Touch、Pen，Hosting 按 Pointer 独立捕获到最上层 Render View；主 Camera 或每个 Render View 可声明 Drag、双指 Pinch/平移、Wheel、MouseEdges、Decelerate、Animate、Bounce、SnapZoom、ClampZoom、Snap 和 Clamp。运动统一使用秒与 `EasingKind`，交互中断可选 Pause/Cancel/Ignore，持续目标在 Resize/外部偏移后重新收敛；`ViewportSnapshot` 以 Revision 暴露可见世界边界，稳定更新保持 0 B。
+- Camera 开发体验切片提供 `CameraFollowController`：归一化 Anchor、视口像素 Dead Zone、半衰期平滑、旋转/缩放兼容的世界边界约束、GameInstance 便利重载和零分配叠加震屏；Scene View 可声明每个 View 的独立跟随策略，Hosting 在激活期创建控制器，Gameplay 仍显式提供和切换运行时目标。
+- Interactive Viewport 提供 `ViewportController` 与固定顺序插件链：Core 以 `PointerId/PointerContact` 统一 Mouse、Touch、Pen，Hosting 按 Pointer 独立捕获到最上层 Render View；每个 Scene View 可声明 Drag、双指 Pinch/平移、Wheel、MouseEdges、Decelerate、Animate、Bounce、SnapZoom、ClampZoom、Snap 和 Clamp。运动统一使用秒与 `EasingKind`，交互中断可选 Pause/Cancel/Ignore，持续目标在 Resize/外部偏移后重新收敛；`ViewportSnapshot` 以 Revision 暴露可见世界边界，稳定更新保持 0 B。
 - 独立 `Engine.Features.WorldStreaming` 消费 `ViewportSnapshot`，以确定性行优先顺序管理 Visible/Preloaded/Retained 三层 Chunk；异步并发、单次 Update 启动量、最大跟踪数、取消、非阻塞退休、失败重试和唯一 Lease 释放均有明确边界，完全加载的稳定 Snapshot 更新保持 0 B。`Engine.Features.TileWorlds` 提供权威 LOD0、逐 Layer LOD1+ WebP、逐 Layer 全图 Preview 回退图（Fallback Surface）与 `.mgworld` v3；`Engine.Features.TileWorldStreaming` 已接通 Zoom/滞回、有界后台 WebP 解码、主线程逐帧 Texture 张数/字节预算、单 LOD Raster 稳态驻留预算、逐 Chunk 原子发布、非阻塞 LOD 热替换、最粗可用 LOD 常驻，以及 Preview 回退图/粗 LOD 两级缺失区域 UV 回退；低频所有权诊断可分别报告待上传 RGBA、权威 Payload、Chunk/Preview 回退图逻辑 GPU 字节和在途加载，并接入 Hosting 的 Managed/Native CPU 资源归因。独立 VisualTests 以临时合成世界真实验证 Preview 回退图 → Raster LOD → LOD0、平滑缩放、受阻解码替换和 GPU 资源释放，不携带大型实际地图。
 - 独立 `Engine.PerformanceBenchmarks` 已把多 View 性能实验与 DDD 烟测分离：100/1,000/10,000 实例场景同时报告无剔除/剔除耗时、每 View 候选/Draw/拒绝数与分配量，并以确定性计数、零排序和 `0 B/frame` 作为回归守卫。
 - GPU 回归新增 `multi-render-view-lifecycle`：真实组合主 View HDR Bloom + Tone Mapping 与 0.75 RenderScale observer Tone Mapping，resize 后验证五个活动租约的精确尺寸，逐 View 释放后验证活动效果和租约归零、缓存全部回到 Pool。
 - `games/TheGodTheyMade` 的 Gate 4 工程切片已完成：30 分钟场景状态机组合水闸、湿遗迹、葬礼价值选择、无操作恢复和有限三联壁画；Game 呈现相应灰盒视觉并用程序短音反馈钟/雨/闸/葬礼。40 项无窗口检查覆盖三条完整 108,000 Tick 历史、确定性、版本化 Gameplay Command Journal 与 Gate 聚合判定；结构化 Playtest Report 可留存终局、学习轨迹和 Hash，严格审计 CLI 可输出逐项 Gate 结论，Gate 仍等待 5 人外部盲测证据后正式关闭。
 - 《鸣钟谷》外部盲测可构建为约 62 MiB 的 win-x64 自包含 ZIP，附带 SHA-256、源码 commit、编译后资产、无剧透说明与自动留档启动器；测试员无需仓库源码、SDK 或预装 .NET。
-- `games/BubbleTa` 已在 Gate 0 工程骨架上完成首个真实 `HomeScene`：顶层聚合根依赖独立 Home 内容包，32 张旧首页图片以逐 RGBA 验证的无损 WebP 保存并编译为两页 exact WebP Atlas；场景保留旧 960×1280 坐标与中央 720×1280 相机裁切，具备 Logo/角色/装饰动画、确定性流星与闪点、世界按钮和最小 WorldMap 占位切换。核心泡泡玩法尚未开始，原型图片在正式分发前仍受来源与再分发权限审计 Gate 阻挡。
+- `games/BubbleTa` 已在 Gate 0 工程骨架上完成首个真实 `HomeScene`：独立 Home 内容包提供两页 exact WebP Atlas、流式 OGG BGM 和 WAV 点击音；Home Scene View 拥有固定中央裁切 Camera，WorldMap 占位 Scene View 独立拥有纵向 Drag/Decelerate/Bounce，切换不共享惯性。核心泡泡玩法尚未开始，原型资产在正式分发前仍受来源与再分发权限审计 Gate 阻挡。
 
 ## 仍在演进
 

@@ -134,7 +134,9 @@ public sealed class Default2DRendererOptions
 
     /// <summary>
     /// Enables pixi-viewport-style interaction for the main Camera without requiring a second
-    /// Render View. The configuration is also applied to main when UseRenderViews is enabled.
+    /// Application-level compatibility default for the main Render View. New multi-Scene games
+    /// should declare Camera and navigation with SceneViewLayoutBuilder on each Scene instead.
+    /// The configuration is also applied to main when UseRenderViews is enabled.
     /// </summary>
     public Default2DRendererOptions UseInteractiveViewport(
         Action<ViewportNavigationBuilder> configure)

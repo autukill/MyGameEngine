@@ -1,5 +1,6 @@
 namespace GameEngine.Hosting.Tests;
 
+using System.Numerics;
 using GameEngine.Core.Domain.Events;
 using GameEngine.Core.Domain.Aggregates;
 using GameEngine.Core.Domain.Entities;
@@ -208,6 +209,38 @@ internal static class Program
               singleInteractiveViewport.Renderer.MainNavigation?.Pinch is not null &&
               singleInteractiveViewport.Renderer.MainNavigation?.Clamp is not null,
             "One main Camera enables interactive Viewport navigation without fake multi-View setup");
+
+        SceneRef fixedScene = new("FixedScene");
+        SceneRef mapScene = new("MapScene");
+        var sceneViews = GameApplication.Create()
+            .UseDefault2DRenderer()
+            .AddScene(
+                fixedScene,
+                views => views.ConfigureMain(new SceneCameraState(new Vector2(120f, 0f))),
+                _ => { })
+            .AddScene(
+                mapScene,
+                views => views.ConfigureMain(
+                    new SceneCameraState(new Vector2(164f, 14_820f)),
+                    navigation: navigation => navigation
+                        .Drag(new ViewportDragOptions(ViewportAxis.Vertical, 8f))
+                        .Decelerate()
+                        .Bounce(new ViewportBounceOptions(
+                            new Bounds2D(0f, 0f, 1_048f, 16_100f),
+                            ViewportAxis.Vertical))),
+                _ => { })
+            .StartScene(fixedScene)
+            .BuildPlan();
+        SceneRenderViewDefinition fixedMain =
+            sceneViews.Scenes[fixedScene.Name].Views![RenderViewRef.Main.Name];
+        SceneRenderViewDefinition mapMain =
+            sceneViews.Scenes[mapScene.Name].Views![RenderViewRef.Main.Name];
+        Check(fixedMain.Camera.Position == new Vector2(120f, 0f) &&
+              fixedMain.Navigation is null &&
+              mapMain.Camera.Position == new Vector2(164f, 14_820f) &&
+              mapMain.Navigation?.Drag?.Axis == ViewportAxis.Vertical &&
+              mapMain.Navigation?.Bounce?.WorldBounds.Bottom == 16_100f,
+            "Each Scene freezes independent Camera and Viewport navigation ownership");
     }
 
     private static void TestSceneAudioScope()
@@ -320,6 +353,31 @@ internal static class Program
                 .UseInteractiveViewport(viewport => viewport.Drag())
                 .UseInteractiveViewport(viewport => viewport.Wheel()),
             "Main interactive Viewport configuration cannot be registered twice");
+        CheckThrows<InvalidOperationException>(
+            () => GameApplication.Create()
+                .UseDefault2DRenderer()
+                .ConfigureScene(
+                    "UnknownView",
+                    views => views.Configure(
+                        new RenderViewRef("missing"),
+                        SceneCameraState.Default),
+                    _ => { })
+                .BuildPlan(),
+            "A Scene cannot configure a Render View absent from the renderer layout");
+        CheckThrows<ArgumentException>(
+            () => new SceneViewLayoutBuilder().ConfigureMain(default),
+            "Default-initialized Scene Camera state is rejected explicitly");
+        CheckThrows<ArgumentException>(
+            () => new SceneViewLayoutBuilder().ConfigureMain(
+                SceneCameraState.Default,
+                CameraFollowSettings.Default,
+                navigation => navigation.Drag()),
+            "A Scene View cannot combine Camera follow and interactive navigation");
+        CheckThrows<InvalidOperationException>(
+            () => new SceneViewLayoutBuilder()
+                .ConfigureMain(SceneCameraState.Default)
+                .ConfigureMain(SceneCameraState.Default),
+            "Duplicate Scene View declarations are rejected");
         CheckThrows<ArgumentException>(
             () => SceneLayerFilter.Include("Actors", "Actors"),
             "Duplicate Scene layer selections are rejected during configuration");

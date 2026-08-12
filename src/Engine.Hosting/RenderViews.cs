@@ -246,13 +246,15 @@ public sealed class RenderViewLayoutBuilder
 public sealed class RenderView
 {
     private readonly RenderTarget2D _target;
+    private readonly CameraFollowSettings? _defaultCameraFollow;
+    private readonly ViewportNavigationConfiguration? _defaultNavigation;
     private SceneRenderPass? _scenePass;
 
     public RenderViewRef Ref { get; }
     public ViewportSlotRef Slot { get; }
     public Camera2D Camera { get; }
-    public CameraFollowController? CameraFollow { get; }
-    public ViewportController? Navigation { get; }
+    public CameraFollowController? CameraFollow { get; private set; }
+    public ViewportController? Navigation { get; private set; }
     public ViewportRect Viewport { get; }
     public ViewportFitMode Fit { get; }
     public float RenderScale { get; }
@@ -274,10 +276,8 @@ public sealed class RenderView
         Ref = definition.Ref;
         Slot = definition.Slot;
         Camera = camera;
-        CameraFollow = definition.CameraFollow is { } settings
-            ? new CameraFollowController(camera, settings)
-            : null;
-        Navigation = definition.Navigation?.CreateController(camera);
+        _defaultCameraFollow = definition.CameraFollow;
+        _defaultNavigation = definition.Navigation;
         Viewport = definition.Viewport;
         Fit = definition.Fit;
         RenderScale = definition.RenderScale;
@@ -304,6 +304,27 @@ public sealed class RenderView
     public ViewportController RequireNavigation() => Navigation ??
         throw new InvalidOperationException(
             $"Render View '{Ref}' does not declare interactive Viewport navigation.");
+
+    internal void ActivateScene(SceneRenderViewDefinition? configuration)
+    {
+        Navigation?.Plugins.RemoveAll();
+        SceneCameraState camera = configuration?.Camera ?? SceneCameraState.Default;
+        Camera.Shake(0f, 0f);
+        Camera.Position = camera.Position;
+        Camera.Zoom = camera.Zoom;
+        Camera.Rotation = camera.Rotation;
+
+        CameraFollowSettings? follow = configuration is null
+            ? _defaultCameraFollow
+            : configuration.CameraFollow;
+        ViewportNavigationConfiguration? navigation = configuration is null
+            ? _defaultNavigation
+            : configuration.Navigation;
+        CameraFollow = follow is { } settings
+            ? new CameraFollowController(Camera, settings)
+            : null;
+        Navigation = navigation?.CreateController(Camera);
+    }
 
     internal void AttachScenePass(SceneRenderPass scenePass)
     {

@@ -11,10 +11,9 @@ internal static class HomeSceneDefinition {
         if ( context.Content?.Id != GameAssets.Packages.BubbletaHome.Id )
             throw new InvalidOperationException(
                 "BubbleTa HomeScene requires its scene-scoped Home content package." );
-        context.Camera.Position = new Vector2(
-            HomeSceneLayout.CameraPosition.X,
-            HomeSceneLayout.CameraPosition.Y );
-        context.Camera.Zoom = 1f;
+        if ( context.RenderViews[0].Navigation is not null )
+            throw new InvalidOperationException(
+                "BubbleTa HomeScene must own a fixed Camera without Viewport navigation." );
         context.Scene.Background = BackgroundConfig.Black;
         context.SceneAudio.PlayMusic( GameAssets.AudioClips.BubbletaHomeBgm );
 
@@ -100,8 +99,9 @@ internal static class WorldMapPlaceholderScene {
         if ( context.Content is not null )
             throw new InvalidOperationException(
                 "The package-free WorldMap placeholder must not retain Home content." );
-        context.Camera.Position = Vector2.Zero;
-        context.Camera.Zoom = 1f;
+        if ( context.RenderViews[0].Navigation is null )
+            throw new InvalidOperationException(
+                "BubbleTa WorldMapScene requires its Scene-owned Viewport navigation." );
         context.Scene.Background = BackgroundConfig.FromColor(
             new Vector4( .035f, .12f, .24f, 1f ) );
         context.Scene.Add( new WorldMapPlaceholderController( () => context.Scenes.SwitchTo( GameScenes.Home ) ) );

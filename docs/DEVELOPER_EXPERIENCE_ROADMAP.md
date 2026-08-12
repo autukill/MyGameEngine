@@ -118,7 +118,7 @@ Transform Hierarchy 已完成数学/Handle、Scene/GameInstance 接入和第一�
 - 官方 pixi-viewport 6.0.3 仅下载到 Git 忽略的参考区，用于核对公共功能形状；仓库不纳入或逐行翻译其 TypeScript。
 - `ViewportController`、可替换/暂停/恢复的固定顺序插件管理与 `ViewportSnapshot/Revision` 已落地。
 - Drag、鼠标锚点 Wheel、可选平滑、帧率无关 Decelerate、ClampZoom、Clamp/Underflow 已实现。
-- `UseInteractiveViewport` 为单主 Camera 提供黄金入口；`UseRenderViews` 可让每个 View 独立声明，CameraFollow 所有权冲突在装配期拒绝。
+- Scene 作用域 `SceneViewLayoutBuilder` 已成为 Camera/Navigation 黄金入口：Renderer 只长期拥有输出槽位与 GPU View，Scene 独立声明 Camera 初态、CameraFollow 或插件链；切换时清理捕获与惯性并重建 Controller。`UseInteractiveViewport`/Renderer View Navigation 保留为兼容默认值。
 - Hosting 在 Scene Step 前按最上层 View 路由输入，Resize 后重新约束；核心稳定更新 0 B，真实 OpenGL 隐藏 smoke 通过。
 
 统一多 Pointer/Pinch、Bounce/Animate/Snap/SnapZoom/MouseEdges 和独立 `WorldChunkStreamer` 已完成。TileWorld 已贯通声明式清单、权威 LOD0、逐 Layer LOD1+ exact 无损 WebP、既有 WebP 切片离线导入、运行时 Zoom/滞回、有界后台解码、非阻塞 LOD 退休、主线程逐帧 Texture 上传预算、单 LOD Raster 稳态驻留预算、完整替换、最粗可用 LOD 与逐 Layer Preview 回退图（Fallback Surface）；所有权诊断可区分 CPU Payload、逻辑 GPU、Lease 与在途任务。小型临时合成世界覆盖自动回归，仓库外 ZL Editor `12000×12000`、400 张详细切片和 Preview 回退图已完成真实 SDK 集成、五轮加载/卸载与内存趋势验证，不作为公共 API 特例或仓库资产。

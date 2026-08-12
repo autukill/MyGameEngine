@@ -104,7 +104,7 @@ second.Camera.Zoom = 0.75f;
 
 ### Interactive Viewport 第一阶段（已完成）
 
-`Engine.Features.ViewportNavigation` 已把地图浏览行为从游戏手写 Camera 逻辑中拆出。主 Camera 可通过 `UseInteractiveViewport` 声明 Drag、双指 Pinch、鼠标锚点 Wheel、帧率无关 Decelerate、ClampZoom 和带 Underflow 的世界 Clamp；多 Render View 可分别声明自己的插件链。Hosting 在 Scene Step 前按最上层命中 View 路由 Mouse/Touch/Pen Pointer 与滚轮，按 PointerId 独立捕获，Resize 后重新执行缩放和边界约束。
+`Engine.Features.ViewportNavigation` 已把地图浏览行为从游戏手写 Camera 逻辑中拆出。`SceneViewLayoutBuilder` 让每个 Scene 为主 Camera 或多个 Render View 分别声明 Camera 初态、Drag、双指 Pinch、鼠标锚点 Wheel、帧率无关 Decelerate、ClampZoom 和世界边界；Renderer 级 `UseInteractiveViewport` 保留为兼容默认值。Hosting 在 Scene Step 前按最上层命中 View 路由 Mouse/Touch/Pen Pointer 与滚轮；切换 Scene 时清理 Pointer 捕获、重置 Camera 状态并重建 Controller，Resize 后重新执行当前 Scene 的缩放和边界约束。
 
 `ViewportSnapshot` 固定可见世界 AABB、中心、Zoom、Render Size 与 Revision，作为 Chunk Streaming/LOD 的只读消费边界。独立 `Engine.Features.WorldStreaming` 已消费该边界，提供 Visible/Preloaded/Retained 驻留、加载预算、取消和租约释放；Viewport 本身仍不加载 Chunk、不拥有 Texture。完整用法见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md) 与 [World Chunk Streaming](WORLD_CHUNK_STREAMING.md)。
 

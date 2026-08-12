@@ -122,9 +122,9 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 
 每个 View 重绘 Scene 并拥有独立 Camera、SceneColor 与不可变 `SceneLayerFilter`。`Include(...)` 只绘制具名层，`Exclude(...)` 绘制除此之外的可见层，省略时为 `SceneLayerFilter.All`。过滤只作用于 `GameInstance` Layer；Scene 的清屏色和 Background Sprite 仍是每个 View 的共同背景。名单在装配时复制并拒绝空名称或重复项，逐帧查询不会分配。
 
-`context.Camera` 仍是 `RenderViewRef.Main`；其他 Camera 通过 `context.GetRenderView(...)` 获取。`PresentViewSurface` 只把自定义 Surface 送入指定 View 的槽位。主 View 的 Stencil 场景重绘使用同一份 Layer 过滤，避免遮罩输出重新带回已排除实例。
+`context.Camera` 仍是当前 Scene 的 `RenderViewRef.Main` Camera；其他 Camera 通过 `context.GetRenderView(...)` 获取。Render View 的输出槽位、RenderTarget、Layer Filter 和后处理成本由 Renderer 长期持有；Camera 初始状态、CameraFollow 和 Navigation 则可由每个 Scene 独立声明。`PresentViewSurface` 只把自定义 Surface 送入指定 View 的槽位。主 View 的 Stencil 场景重绘使用同一份 Layer 过滤，避免遮罩输出重新带回已排除实例。
 
-`cameraFollow` 是可选静态策略。声明后通过 `context.GetCameraFollow(viewRef)` 或 `view.RequireCameraFollow()` 取得该 View 唯一的 `CameraFollowController`；Gameplay 在自己的 Step 中传入当前目标。目标不进入不可变 Hosting Plan，因此 Scene 切换、锁定目标切换和暂停策略都不会被渲染配置反向控制。未声明时不创建控制器，也没有额外运行时成本。
+Scene 作用域 `cameraFollow` 通过 `context.GetCameraFollow(viewRef)` 或 `view.RequireCameraFollow()` 取得当前 Scene 的 Controller；Gameplay 在自己的 Step 中传入当前目标。目标不进入不可变 Hosting Plan，未声明时不创建控制器。Renderer 级 `cameraFollow` 保留为兼容默认策略，但新游戏应优先在 Scene 注册时声明。
 
 `UseHdr(...)` 继续配置 `main`；次级 View 默认使用 `RenderViewEffects.Direct`，只有在 `.Add(..., effects: ...)` 中显式选择时才创建独立后处理链。`RenderViewEffects.Hdr(toneMapping)` 创建 HDR SceneColor 与 Tone Mapping；再传入 Bloom 设置才增加 Bloom。每条效果链用 View 名称作为稳定 Effect Slot，并按该 View 自己的 RenderScale 尺寸租赁目标。`RenderView.DisplayColor` 始终指向可安全呈现的 Display Surface。
 
@@ -136,20 +136,25 @@ SceneGui 默认开启；不需要 Draw GUI 路径时可调用 `DisableSceneGui()
 
 这组成本也可从 `AdditionalPassCount/AdditionalRenderTargetCount` 直接读取，并随 Viewport 诊断返回。Stencil 目前仍由 `EnableStencilMasking` 配置且只属于主 View；自定义主 View Stencil 输出使用 `PresentViewSurface(RenderViewRef.Main, ...)`。`UseRenderViews` 与 `UseSingleCameraViewports` 互斥，前者表示重绘，后者表示复用同一次渲染。
 
-地图或编辑器主视图可直接声明交互式 Camera，不需要为了配置导航创建假的第二个 View：
+Scene 可以直接拥有交互式 Camera，不需要为了配置导航创建假的第二个 View：
 
 ```csharp
-.UseDefault2DRenderer(renderer => renderer
-    .UseInteractiveViewport(viewport => viewport
-        .Drag()
-        .Pinch()
-        .Wheel()
-        .Decelerate()
-        .ClampZoom(new ViewportClampZoomOptions(maxWidth: 12_000, maxHeight: 12_000))
-        .Clamp(new ViewportClampOptions(new Bounds2D(0, 0, 12_000, 12_000)))))
+.UseDefault2DRenderer()
+.AddScene(
+    new SceneRef("World"),
+    views => views.ConfigureMain(
+        new SceneCameraState(new Vector2(0, 0)),
+        navigation: viewport => viewport
+            .Drag()
+            .Pinch()
+            .Wheel()
+            .Decelerate()
+            .ClampZoom(new ViewportClampZoomOptions(maxWidth: 12_000, maxHeight: 12_000))
+            .Clamp(new ViewportClampOptions(new Bounds2D(0, 0, 12_000, 12_000)))),
+    ConfigureWorld)
 ```
 
-多 Render View 也可在 `ConfigureMain/Add` 的 `navigation` 参数中分别声明。Scene 装配通过 `context.GetViewportNavigation(RenderViewRef.Main)` 获取控制器；同一 View 不能同时声明 CameraFollow。完整插件语义与 Chunk Streaming 边界见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)。
+`SceneViewLayoutBuilder.ConfigureMain/Configure` 可为多个 Render View 分别声明。Scene 装配通过 `context.GetViewportNavigation(RenderViewRef.Main)` 获取当前 Controller；同一 View 不能同时声明 CameraFollow。Scene 切换会清除 Pointer 捕获、重置 Camera/震屏并重建 Controller，长期 GPU View 和 Presentation Slot 不重建。Renderer 级导航入口保留为兼容默认值。完整语义见 [Interactive Viewport](INTERACTIVE_VIEWPORT.md)。
 
 ## Default2DGameContext
 
@@ -186,6 +191,7 @@ Render Graph 捕获只用于低频调试和测试，不在 Host 每帧自动执�
 Window.Load
   -> 创建默认 Runtime
   -> 加载全局 Content，或按初始 Scene 加载其 Content Package
+  -> 激活初始 Scene View（Camera / Follow / Navigation）
   -> ConfigureScene(context)
   -> 添加默认 World/GUI Presentation owner
 
@@ -193,6 +199,7 @@ Window.Step
   -> Scene.PerformInput
   -> Scene.PerformStep
   -> 准备并提交待切换 Scene 的 Content Package（仅有切换请求时）
+  -> 清理旧 Pointer 捕获并激活目标 Scene View
   -> ScenePipelineBuilder.ApplyEvents
   -> ContentHotReload.Commit（仅有已准备修订时）
   -> ShaderHotReload.Commit（仅有稳定源码修订时）

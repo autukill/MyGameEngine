@@ -2,7 +2,9 @@ namespace BubbleTa.Game;
 
 using BubbleTa.Game.Content;
 using BubbleTa.Game.Home;
+using BubbleTa.Game.WorldMap;
 using GameEngine.Core.Infrastructure.Windowing;
+using GameEngine.Features.ViewportNavigation;
 using GameEngine.Hosting;
 
 internal static class Program {
@@ -22,8 +24,22 @@ internal static class Program {
             .AddScene(
                 GameScenes.Home,
                 GameAssets.Packages.BubbletaHome,
+                views => views.ConfigureMain( new SceneCameraState(
+                    new System.Numerics.Vector2(
+                        HomeSceneLayout.CameraPosition.X,
+                        HomeSceneLayout.CameraPosition.Y ) ) ),
                 context => HomeSceneDefinition.Configure( context, smoke ) )
-            .AddScene( GameScenes.WorldMap, context => WorldMapPlaceholderScene.Configure( context, smoke ) )
+            .AddScene(
+                GameScenes.WorldMap,
+                views => views.ConfigureMain(
+                    new SceneCameraState( WorldMapSceneLayout.InitialCameraPosition ),
+                    navigation: navigation => navigation
+                        .Drag( new ViewportDragOptions( ViewportAxis.Vertical, 8f ) )
+                        .Decelerate()
+                        .Bounce( new ViewportBounceOptions(
+                            WorldMapSceneLayout.RoomBounds,
+                            ViewportAxis.Vertical ) ) ),
+                context => WorldMapPlaceholderScene.Configure( context, smoke ) )
             .StartScene( GameScenes.Home )
             .Build();
 

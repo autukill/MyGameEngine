@@ -22,7 +22,8 @@ using GameEngine.Core.Domain.Entities;
 /// 约束（Scene & Instance 限界上下文）：
 ///   - 不直接调 OpenGL / Silk.NET
 ///   - 不计算空间碰撞（由 Physics 上下文负责）
-///   - Camera2D 不归属 Scene（由渲染 Pass 持有注入）
+///   - 不直接持有 Camera2D；Hosting 的 Scene View 声明拥有 Camera 状态与交互策略，
+///     渲染 Pass 只复用承载这些状态的渲染对象
 ///
 /// 生命周期：
 ///   Start() -> [Step loop: OnBeforeStep -> PerformStep -> OnAfterStep] -> End()

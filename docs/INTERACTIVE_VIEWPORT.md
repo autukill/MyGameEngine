@@ -4,9 +4,9 @@
 
 它不加载地图、不创建 Sprite，也不拥有 Texture。已经实现的独立 `WorldChunkStreamer` 读取 `ViewportSnapshot` 管理空间驻留；LOD 与具体资源生命周期继续由后续消费者负责。
 
-## 最小 Hosting 用法
+## 推荐的 Scene 作用域用法
 
-一台主 Camera 不需要伪造第二个 Render View：
+Window 中的输出矩形、RenderTarget 与 Pipeline 由 Hosting 长期持有；Camera 初始状态和 Navigation 插件链由 Scene 声明。固定画面的 Home 不声明 Navigation，地图 Scene 才声明：
 
 ```csharp
 using System.Numerics;
@@ -17,49 +17,63 @@ using GameEngine.Hosting;
 var world = new Bounds2D(0, 0, 12_000, 12_000);
 
 GameApplication.Create(windowOptions)
-    .UseDefault2DRenderer(renderer => renderer
-        .UseInteractiveViewport(viewport => viewport
-            .Drag()
-            .Pinch()
-            .Wheel(new ViewportWheelOptions(smoothFrames: 6))
-            .Decelerate()
-            .ClampZoom(new ViewportClampZoomOptions(
-                maxWidth: 12_000,
-                maxHeight: 12_000,
-                maxScale: 4))
-            .Clamp(new ViewportClampOptions(
-                world,
-                underflow: ViewportUnderflow.Center))))
-    .ConfigureScene("World", context =>
-    {
-        ViewportController viewport =
-            context.GetViewportNavigation(RenderViewRef.Main);
-        viewport.MoveCenter(new Vector2(6_000, 6_000));
-    });
+    .UseDefault2DRenderer()
+    .AddScene(
+        new SceneRef("Home"),
+        views => views.ConfigureMain(
+            new SceneCameraState(new Vector2(120, 0))),
+        ConfigureHome)
+    .AddScene(
+        new SceneRef("World"),
+        views => views.ConfigureMain(
+            new SceneCameraState(new Vector2(5_640, 5_360)),
+            navigation: viewport => viewport
+                .Drag()
+                .Pinch()
+                .Wheel(new ViewportWheelOptions(smoothFrames: 6))
+                .Decelerate()
+                .ClampZoom(new ViewportClampZoomOptions(
+                    maxWidth: 12_000,
+                    maxHeight: 12_000,
+                    maxScale: 4))
+                .Clamp(new ViewportClampOptions(
+                    world,
+                    underflow: ViewportUnderflow.Center))),
+        ConfigureWorld)
+    .StartScene(new SceneRef("Home"));
 ```
 
-Hosting 在 Scene Step 前采样鼠标与滚轮，按最上层命中的 Render View 路由输入。拖拽不会意外从一个 View 转移到另一个 View；滚轮只进入命中的 View。Resize 会先更新 Camera 尺寸，再重新执行 `ClampZoom` 和 `Clamp`，不会保留右侧或底部白边。
+Scene 激活时 Hosting 把长期 Render View 的 Camera 重置为 `SceneCameraState`，清除旧 Pointer 捕获，并为新 Scene 创建全新的 Navigation/CameraFollow Controller。离开 World 后，惯性、拖拽、平滑滚轮和插件状态不会泄漏到 Home；切换期间仍按下的 Pointer 也不会在新 Scene 被解释为一次新按下。
+
+Hosting 在 Scene Step 前采样鼠标与滚轮，按最上层命中的 Render View 路由输入。拖拽不会意外从一个 View 转移到另一个 View；滚轮只进入命中的 View。Resize 会先更新 Camera 尺寸，再重新执行当前 Scene 的约束。
 
 Viewport 导航属于表现层交互，直接采样窗口指针，不进入 Gameplay Replay 的逻辑输入流。确定性玩法不应以 Camera 当前位置作为规则判定；回放、联机或权威模拟需要记录的是玩家的逻辑命令，地图剔除与 Chunk 驻留则可以只消费 `ViewportSnapshot`。
 
-多 Camera 可分别声明：
+同一 Scene 的多 Camera 可分别声明。Renderer 先固定稳定输出槽位与渲染成本：
 
 ```csharp
 renderer.UseRenderViews(views => views
+    .ConfigureMain(ViewportRect.LeftHalf)
+    .Add("editor.preview", ViewportRect.RightHalf));
+
+// Scene 注册期再声明每个 View 的 Camera 与交互所有权。
+sceneViews
     .ConfigureMain(
-        ViewportRect.LeftHalf,
+        SceneCameraState.Default,
         navigation: viewport => viewport.Drag().Pinch().Wheel().Decelerate())
-    .Add(
-        "editor.preview",
-        ViewportRect.RightHalf,
+    .Configure(
+        new RenderViewRef("editor.preview"),
+        new SceneCameraState(new Vector2(4_000, 4_000)),
         navigation: viewport => viewport
             .Drag()
             .Pinch()
             .Wheel()
-            .Clamp(new ViewportClampOptions(world))));
+            .Clamp(new ViewportClampOptions(world)));
 ```
 
 同一 Render View 不能同时声明 `CameraFollowController` 和 Interactive Viewport，因为两者都会拥有 Camera 位置。组合根会在创建窗口前拒绝这种冲突。
+
+旧的 `Default2DRendererOptions.UseInteractiveViewport(...)` 以及 `UseRenderViews(... navigation:)` 继续作为应用级兼容默认值，适合只有一个 Scene 或所有 Scene 确实共享同一策略的项目；Controller 仍会在 Scene 激活时重新创建。新游戏应优先使用 `SceneViewLayoutBuilder`，使没有导航的 Scene 无需通过 Pause/Enabled 开关抵消全局配置。
 
 ## 统一 Pointer 输入边界
 
@@ -69,7 +83,7 @@ Provider 可以在释放帧保留 `IsDown=false` 的 Contact，也可以立即�
 
 ## 核心语义
 
-- `ViewportController` 只拥有导航状态和插件，不拥有 Scene、RenderTarget 或地图内容。
+- `ViewportController` 只拥有当前 Scene 的导航状态和插件，不拥有 RenderTarget 或地图内容。
 - `Center`、`MoveCenter`、`MoveCorner`、`FitWidth`、`FitHeight`、`FitWorld` 和 `SetZoomAt` 使用世界/Render View 像素坐标。
 - `SetZoomAt` 保证缩放前后锚点下的世界位置不变；滚轮默认使用鼠标位置。
 - `IInputProvider.PointerCount/GetPointer` 统一 Mouse、Touch 与 Pen；旧鼠标 Provider 通过默认接口实现自动暴露一个稳定 `PointerId.Mouse`，Hosting 当前为平台后端路由最多 16 个并发 Pointer。
