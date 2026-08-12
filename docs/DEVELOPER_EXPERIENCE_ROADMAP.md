@@ -85,6 +85,7 @@ GameAssets.Packages.SharedPrimitives
 - `AlarmId`、`SetAlarm/CancelAlarm/OnAlarm` 提供无协程依赖的轻量计时。
 - 项目模板使用 WASD 移动、Space 生成 Bullet 和 Alarm 自动销毁展示黄金路径。
 - 声明式 Scene 目录、安全帧边界切换和持久实例语义。
+- 声明式 Scene Fade 转场已提供全窗口最终 Overlay、输入/Viewport 门控、全遮罩 Content 提交和加载失败淡入恢复；即时切换继续兼容，异步 Prepare 与可编程转场后置。
 - `SceneRef<TArgs>` 把结算/关卡入口参数与目标 Scene 编译期绑定，在请求时复制并由配置函数直接消费。
 - 类型安全、构建后冻结的 Instance Factory / Prefab。
 - `PrefabRef<T, TArgs>` 与 `in TArgs` 提供不装箱的强类型构造参数。

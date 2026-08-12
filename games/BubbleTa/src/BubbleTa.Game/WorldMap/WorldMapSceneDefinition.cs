@@ -41,7 +41,9 @@ internal static class WorldMapSceneDefinition {
 
         AddDecorations( context, firstSegmentMembers );
         var controller = new WorldMapController(
-            () => context.Scenes.SwitchTo( GameScenes.Home ) );
+            () => context.Scenes.SwitchTo(
+                GameScenes.Home,
+                BubbleTaSceneTransitions.Navigation ) );
         AddLevelNodes( context, progress, controller.RequestSelection, firstSegmentMembers );
         AddClouds( context, GameAssets.Sprites.BubbletaWorldMapCloudAbove,
             WorldMapSceneLayout.AboveClouds, firstSegmentMembers );
@@ -57,7 +59,9 @@ internal static class WorldMapSceneDefinition {
             context.Camera,
             WorldMapSegmentCatalog.All,
             color => context.Scene.Background = BackgroundConfig.FromColor( color ) ) );
-        if ( smoke ) context.Scene.Add( new WorldMapSmokeProbe( context.Close ) );
+        if ( smoke ) context.Scene.Add( new WorldMapSmokeProbe(
+            context.Close,
+            context.Scenes ) );
     }
 
     private static void AddDecorations(

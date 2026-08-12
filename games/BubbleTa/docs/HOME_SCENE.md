@@ -13,6 +13,7 @@
 - Home 在 Scene 注册期声明固定 Camera，不创建 Navigation Controller；WorldMap 独立声明 Drag/Decelerate/Bounce。切换时 Hosting 重置 Camera、清理 Pointer 捕获和惯性，不再依赖 Scene 回调手工覆盖 Renderer 全局状态。
 - Home 进入时通过 `SceneAudio.PlayMusic` 循环播放流式 OGG；离开 Scene 时 Hosting 会在卸载 Home 内容包之前停止音乐。
 - 世界按钮仅在一次有效的内部按下/内部释放后播放 WAV 点击音并切换 Scene。点击音使用全局一次性 Voice，让已经上传的静态 OpenAL Buffer 跨过切换边界自然播放完；Clip 从内容库移除后，Backend 会在 Voice 完成时释放 Buffer。
+- Home → WorldMap 与返回路径共用黑色声明式转场：`.18s` Fade Out 后在全遮罩状态交换 Scene/Content，再以 `.22s` Fade In 显示目标。转场门控按钮和 Viewport 输入，但不暂停 Scene 的 Step；全窗口 Overlay 会连同极宽窗口的 Pillarbox 一起遮住。
 - 设置图标仍只展示。存档初始化和旧全局控制对象均未进入本切片。
 
 ## 窗口适配与旧版依据
@@ -64,7 +65,7 @@
 
 `BubbleTa.Game.Tests` 通过 `InternalsVisibleTo` 检查游戏内部表现状态，不把首页类提升成引擎公共 API。测试覆盖 Logo 时序、周期装饰、角色入场、流星与闪点确定性、按钮捕获语义和 ESC 回调。
 
-`--smoke` 使用隐藏窗口、Silent Audio Backend 和固定推进，验证编译内容包及两类 Audio Clip 可装配、Home 实例建立、动画进入稳定阶段、切换到 WorldMap 并自动关闭。人工检查仍用于确认最终图层、中央裁切、音乐循环、点击反馈和美术观感。
+`--smoke` 使用隐藏窗口、Silent Audio Backend 和固定推进，验证编译内容包及两类 Audio Clip 可装配、Home 实例建立、动画进入稳定阶段、完整 Fade Out 后切换到 WorldMap，并确认 WorldMap 已在 Fade In 阶段启动后自动关闭。人工检查仍用于确认最终图层、中央裁切、音乐循环、点击反馈、转场覆盖留边和美术观感。
 
 ## 资产发布 Gate
 

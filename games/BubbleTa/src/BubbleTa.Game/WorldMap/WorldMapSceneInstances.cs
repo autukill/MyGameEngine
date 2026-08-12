@@ -4,6 +4,7 @@ using GameEngine.Core.Domain.Entities;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Hosting;
 
 internal sealed class WorldMapIslandInstance : GameInstance {
     public WorldMapIslandInstance( SpriteRef sprite, Vector2D position ) {
@@ -150,7 +151,9 @@ internal sealed class WorldMapController( Action returnHome ) : GameInstance {
     }
 }
 
-internal sealed class WorldMapSmokeProbe( Action close ) : GameInstance {
+internal sealed class WorldMapSmokeProbe(
+    Action close,
+    SceneNavigator scenes ) : GameInstance {
     private int _steps;
 
     public override void OnStep( double deltaTime ) {
@@ -170,6 +173,9 @@ internal sealed class WorldMapSmokeProbe( Action close ) : GameInstance {
         RequireCount<WorldMapAppleInstance>( 3 );
         RequireCount<WorldMapSegmentVisibilityController>( 1 );
         RequireCount<WorldMapSkyTransitionController>( 1 );
+        if ( scenes.Transition.Phase != SceneTransitionPhase.FadingIn )
+            throw new InvalidOperationException(
+                "BubbleTa WorldMap smoke requires the declarative fade-in phase." );
         close();
     }
 

@@ -67,6 +67,8 @@ internal sealed class Default2DGameRuntime : IDisposable
     private LoadedContentPackage? _sceneContent;
     private ShaderHotReloadCoordinator? _shaderHotReload;
     private SceneNavigator _scenes = null!;
+    private InputGateProvider _transitionInput = null!;
+    private WhiteTexture _transitionWhite = null!;
     private readonly List<RenderView> _renderViews = [];
     private LogicalInputRecorder? _inputRecorder;
     private LogicalInputPlayback? _inputPlayback;
@@ -112,6 +114,8 @@ internal sealed class Default2DGameRuntime : IDisposable
 
     public void Step(double deltaTime)
     {
+        _scenes.AdvanceTransition(deltaTime);
+        SynchronizeTransitionInputGate();
         ulong nextStepIndex = _scene!.Clock.StepIndex == ulong.MaxValue
             ? throw new InvalidOperationException("Simulation Step index overflowed.")
             : _scene.Clock.StepIndex + 1UL;
@@ -119,15 +123,17 @@ internal sealed class Default2DGameRuntime : IDisposable
             _inputRecorder.BeginStep(nextStepIndex, _plan.InputMap, _window.Input);
         else if (_inputPlayback is not null)
             _inputPlayback.BeginStep(nextStepIndex);
-        else
+        else if (!_transitionInput.IsBlocked)
             _scene.PerformInput(_window.Input.KeysPressed, _window.Input.KeysReleased);
-        UpdateViewportNavigation(deltaTime);
+        if (!_transitionInput.IsBlocked) UpdateViewportNavigation(deltaTime);
         _scene.PerformStep(deltaTime);
         _audio?.Update();
         _sceneAudio.PruneCompleted();
         for (int i = 0; i < _renderViews.Count; i++)
             _renderViews[i].Camera.Update(deltaTime);
         _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+        _scenes.BeginPendingTransition();
+        SynchronizeTransitionInputGate();
         ApplyPendingSceneSwitch();
         _transforms.Synchronize();
         CaptureOrVerifyGameplayState();
@@ -250,13 +256,17 @@ internal sealed class Default2DGameRuntime : IDisposable
         return false;
     }
 
-    public void Draw() => _pipeline.Execute(new RenderPassContext(
-        _window.Graphics.Gl,
-        _spriteShader,
-        _batch,
-        _window.Width,
-        _window.Height,
-        _window.FrameStatisticsSink));
+    public void Draw()
+    {
+        _pipeline.Execute(new RenderPassContext(
+            _window.Graphics.Gl,
+            _spriteShader,
+            _batch,
+            _window.Width,
+            _window.Height,
+            _window.FrameStatisticsSink));
+        DrawSceneTransitionOverlay();
+    }
 
     public void SamplePerformance() => _performanceTelemetry?.Tick();
 
@@ -333,6 +343,7 @@ internal sealed class Default2DGameRuntime : IDisposable
             DefaultShader = _spriteShader,
             Statistics = _window.FrameStatisticsSink
         });
+        _transitionWhite = _resources.Add(new WhiteTexture(gl));
         _textures = _resources.Add(new TextureLibrary(gl));
         _text = _resources.Add(new TextRuntime(_textures));
         _sprites = new SpriteLibrary(_textures);
@@ -433,21 +444,24 @@ internal sealed class Default2DGameRuntime : IDisposable
             ViewportWidth = width,
             ViewportHeight = height
         };
+        IInputProvider gameplayInput;
         if (_plan.InputRecorder is { } recorder)
         {
             recorder.Prepare(_plan.InputMap, _plan.WindowOptions.FixedDeltaTime!.Value);
             _inputRecorder = recorder;
-            _scene.SetInput(recorder);
+            gameplayInput = recorder;
         }
         else if (_plan.InputPlayback is { } recording)
         {
             _inputPlayback = new LogicalInputPlayback(recording, _plan.InputMap);
-            _scene.SetInput(_inputPlayback);
+            gameplayInput = _inputPlayback;
         }
         else
         {
-            _scene.SetInput(_window.Input);
+            gameplayInput = _window.Input;
         }
+        _transitionInput = new InputGateProvider(gameplayInput);
+        _scene.SetInput(_transitionInput);
         _scene.SetInputMap(_plan.InputMap);
         if (_plan.StateRecorder is { } stateRecorder)
         {
@@ -632,12 +646,22 @@ internal sealed class Default2DGameRuntime : IDisposable
 
     private void ApplyPendingSceneSwitch()
     {
-        if (!_scenes.TryTakePending(out ISceneActivation next)) return;
+        if (!_scenes.TryTakeReady(out SceneSwitchRequest request)) return;
+        ISceneActivation next = request.Activation;
 
         ISceneDefinition definition = _scenes.GetDefinition(next.Scene);
         LoadedContentPackage? nextContent = null;
-        if (_plan.Renderer.ContentCatalogOnly && definition.ContentPackage is { } package)
-            nextContent = _contentManager!.Load(package);
+        try
+        {
+            if (_plan.Renderer.ContentCatalogOnly && definition.ContentPackage is { } package)
+                nextContent = _contentManager!.Load(package);
+        }
+        catch (Exception ex) when (request.Transition is not null)
+        {
+            _scenes.AbortPreCommit(request, ex);
+            SynchronizeTransitionInputGate();
+            return;
+        }
 
         bool contentAccepted = false;
         try
@@ -659,11 +683,56 @@ internal sealed class Default2DGameRuntime : IDisposable
             ConfigureScene(next);
             _scene.Start();
             _builder.ApplyEvents(_scene.DrainUncommittedEvents());
+            _scenes.CompleteSwitch(request);
+            SynchronizeTransitionInputGate();
         }
         finally
         {
             if (!contentAccepted) nextContent?.Dispose();
         }
+    }
+
+    private void SynchronizeTransitionInputGate()
+    {
+        bool block = _scenes.Transition is { IsActive: true, BlocksInput: true };
+        if (_transitionInput.IsBlocked == block) return;
+        _transitionInput.IsBlocked = block;
+        if (block) ResetViewportInputState();
+    }
+
+    private void DrawSceneTransitionOverlay()
+    {
+        SceneTransitionSnapshot transition = _scenes.Transition;
+        if (!transition.IsActive || transition.Opacity <= 0f) return;
+
+        var gl = _window.Graphics.Gl;
+        gl.BindFramebuffer(Silk.NET.OpenGL.FramebufferTarget.Framebuffer, 0);
+        gl.Viewport(0, 0, (uint)_window.Width, (uint)_window.Height);
+        BlendState.AlphaBlend.Apply(gl);
+        DepthStencilState.None.Apply(gl);
+        Matrix4x4 projection = Matrix4x4.CreateOrthographicOffCenter(
+            0f,
+            _window.Width,
+            _window.Height,
+            0f,
+            -1f,
+            1f);
+        _spriteShader.Use();
+        _spriteShader.SetProjection(projection);
+        _batch.ShaderResolver?.SetProjection(projection);
+        Vector4 color = transition.Color;
+        color.W *= transition.Opacity;
+        _batch.Begin();
+        _batch.SetBlendMode(BlendMode.AlphaBlend);
+        _batch.SetDepthState(false, false);
+        _batch.SetShader(null);
+        _batch.Draw(
+            _transitionWhite.Handle,
+            Vector2.Zero,
+            new Vector2(_window.Width, _window.Height),
+            color,
+            new Vector4(0f, 0f, 1f, 1f));
+        _batch.End();
     }
 
     private void CaptureOrVerifyGameplayState()

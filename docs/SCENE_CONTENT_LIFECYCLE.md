@@ -24,7 +24,7 @@
 | 常驻内容（global/eager content） | `UseContent(...)` 在 Runtime 启动时加载，并持有到应用关闭的一整套内容。 |
 | Scene 级内容（scene-scoped content） | `UseContentCatalog(...)` 模式下，由当前 Scene 租约决定驻留范围的内容。 |
 | 无包 Scene（package-free Scene） | 未声明 `ContentPackageRef` 的 Scene；其 `context.Content` 为 `null`，适合纯色占位、诊断或不依赖内容资产的场景。 |
-| Prepare / Commit | 先在旧 Scene 有效时准备目标包；准备成功后才提交 Scene 切换。v1 的 Prepare 仍在渲染线程同步执行。 |
+| Prepare / Commit | 先在旧 Scene 有效时准备目标包；准备成功后才提交 Scene 切换。v1 的 Prepare 仍在渲染线程同步执行；使用 Fade 转场时会延迟到画面完全遮住后执行。 |
 
 最容易混淆的是 Catalog 与聚合根：前者是运行时允许解析包路径的目录边界，后者是离线构建图的入口。调用 `UseContentCatalog()` 不等于调用 `UseContent(GameAssets.Packages.Root)`。
 
@@ -69,6 +69,8 @@ Scene 请求仍然由 Hosting 在当前固定 Step 结束后的安全边界提�
 5. 将 `context.Content` 切换为目标租约，再释放旧 Scene 租约。
 6. 配置并启动新 Scene。
 
+传入 `SceneTransitionOptions` 时，Hosting 先完成 Fade Out，再在完全不透明的 `Switching` 阶段执行上述 1–6；成功后从新 Scene Fade In。目标包在第 2 步加载失败时，旧 Scene 与租约保持活动，失败记录到 `SceneNavigator.LastTransitionFailure`，随后淡入恢复旧画面。转场只隐藏同步装配的视觉跳变，不会把解码或 GPU 上传搬到后台。详见[声明式 Scene 转场](SCENE_TRANSITIONS.md)。
+
 同一包在多个 Scene 之间切换时仍经过 `ContentPackageManager` 的引用计数；共享依赖只装配一次，最后一个租约释放后才卸载。卸载顺序继续保持 Sprite、Animation、TileMap 等逻辑资源先于 Texture。
 
 ## 聚合根与运行时租约的区别
@@ -91,7 +93,7 @@ Scene 请求仍然由 Hosting 在当前固定 Step 结束后的安全边界提�
 
 ## 当前限制
 
-- v1 在渲染线程同步加载目标包，不提供 Loading Scene、后台解码或渐进 GPU 上传。
+- v1 在渲染线程同步加载目标包，不提供 Loading Scene、后台解码或渐进 GPU 上传；Fade 转场只把同步工作安排在全遮罩阶段。
 - Content Hot Reload 当前只支持 `UseContent` 的单一常驻包；Scene Catalog 模式会在构建配置阶段拒绝 Hot Reload。
 - Scene 配置回调失败仍被视为应用装配错误；目标包会随 Runtime 关闭释放，但不会尝试恢复已经结束的旧 Scene。
 - 不支持同一 Scene 同时声明多个根包。共享资源应放入子包并通过包依赖表达。

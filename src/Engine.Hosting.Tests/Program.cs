@@ -606,6 +606,15 @@ internal static class Program
 
         var input = new MappedInputProbe();
         input.Down.Add(InputKey.Space);
+
+        var gate = new InputGateProvider(input);
+        Check(map.ActionDown(gate, fire) && gate.IsKeyDown(InputKey.Space),
+            "An open InputGate preserves physical and mapped gameplay input");
+        gate.IsBlocked = true;
+        Check(!map.ActionDown(gate, fire) && map.Axis2D(gate, move) == Vector2D.Zero &&
+              !gate.IsKeyDown(InputKey.Space) && gate.PointerCount == 0,
+            "A blocked InputGate exposes one neutral frame across keys, actions, axes, and pointers");
+        gate.IsBlocked = false;
         input.Pressed.Add(InputKey.Control);
         input.Released.Add(InputKey.Space);
         Check(map.ActionDown(input, fire) &&
@@ -2067,6 +2076,91 @@ internal static class Program
         typedInitialPlan.ConfigureScene(null!);
         Check(typedInitialPlan.InitialScene == results.Untyped && configuredInitial == initialArgs,
             "StartScene carries typed arguments into the initial Scene configuration");
+
+        var transitioned = new SceneNavigator(plan.Scenes, main);
+        SceneTransitionOptions fade = SceneTransitions.FadeThroughBlack(.2d, .2d);
+        transitioned.SwitchTo(gameOver, fade);
+        transitioned.SwitchTo(gameOver, fade);
+        transitioned.BeginPendingTransition();
+        Check(transitioned.Transition.Phase == SceneTransitionPhase.FadingOut &&
+              transitioned.Transition.Opacity == 0f &&
+              transitioned.Transition.BlocksInput &&
+              !transitioned.TryTakeReady(out _),
+            "A declarative fade begins at transparent old-Scene presentation and blocks input");
+        transitioned.AdvanceTransition(.1d);
+        Check(MathF.Abs(transitioned.Transition.Opacity - .5f) < .000001f,
+            "Fade-out opacity advances in unscaled deterministic time");
+        transitioned.AdvanceTransition(.1d);
+        bool becameReady = transitioned.TryTakeReady(out SceneSwitchRequest ready);
+        Check(transitioned.Transition.Phase == SceneTransitionPhase.Switching &&
+              transitioned.Transition.Opacity == 1f &&
+              becameReady && !transitioned.TryTakeReady(out _),
+            "The target becomes commit-ready exactly once at full coverage");
+        transitioned.Commit(gameOver);
+        transitioned.CompleteSwitch(ready);
+        Check(transitioned.Current == gameOver &&
+              transitioned.Transition.Phase == SceneTransitionPhase.FadingIn &&
+              transitioned.Transition.Opacity == 1f,
+            "A committed Scene first appears fully covered before fading in");
+        transitioned.AdvanceTransition(.1d);
+        Check(MathF.Abs(transitioned.Transition.Opacity - .5f) < .000001f,
+            "Fade-in reveals the new Scene without changing its simulation clock");
+        transitioned.AdvanceTransition(.1d);
+        Check(!transitioned.IsTransitioning && transitioned.Transition.Opacity == 0f,
+            "A completed transition returns to an allocation-free idle snapshot");
+
+        var failedTransition = new SceneNavigator(plan.Scenes, main);
+        failedTransition.SwitchTo(gameOver, fade);
+        failedTransition.BeginPendingTransition();
+        failedTransition.AdvanceTransition(.2d);
+        Check(failedTransition.TryTakeReady(out SceneSwitchRequest failedReady),
+            "A covered transition exposes its pre-commit request");
+        var expectedFailure = new IOException("expected content failure");
+        failedTransition.AbortPreCommit(failedReady, expectedFailure);
+        Check(failedTransition.Current == main &&
+              failedTransition.LastTransitionFailure is { } failure &&
+              failure.Source == main && failure.Target == gameOver &&
+              ReferenceEquals(failure.Exception, expectedFailure) &&
+              failedTransition.Transition.Phase == SceneTransitionPhase.FadingIn,
+            "A pre-commit load failure preserves the old Scene and fades it back in");
+        failedTransition.AdvanceTransition(.2d);
+        Check(!failedTransition.IsTransitioning && failedTransition.Current == main,
+            "Failure recovery completes without leaving a permanent input gate");
+
+        var conflictingTransition = new SceneNavigator(plan.Scenes, main);
+        conflictingTransition.SwitchTo(gameOver, fade);
+        CheckThrows<InvalidOperationException>(
+            () => conflictingTransition.SwitchTo(
+                gameOver,
+                SceneTransitions.FadeThroughBlack(.4d, .2d)),
+            "The same target with conflicting transition options is rejected explicitly");
+        CheckThrows<ArgumentException>(
+            () => new SceneNavigator(plan.Scenes, main).SwitchTo(gameOver, default),
+            "Default-initialized transition options are rejected instead of producing an invisible gate");
+        CheckThrows<ArgumentOutOfRangeException>(
+            () => new SceneTransitionOptions(Vector4.One, double.NaN, .2d),
+            "Transition durations must be finite and non-negative");
+
+        var allocationTransition = new SceneNavigator(plan.Scenes, main);
+        allocationTransition.SwitchTo(
+            gameOver,
+            SceneTransitions.FadeThroughBlack(10_000d, .2d));
+        allocationTransition.BeginPendingTransition();
+        for (int i = 0; i < 64; i++)
+        {
+            allocationTransition.AdvanceTransition(1d / 60d);
+            _ = allocationTransition.Transition;
+        }
+        long transitionAllocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_024; i++)
+        {
+            allocationTransition.AdvanceTransition(1d / 60d);
+            _ = allocationTransition.Transition;
+        }
+        long transitionAllocated = GC.GetAllocatedBytesForCurrentThread() -
+            transitionAllocatedBefore;
+        Check(transitionAllocated == 0,
+            $"Active Scene transition updates remain allocation-free ({transitionAllocated:N0} B)");
     }
 
     private static void TestResourceOwnership()

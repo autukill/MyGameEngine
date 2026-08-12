@@ -53,6 +53,8 @@ public sealed class InputMap
         ArgumentNullException.ThrowIfNull(input);
         InputKey[]? keys = RequireAction(action);
         if (keys is null) return false;
+        if (input is InputGateProvider gate)
+            return !gate.IsBlocked && ActionDown(gate.Source, action);
         if (input is ILogicalInputProvider logical) return logical.ActionDown(action);
         for (int i = 0; i < keys.Length; i++)
         {
@@ -66,6 +68,8 @@ public sealed class InputMap
         ArgumentNullException.ThrowIfNull(input);
         InputKey[]? keys = RequireAction(action);
         if (keys is null) return false;
+        if (input is InputGateProvider gate)
+            return !gate.IsBlocked && ActionPressed(gate.Source, action);
         if (input is ILogicalInputProvider logical) return logical.ActionPressed(action);
         for (int i = 0; i < keys.Length; i++)
         {
@@ -79,6 +83,8 @@ public sealed class InputMap
         ArgumentNullException.ThrowIfNull(input);
         InputKey[]? keys = RequireAction(action);
         if (keys is null) return false;
+        if (input is InputGateProvider gate)
+            return !gate.IsBlocked && ActionReleased(gate.Source, action);
         if (input is ILogicalInputProvider logical) return logical.ActionReleased(action);
         for (int i = 0; i < keys.Length; i++)
         {
@@ -92,6 +98,8 @@ public sealed class InputMap
         ArgumentNullException.ThrowIfNull(input);
         DigitalAxis2DBinding[]? bindings = RequireAxis(axis);
         if (bindings is null) return Vector2D.Zero;
+        if (input is InputGateProvider gate)
+            return gate.IsBlocked ? Vector2D.Zero : Axis2D(gate.Source, axis);
         if (input is ILogicalInputProvider logical) return logical.Axis2D(axis);
 
         float x = 0f;

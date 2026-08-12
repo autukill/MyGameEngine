@@ -46,7 +46,9 @@ internal static class HomeSceneDefinition {
                 // The decoded click intentionally survives the Home -> WorldMap boundary. OpenAL
                 // retains its static buffer until this one-shot Voice completes after package unload.
                 context.Audio.Play( GameAssets.AudioClips.BubbletaHomeClick, AudioPlayOptions.Sfx );
-                context.Scenes.SwitchTo( GameScenes.WorldMap );
+                context.Scenes.SwitchTo(
+                    GameScenes.WorldMap,
+                    BubbleTaSceneTransitions.Navigation );
             } ) );
         context.Scene.Add( new StaticHomeSpriteInstance(
             GameAssets.Sprites.BubbletaHomeSettings,
@@ -55,7 +57,9 @@ internal static class HomeSceneDefinition {
             -18 ) );
         context.Scene.Add( new HomeSceneController( context.Close ) );
 
-        if ( smoke ) context.Scene.Add( new HomeSmokeProbe() );
+        if ( smoke ) context.Scene.Add( new HomeSmokeProbe( () => context.Scenes.SwitchTo(
+            GameScenes.WorldMap,
+            BubbleTaSceneTransitions.Navigation ) ) );
     }
 
     private static void AddMeteors( Default2DGameContext context ) {

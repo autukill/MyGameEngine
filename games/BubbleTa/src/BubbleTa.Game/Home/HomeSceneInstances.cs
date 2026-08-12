@@ -483,7 +483,7 @@ internal sealed class HomeSceneController( Action close ) : GameInstance {
     }
 }
 
-internal sealed class HomeSmokeProbe : GameInstance {
+internal sealed class HomeSmokeProbe( Action switchToWorldMap ) : GameInstance {
     private int _steps;
 
     public override void OnStep( double deltaTime ) {
@@ -497,7 +497,7 @@ internal sealed class HomeSmokeProbe : GameInstance {
             RequireCount<HomeWorldButtonInstance>( 1 );
         }
 
-        if ( _steps == 181 ) SwitchScene( GameScenes.WorldMap );
+        if ( _steps == 181 ) switchToWorldMap();
     }
 
     private void RequireCount<T>( int expected ) where T : GameInstance {

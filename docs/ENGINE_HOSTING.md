@@ -211,6 +211,18 @@ Context 是装配期强类型对象，不是全局 Service Locator。GameInstanc
 
 Render Graph 捕获只用于低频调试和测试，不在 Host 每帧自动执行，也不会延长 GPU 资源生命周期。帧统计默认关闭，可通过 `EngineWindowOptions.WithFrameStatistics()` 启用；限帧和 Draw/Flush 口径见[运行时渲染诊断快照](RUNTIME_RENDER_DIAGNOSTICS.md)。显存估算、预算与 Sink 配置见[性能预算与低频遥测](PERFORMANCE_TELEMETRY.md)。
 
+## 声明式 Scene 转场
+
+`context.Scenes.SwitchTo(target)` 保留原有的帧边界即时切换。需要完整视觉过渡时传入显式选项：
+
+```csharp
+context.Scenes.SwitchTo(
+    GameScenes.WorldMap,
+    SceneTransitions.FadeThroughBlack(.18, .22));
+```
+
+Hosting 按 `FadingOut → Switching → FadingIn` 推进；只有遮罩完全不透明时才同步加载目标 Scene Content 并提交 Scene 生命周期切换。默认输入门控覆盖 Key、Pointer、Action/Axis 和 Viewport Navigation，但不会暂停 Scene Step。最终遮罩在整个 Presentation 之后绘制，因此一次覆盖多 View、SceneGui 和 Content 留边。目标 Content 在提交前失败时旧 Scene 保持活动并淡入恢复；配置新 Scene 失败仍是不可恢复的装配错误。完整 API、状态、所有权与限制见[声明式 Scene 转场](SCENE_TRANSITIONS.md)。
+
 ## Host 接管的帧生命周期
 
 ```text
@@ -222,9 +234,10 @@ Window.Load
   -> 添加默认 World/GUI Presentation owner
 
 Window.Step
+  -> 推进活动 Scene Transition；按策略门控 Input / Viewport Navigation
   -> Scene.PerformInput
   -> Scene.PerformStep
-  -> 准备并提交待切换 Scene 的 Content Package（仅有切换请求时）
+  -> 开始待处理 Fade；完全遮罩后准备并提交目标 Scene Content Package
   -> 清理旧 Pointer 捕获并激活目标 Scene View
   -> ScenePipelineBuilder.ApplyEvents
   -> ContentHotReload.Commit（仅有已准备修订时）
@@ -232,6 +245,7 @@ Window.Step
 
 Window.Draw
   -> RenderPipeline.Execute
+  -> 绘制最终全窗口 Scene Transition Overlay
 
 Window.Resize
   -> Scene / Camera / 根 RT / Pipeline / Builder resize
@@ -261,7 +275,7 @@ Shader
 
 ## 当前边界
 
-- v1 只提供单窗口和 OpenGL 默认 2D Runtime；已支持 Scene 目录/切换，但没有 Scene 栈或后台加载。
+- v1 只提供单窗口和 OpenGL 默认 2D Runtime；已支持 Scene 目录、帧边界切换与全窗口 Fade 转场，但没有 Scene 栈、后台加载或可编程转场 Shader。
 - 支持单 Camera 多呈现槽位，以及带独立 Camera、RenderScale、Scene Layer 过滤和显式 HDR/Bloom/Tone Mapping 策略的多 Render View；次级 Stencil 尚未开放。
 - Host 不自动注册未启用的可选 Feature；请求缺失 Factory 会沿用 Builder 的明确诊断。
 - 内容路径相对 `AppContext.BaseDirectory` 解析；绝对路径视为开发者显式选择。
