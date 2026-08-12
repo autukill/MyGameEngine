@@ -65,6 +65,49 @@ Bytes、Managed Heap 近似值、各代收集次数，以及最近一次 GC 后�
 及其缓存；它不是精确的 Native Heap，也不能与估算 GPU 显存直接相减。判断泄漏应观察多次稳定采样的
 趋势，而不是对单次任务管理器数值做归属推断。
 
+## Working Set 与 Private Bytes
+
+这两个指标回答的是不同问题：
+
+| 指标 | 回答的问题 | 包含什么 | 不代表什么 |
+|---|---|---|---|
+| Working Set | 此刻有多少相关页面驻留在物理 RAM？ | 当前驻留的私有页，以及 DLL、Runtime、内存映射文件等共享页 | 进程拥有的全部内存，或不可共享内存总量 |
+| Private Bytes | 操作系统为本进程提交了多少不可共享的私有内存？ | GC/Native Heap、线程栈、JIT、原生库和驱动的私有分配及缓存 | 当前全部位于 RAM，或全部仍是有用对象 |
+
+Working Set 强调“现在驻留”。Windows 可以在进程没有释放对象时裁剪工作集：干净的文件映射页可以
+丢弃后重读，私有页也可以离开 RAM 并在之后恢复。因此最小化窗口、系统内存压力或其他进程活动都可能
+让 Working Set 上下波动。`ProcessMemoryDiagnostics.WorkingSetBytes` 使用的是进程总 Working Set；
+Windows 任务管理器某些列显示的是 Private Working Set，比较时必须先确认工具口径。
+
+Private Bytes 强调“私有提交”。提交意味着系统承诺在需要时由 RAM 或页面文件提供后备，但页面不必
+当前驻留。它既可能是仍被引用的对象，也可能是 GC 已回收但保留复用的 Heap、Native allocator 空闲区、
+线程栈、JIT 数据或驱动缓存。“只能由本进程使用”描述共享属性，不等于“当前有用”或“应立即归还”。
+
+两者可以近似理解为：
+
+```text
+Private Bytes
+├─ 当前驻留在 RAM 的私有页面
+└─ 当前不驻留、但仍由进程拥有的私有页面
+
+Working Set
+├─ 当前驻留的私有页面
+└─ 当前驻留的共享页面
+```
+
+因为 Working Set 还包含共享页，不能用 `Private Bytes - Working Set` 精确计算换出量。典型行为包括：
+
+- 申请并触碰 100 MiB 私有内存时，两者通常一起增长；Windows 随后裁剪 60 MiB 时，Working Set 可以
+  下降，而 Private Bytes 保持不变。
+- 加载共享 DLL 的代码页会增加 Working Set，却不一定等量增加 Private Bytes。
+- GC 回收 20 MiB 对象后，Managed Heap 近似值可能下降，但若 Runtime 保留提交区域供后续复用，
+  Private Bytes 和 Working Set 都不保证立即下降。
+
+调查泄漏时，Working Set 更适合观察实际 RAM 压力，Private Bytes 更适合观察进程私有提交是否在重复
+场景循环后持续增长。推荐在相同 checkpoint 比较：等待后台工作收敛，确认资源 Lease/Texture 计数，
+再做一次显式 Full GC 对照。若 Full GC 后 Managed Heap、Private Bytes 或明确登记的 CPU/GPU 所有权仍
+随每轮加载/卸载单调增长，才值得继续定位引用、Native 分配或 GPU 生命周期；单次高水位不能证明泄漏。
+
 `GameplayQueries` 将 Find、Collision、Area 和 Radius 分开统计调用数、扫描候选、命中及累计耗时。自动遥测每次发布后重置查询区间；`SampledSteps` 和 `AverageMillisecondsPerStep` 可用于判断查询是否进入更新帧预算。显式捕获默认不重置，如需区间采样可调用 `CapturePerformanceSnapshot(resetGameplayQueryStatistics: true)`。
 
 ## 显存估算口径
