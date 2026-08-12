@@ -6,6 +6,8 @@ using BubbleTa.Game.Home;
 using BubbleTa.Game.WorldMap;
 using GameEngine.Core.Domain.Input;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Features.Camera.Domain;
+using GameEngine.Features.ViewportNavigation;
 
 internal static class Program
 {
@@ -17,6 +19,7 @@ internal static class Program
         Run("Home audio references are generated", HomeAudioReferencesAreGenerated);
         Run("WorldMap content references are generated", WorldMapContentReferencesAreGenerated);
         Run("WorldMap first island layout", WorldMapFirstIslandLayout);
+        Run("WorldMap horizontal rubber band", WorldMapHorizontalRubberBand);
         Run("WorldMap node presentation", WorldMapNodePresentation);
         Run("WorldMap cloud motion", WorldMapCloudMotion);
         Run("Logo reveal timing", LogoRevealTiming);
@@ -108,6 +111,28 @@ internal static class Program
             "Unlocked special node kinds must map to their dedicated Sprites.");
     }
 
+    private static void WorldMapHorizontalRubberBand()
+    {
+        var camera = new Camera2D(new Vector2(
+            WorldMapSceneLayout.ViewWidth,
+            1_280f))
+        {
+            Position = WorldMapSceneLayout.InitialCameraPosition
+        };
+        ViewportController viewport = new ViewportNavigationBuilder()
+            .Bounce(WorldMapSceneLayout.NavigationBounce)
+            .Build()
+            .CreateController(camera);
+
+        viewport.MoveByWorld(new Vector2(100f, -1_000f));
+        viewport.Update(ViewportInputFrame.Empty, .15d);
+
+        Near(viewport.VisibleWorldBounds.Left, 164f, .001f,
+            "Horizontal overscroll must return to the authored View left edge.");
+        Near(viewport.VisibleWorldBounds.Top, 13_820f, .001f,
+            "A vertically valid position must remain unchanged during horizontal Bounce.");
+    }
+
     private static void WorldMapCloudMotion()
     {
         WorldMapCloudPlacement placement = WorldMapSceneLayout.UnderClouds[0];
@@ -142,6 +167,21 @@ internal static class Program
               WorldMapSceneLayout.RoomBounds.Height == 16_100f &&
               WorldMapSceneLayout.InitialCameraPosition == new Vector2(164f, 14_820f),
             "WorldMap Scene View must retain the legacy Room and bottom Camera boundary.");
+        Check(WorldMapSceneLayout.NavigationDrag.Axis ==
+              GameEngine.Features.ViewportNavigation.ViewportAxis.All &&
+              WorldMapSceneLayout.NavigationDrag.AxisLock ==
+              GameEngine.Features.ViewportNavigation.ViewportDragAxisLock.Dominant &&
+              WorldMapSceneLayout.NavigationBounce.Axis ==
+              GameEngine.Features.ViewportNavigation.ViewportAxis.All,
+            "WorldMap navigation must lock each Drag gesture to one axis, then bounce on both axes.");
+        Check(WorldMapSceneLayout.NavigationBounds.Left == 164f &&
+              WorldMapSceneLayout.NavigationBounds.Right == 884f &&
+              WorldMapSceneLayout.NavigationBounds.Top == 0f &&
+              WorldMapSceneLayout.NavigationBounds.Bottom == 16_100f,
+            "WorldMap navigation must keep vertical world travel while horizontally bouncing to the authored View.");
+        Check(WorldMapSceneLayout.NavigationBounce.WorldBounds ==
+              WorldMapSceneLayout.NavigationBounds,
+            "WorldMap Bounce must use the narrow navigation boundary instead of the full Room width.");
     }
 
     private static void LogoRevealTiming()

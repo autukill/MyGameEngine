@@ -46,6 +46,8 @@ public sealed class ViewportDragPlugin : ViewportPlugin
     private bool _captured;
     private bool _moved;
     private bool _resumeAfterPinch;
+    private bool _axisResolved;
+    private ViewportAxis _gestureAxis;
 
     public ViewportDragOptions Options => _options;
     public bool IsDragging => _captured;
@@ -64,6 +66,8 @@ public sealed class ViewportDragPlugin : ViewportPlugin
             _moved = false;
             _velocity = Vector2.Zero;
             _resumeAfterPinch = true;
+            _axisResolved = false;
+            _gestureAxis = ViewportAxis.All;
             return;
         }
 
@@ -75,6 +79,8 @@ public sealed class ViewportDragPlugin : ViewportPlugin
                 controller.DragReleased = _moved;
                 controller.ReleasedVelocity = _moved ? _velocity : Vector2.Zero;
                 _moved = false;
+                _axisResolved = false;
+                _gestureAxis = ViewportAxis.All;
                 return;
             }
             controller.DragActive = true;
@@ -87,7 +93,9 @@ public sealed class ViewportDragPlugin : ViewportPlugin
             }
             if (_moved && delta != Vector2.Zero)
             {
-                delta = Filter(delta, _options.Axis);
+                if (!_axisResolved && !TryResolveGestureAxis(pointer.Position - _pressPosition))
+                    return;
+                delta = Filter(delta, _gestureAxis);
                 Vector2 before = controller.Position;
                 controller.PanByScreenDelta(delta, ViewportChangeKind.Drag);
                 if (deltaTime > 0d)
@@ -112,6 +120,9 @@ public sealed class ViewportDragPlugin : ViewportPlugin
             _pressPosition = pointer.Position;
             _lastPosition = pointer.Position;
             _velocity = Vector2.Zero;
+            _gestureAxis = _options.Axis;
+            _axisResolved = _options.Axis != ViewportAxis.All ||
+                            _options.AxisLock == ViewportDragAxisLock.None;
             controller.MarkUserInteractionStarted();
             break;
         }
@@ -123,6 +134,22 @@ public sealed class ViewportDragPlugin : ViewportPlugin
         _moved = false;
         _resumeAfterPinch = false;
         _velocity = Vector2.Zero;
+        _axisResolved = false;
+        _gestureAxis = ViewportAxis.All;
+    }
+
+    private bool TryResolveGestureAxis(Vector2 travel)
+    {
+        float horizontal = MathF.Abs(travel.X);
+        float vertical = MathF.Abs(travel.Y);
+        if (horizontal >= vertical * _options.DominanceRatio)
+            _gestureAxis = ViewportAxis.Horizontal;
+        else if (vertical >= horizontal * _options.DominanceRatio)
+            _gestureAxis = ViewportAxis.Vertical;
+        else
+            return false;
+        _axisResolved = true;
+        return true;
     }
 
     private static Vector2 Filter(Vector2 value, ViewportAxis axis) => axis switch

@@ -3,6 +3,7 @@ namespace BubbleTa.Game.WorldMap;
 using System.Numerics;
 using GameEngine.Core.Domain.Gameplay;
 using GameEngine.Core.Domain.ValueObjects;
+using GameEngine.Features.ViewportNavigation;
 
 internal enum WorldMapNodeKind {
     Normal,
@@ -26,9 +27,23 @@ internal static class WorldMapSceneLayout {
     public const float FirstIslandY = 13_300f;
     public const float FirstIslandSeamY = 14_636f;
     public const float FirstIslandBottomY = 15_972f;
+    public const float ViewWidth = 720f;
 
     public static Bounds2D RoomBounds { get; } = new( 0f, 0f, 1_048f, 16_100f );
     public static Vector2 InitialCameraPosition { get; } = new( 164f, 14_820f );
+    public static Bounds2D NavigationBounds { get; } = new(
+        InitialCameraPosition.X,
+        RoomBounds.Top,
+        InitialCameraPosition.X + ViewWidth,
+        RoomBounds.Bottom );
+    public static ViewportDragOptions NavigationDrag { get; } =
+        new(
+            ViewportAxis.All,
+            8f,
+            ViewportDragAxisLock.Dominant,
+            dominanceRatio: 1.25f );
+    public static ViewportBounceOptions NavigationBounce { get; } =
+        new( NavigationBounds, ViewportAxis.All );
     public static Vector2D IslandUpperPosition { get; } = new( 538f, FirstIslandY );
     public static Vector2D IslandLowerPosition { get; } = new( 538f, FirstIslandBottomY );
 

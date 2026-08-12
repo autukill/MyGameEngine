@@ -115,10 +115,15 @@ Provider 可以在释放帧保留 `IsDown=false` 的 Contact，也可以立即�
 - `Snap` 是持续位置目标，可锁定 Center 或左上角；目标被其他逻辑移开后会重新收敛。
 - `SnapZoom` 是持续 Zoom/可见宽高目标；Resize 后重新解析目标 Zoom，并可指定屏幕锚点。
 - `Bounce` 允许 Drag/Pinch 暂时越界，释放后以指定 Easing 回弹；它与硬 `Clamp` 是两种互斥的边界策略，Builder 会拒绝同时声明。
+- `ViewportDragAxisLock.Dominant` 用于同时需要纵向导航和横向橡皮筋的地图：累计位移超过 Threshold 后，只有一个方向达到 `DominanceRatio` 才锁定本次手势，之后直到释放都只产生该轴位移和惯性。默认 `None` 保持自由双轴拖动兼容；方向锁只适用于 `ViewportAxis.All`。
 
 ```csharp
 viewport
-    .Drag()
+    .Drag(new ViewportDragOptions(
+        ViewportAxis.All,
+        thresholdPixels: 8,
+        axisLock: ViewportDragAxisLock.Dominant,
+        dominanceRatio: 1.25f))
     .Pinch()
     .Wheel()
     .MouseEdges(new ViewportMouseEdgesOptions(

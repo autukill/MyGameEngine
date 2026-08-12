@@ -11,6 +11,12 @@ public enum ViewportAxis
     Vertical = 2,
 }
 
+public enum ViewportDragAxisLock
+{
+    None = 0,
+    Dominant = 1,
+}
+
 public enum ViewportUnderflow
 {
     None = 0,
@@ -156,22 +162,42 @@ public readonly record struct ViewportChangedEvent(
 
 public readonly record struct ViewportDragOptions
 {
-    public static ViewportDragOptions Default => new(ViewportAxis.All, 0f);
+    public static ViewportDragOptions Default => new(
+        ViewportAxis.All,
+        0f,
+        ViewportDragAxisLock.None,
+        1.25f);
 
     public ViewportAxis Axis { get; }
     public float ThresholdPixels { get; }
+    public ViewportDragAxisLock AxisLock { get; }
+    public float DominanceRatio { get; }
 
-    public ViewportDragOptions() : this(ViewportAxis.All, 0f) { }
+    public ViewportDragOptions() : this(
+        ViewportAxis.All,
+        0f,
+        ViewportDragAxisLock.None,
+        1.25f) { }
 
     public ViewportDragOptions(
         ViewportAxis axis = ViewportAxis.All,
-        float thresholdPixels = 0f)
+        float thresholdPixels = 0f,
+        ViewportDragAxisLock axisLock = ViewportDragAxisLock.None,
+        float dominanceRatio = 1.25f)
     {
         if (!Enum.IsDefined(axis)) throw new ArgumentOutOfRangeException(nameof(axis));
         if (!float.IsFinite(thresholdPixels) || thresholdPixels < 0f)
             throw new ArgumentOutOfRangeException(nameof(thresholdPixels));
+        if (!Enum.IsDefined(axisLock)) throw new ArgumentOutOfRangeException(nameof(axisLock));
+        if (!float.IsFinite(dominanceRatio) || dominanceRatio < 1f || dominanceRatio > 8f)
+            throw new ArgumentOutOfRangeException(nameof(dominanceRatio));
+        if (axisLock != ViewportDragAxisLock.None && axis != ViewportAxis.All)
+            throw new ArgumentException(
+                "Dominant Drag axis locking requires ViewportAxis.All.", nameof(axisLock));
         Axis = axis;
         ThresholdPixels = thresholdPixels;
+        AxisLock = axisLock;
+        DominanceRatio = dominanceRatio;
     }
 }
 

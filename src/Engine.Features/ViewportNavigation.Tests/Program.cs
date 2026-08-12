@@ -18,6 +18,7 @@ internal static class Program
         Run("Plugin manager order and lifecycle", PluginManagerLifecycle);
         Run("Drag and frame-rate-independent deceleration", DragAndDeceleration);
         Run("Drag threshold and axis", DragThresholdAndAxis);
+        Run("Drag dominant-axis gesture lock", DragDominantAxisGestureLock);
         Run("Unified multi-pointer pinch and drag handoff", PinchBehavior);
         Run("Wheel anchor, smoothing, and reverse", WheelBehavior);
         Run("MouseEdges movement and deceleration handoff", MouseEdgesBehavior);
@@ -166,6 +167,51 @@ internal static class Program
         Near(viewport.Position, Vector2.Zero);
         viewport.Update(Frame(120f, 140f, true), 1d / 60d);
         Near(viewport.Position, new Vector2(-15f, 0f));
+    }
+
+    private static void DragDominantAxisGestureLock()
+    {
+        var vertical = CreateViewport();
+        var verticalDrag = new ViewportDragPlugin(new ViewportDragOptions(
+            ViewportAxis.All,
+            8f,
+            ViewportDragAxisLock.Dominant,
+            1.25f));
+        var verticalDeceleration = new ViewportDeceleratePlugin(
+            new ViewportDecelerateOptions(.98f, 0f));
+        vertical.Plugins.Add(verticalDrag);
+        vertical.Plugins.Add(verticalDeceleration);
+        vertical.Update(Frame(100f, 100f, true, pressed: true), 1d / 60d);
+        vertical.Update(Frame(106f, 140f, true), 1d / 60d);
+        vertical.Update(Frame(112f, 200f, true), 1d / 60d);
+        Near(vertical.Position, new Vector2(0f, -100f));
+        vertical.Update(Frame(112f, 200f, false), 1d / 60d);
+        Check(verticalDeceleration.IsActive &&
+              MathF.Abs(verticalDeceleration.Velocity.X) <= .0001f &&
+              verticalDeceleration.Velocity.Y < 0f,
+            "A mostly vertical gesture locks out horizontal jitter and inertia");
+
+        var horizontal = CreateViewport();
+        horizontal.Plugins.Add(new ViewportDragPlugin(new ViewportDragOptions(
+            ViewportAxis.All,
+            8f,
+            ViewportDragAxisLock.Dominant,
+            1.25f)));
+        horizontal.Update(Frame(100f, 100f, true, pressed: true), 1d / 60d);
+        horizontal.Update(Frame(160f, 112f, true), 1d / 60d);
+        Near(horizontal.Position, new Vector2(-60f, 0f));
+
+        var ambiguous = CreateViewport();
+        ambiguous.Plugins.Add(new ViewportDragPlugin(new ViewportDragOptions(
+            ViewportAxis.All,
+            8f,
+            ViewportDragAxisLock.Dominant,
+            1.25f)));
+        ambiguous.Update(Frame(100f, 100f, true, pressed: true), 1d / 60d);
+        ambiguous.Update(Frame(120f, 120f, true), 1d / 60d);
+        Near(ambiguous.Position, Vector2.Zero);
+        ambiguous.Update(Frame(122f, 150f, true), 1d / 60d);
+        Near(ambiguous.Position, new Vector2(0f, -30f));
     }
 
     private static void PinchBehavior()
@@ -501,6 +547,12 @@ internal static class Program
         Throws<ArgumentException>(() => new ViewportClampPlugin(new ViewportClampOptions(
             new Bounds2D(0f, 0f, 0f, 10f))));
         Throws<InvalidOperationException>(() => new ViewportNavigationBuilder().Build());
+        Throws<ArgumentException>(() => new ViewportDragOptions(
+            ViewportAxis.Vertical,
+            axisLock: ViewportDragAxisLock.Dominant));
+        Throws<ArgumentOutOfRangeException>(() => new ViewportDragOptions(
+            axisLock: ViewportDragAxisLock.Dominant,
+            dominanceRatio: .9f));
         Throws<InvalidOperationException>(() => new ViewportNavigationBuilder()
             .Bounce(new ViewportBounceOptions(new Bounds2D(0f, 0f, 100f, 100f)))
             .Clamp(new ViewportClampOptions(new Bounds2D(0f, 0f, 100f, 100f)))

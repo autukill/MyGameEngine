@@ -35,11 +35,9 @@ internal static class Program {
                 views => views.ConfigureMain(
                     new SceneCameraState( WorldMapSceneLayout.InitialCameraPosition ),
                     navigation: navigation => navigation
-                        .Drag( new ViewportDragOptions( ViewportAxis.Vertical, 8f ) )
+                        .Drag( WorldMapSceneLayout.NavigationDrag )
                         .Decelerate()
-                        .Bounce( new ViewportBounceOptions(
-                            WorldMapSceneLayout.RoomBounds,
-                            ViewportAxis.Vertical ) ) ),
+                        .Bounce( WorldMapSceneLayout.NavigationBounce ) ),
                 context => WorldMapSceneDefinition.Configure( context, smoke ) )
             .StartScene( GameScenes.Home )
             .Build();
